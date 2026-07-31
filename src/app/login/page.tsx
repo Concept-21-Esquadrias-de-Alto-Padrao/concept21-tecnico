@@ -1,9 +1,12 @@
 "use client";
 
 import { Loader2, LogIn } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { createSupabaseBrowserClient, hasSupabaseBrowserEnv } from "@/lib/supabase/client";
+import { signInWithEmail } from "@/lib/auth-client";
+import { toUserFriendlyErrorMessage } from "@/lib/errors";
+import { hasSupabaseBrowserEnv } from "@/lib/supabase/client";
 
 function LoginContent() {
   const router = useRouter();
@@ -24,15 +27,15 @@ function LoginContent() {
     }
 
     setLoading(true);
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-
-    if (error) {
-      setMessage(error.message);
+    try {
+      await signInWithEmail(email, password);
+    } catch (error) {
+      setLoading(false);
+      setMessage(toUserFriendlyErrorMessage(error, "Não foi possível entrar."));
       return;
     }
 
+    setLoading(false);
     router.replace("/tecnico");
     router.refresh();
   }
@@ -87,6 +90,13 @@ function LoginContent() {
           </button>
           {message ? <p className="text-sm font-medium text-danger">{message}</p> : null}
         </form>
+
+        <div className="mt-5 border-t border-border pt-4 text-center text-sm text-muted-foreground">
+          Ainda não tem cadastro?{" "}
+          <Link href="/cadastro" className="font-semibold text-accent hover:text-orange-600">
+            Criar acesso
+          </Link>
+        </div>
       </section>
     </main>
   );

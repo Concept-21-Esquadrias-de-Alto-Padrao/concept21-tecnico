@@ -114,6 +114,24 @@ export type UserRole = {
   active?: boolean;
 };
 
+export type AccessReviewRequest = {
+  id: string;
+  company_id: string;
+  profile_id: string;
+  auth_user_id: string;
+  email: string;
+  name: string;
+  status: "pending" | "approved" | "rejected";
+  requested_at: string;
+  email_confirmed_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  reviewer_notes: string | null;
+  metadata: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type PlatformNotification = {
   id: string;
   recipient_profile_id: string | null;

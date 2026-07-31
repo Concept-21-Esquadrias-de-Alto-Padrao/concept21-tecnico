@@ -1,7 +1,28 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, hasSupabaseEnv } from "@/lib/supabase/server";
-import type { Permission, Profile, Role, UserRole } from "@/lib/types";
+import { TECHNICAL_PERMISSIONS } from "@/lib/module-access";
+import type { AccessReviewRequest, Permission, Profile, Role, UserRole } from "@/lib/types";
+
+type SupabaseAuthUser = {
+  email_confirmed_at?: string | null;
+  confirmed_at?: string | null;
+};
+
+function isServerUserEmailConfirmed(user: SupabaseAuthUser) {
+  return Boolean(user.email_confirmed_at ?? user.confirmed_at);
+}
+
+function isMissingRelation(error?: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  const message = error.message?.toLowerCase() ?? "";
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    message.includes("could not find the table") ||
+    message.includes("schema cache")
+  );
+}
 
 export async function GET() {
   if (!hasSupabaseEnv()) {
@@ -49,8 +70,21 @@ export async function GET() {
   const profile = (profileData ?? null) as Profile | null;
   let roles: Role[] = [];
   let permissions: Record<string, boolean> = {};
+  let accessReviewRequests: AccessReviewRequest[] = [];
 
   if (profile) {
+    const { data: requestData, error: requestError } = await admin
+      .from("access_review_requests")
+      .select("*")
+      .eq("company_id", profile.company_id)
+      .eq("profile_id", profile.id);
+
+    if (requestError && !isMissingRelation(requestError)) {
+      return NextResponse.json({ error: requestError.message }, { status: 500 });
+    }
+
+    accessReviewRequests = (requestData ?? []) as AccessReviewRequest[];
+
     const { data: userRoleData } = await admin
       .from("user_roles")
       .select("*")
@@ -96,12 +130,36 @@ export async function GET() {
         }
       }
     }
+
+    if (profile.is_master && roles.length === 0) {
+      roles = [
+        {
+          id: "master-profile",
+          company_id: profile.company_id,
+          name: "Administrador",
+          description: "Acesso total",
+          is_master_role: true,
+          active: true,
+        },
+      ];
+    }
+
+    if (profile.is_master || roles.some((role) => role.is_master_role)) {
+      permissions = Object.fromEntries(
+        TECHNICAL_PERMISSIONS.map((permissionKey) => [permissionKey, true]),
+      );
+    }
   }
 
   return NextResponse.json({
     email: user.email ?? null,
-    emailConfirmed: Boolean(user.email_confirmed_at),
-    profile,
+    emailConfirmed: isServerUserEmailConfirmed(user),
+    profile: profile
+      ? {
+          ...profile,
+          access_review_requests: accessReviewRequests,
+        }
+      : null,
     roles,
     permissions,
   });

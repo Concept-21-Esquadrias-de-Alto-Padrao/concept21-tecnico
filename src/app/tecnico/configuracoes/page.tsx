@@ -2,6 +2,7 @@ import { Settings } from "lucide-react";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/panel";
+import { SecurityAccessPanel } from "@/components/security-access-panel";
 import {
   appNavigationPermissionKeys,
   canAccessModule,
@@ -9,6 +10,7 @@ import {
   MODULE_ACCESS,
 } from "@/lib/module-access";
 import { getCurrentPermissionFlags } from "@/lib/server-access";
+import { hasSupabaseEnv } from "@/lib/supabase/server";
 
 const settings = [
   "Tipos de visita",
@@ -28,11 +30,39 @@ const settings = [
 
 export default async function TechnicalSettingsPage() {
   const access = await getCurrentPermissionFlags(appNavigationPermissionKeys);
-  if (!canAccessModule(access, MODULE_ACCESS.settings)) redirect(firstAllowedAppRoute(access) ?? "/login");
+  if (!canAccessModule(access, MODULE_ACCESS.settings)) {
+    redirect(firstAllowedAppRoute(access) ?? "/login");
+  }
+
+  const supabaseConfigured = hasSupabaseEnv();
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Configurações Técnicas" description="Parâmetros restritos a Gestor Técnico e Administrador. Alterações são auditadas no banco." />
+      <PageHeader
+        title="Configurações Técnicas"
+        description="Parâmetros restritos a Gestor Técnico e Administrador. Alterações são auditadas no banco."
+      />
+
+      {access.isMaster && supabaseConfigured ? (
+        <SecurityAccessPanel />
+      ) : (
+        <Panel>
+          <PanelHeader
+            title="Segurança e acessos"
+            description={
+              supabaseConfigured
+                ? "Somente o Administrador pode liberar cadastros e vincular níveis de acesso."
+                : "Configure o Supabase para habilitar cadastros reais de usuários."
+            }
+          />
+          <PanelBody>
+            <p className="text-sm text-muted-foreground">
+              Usuários novos aparecem aqui depois de confirmar o e-mail e solicitar acesso ao módulo Técnico.
+            </p>
+          </PanelBody>
+        </Panel>
+      )}
+
       <Panel>
         <PanelHeader title="Cadastros e parâmetros" />
         <PanelBody>
@@ -44,7 +74,7 @@ export default async function TechnicalSettingsPage() {
                   <p className="font-semibold text-charcoal">{setting}</p>
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Mantido em `technical_settings` ou tabela auxiliar dedicada via migration.
+                  Parâmetro auditado e restrito aos perfis autorizados do módulo Técnico.
                 </p>
               </div>
             ))}

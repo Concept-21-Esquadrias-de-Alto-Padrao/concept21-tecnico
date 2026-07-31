@@ -18,3 +18,12 @@ export function assertSupabasePublicConfig() {
 
   return config;
 }
+
+export function getPublicAppOrigin() {
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+
+  if (configuredOrigin) return configuredOrigin;
+  if (typeof window !== "undefined") return window.location.origin;
+
+  return "http://localhost:3000";
+}

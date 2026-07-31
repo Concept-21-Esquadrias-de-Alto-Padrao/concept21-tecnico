@@ -24,7 +24,12 @@ import {
   visitResultSchema,
   visitSchema,
 } from "@/lib/schemas";
-import { HttpError, hasActiveMasterRole, requirePermissionAccess } from "@/lib/server-access";
+import {
+  HttpError,
+  hasActiveMasterRole,
+  requireMasterAccess,
+  requirePermissionAccess,
+} from "@/lib/server-access";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   addDeadlineDays,
@@ -64,6 +69,18 @@ async function getActionContext(permissionKey: string, message?: string): Promis
     profileId: context.profile.id,
     companyId: context.profile.company_id,
     isMaster,
+  };
+}
+
+async function getMasterActionContext(): Promise<ActionContext> {
+  const context = await requireMasterAccess();
+
+  return {
+    admin: context.admin,
+    authUserId: context.authUserId,
+    profileId: context.profile.id,
+    companyId: context.profile.company_id,
+    isMaster: true,
   };
 }
 
@@ -124,6 +141,7 @@ function revalidateTechnical(contractId?: string) {
   revalidatePath("/tecnico/prods");
   revalidatePath("/tecnico/duvidas");
   revalidatePath("/tecnico/relatorios");
+  revalidatePath("/tecnico/configuracoes");
   if (contractId) revalidatePath(`/tecnico/contratos/${contractId}`);
 }
 
@@ -1345,8 +1363,236 @@ export async function rejectDeletionRequestAction(_: ActionState, formData: Form
   }
 }
 
+async function findManagedProfile(context: ActionContext, profileId: string) {
+  const { data, error } = await context.admin
+    .from("profiles")
+    .select("*")
+    .eq("company_id", context.companyId)
+    .eq("id", profileId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("Usuário não encontrado.");
+
+  return data as { id: string; user_id: string | null; email: string; name: string; status: string };
+}
+
+async function findManagedRole(context: ActionContext, roleId: string) {
+  const { data, error } = await context.admin
+    .from("roles")
+    .select("*")
+    .eq("company_id", context.companyId)
+    .eq("id", roleId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("Nível de acesso não encontrado.");
+
+  return data as { id: string; active: boolean; is_master_role: boolean; name: string };
+}
+
+export async function assignTechnicalUserRoleAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const profileId = String(formData.get("profile_id") ?? "");
+    const roleId = String(formData.get("role_id") ?? "");
+
+    if (!profileId || !roleId) throw new Error("Informe o usuário e o nível de acesso.");
+
+    const [profile, role] = await Promise.all([
+      findManagedProfile(context, profileId),
+      findManagedRole(context, roleId),
+    ]);
+
+    if (profile.status !== "active") throw new Error("Este cadastro está inativo.");
+    if (!role.active) throw new Error("Este nível de acesso está inativo.");
+
+    const { error } = await context.admin.from("user_roles").upsert(
+      {
+        company_id: context.companyId,
+        profile_id: profile.id,
+        role_id: role.id,
+        active: true,
+      },
+      { onConflict: "company_id,profile_id,role_id" },
+    );
+
+    if (error) throw error;
+
+    const now = new Date().toISOString();
+    const { data: requests, error: requestError } = await context.admin
+      .from("access_review_requests")
+      .update({
+        status: "approved",
+        reviewed_at: now,
+        reviewed_by: context.authUserId,
+      })
+      .eq("company_id", context.companyId)
+      .eq("profile_id", profile.id)
+      .eq("status", "pending")
+      .select("id");
+
+    if (requestError) throw requestError;
+
+    const requestIds = ((requests ?? []) as Array<{ id: string }>).map((request) => request.id);
+    if (requestIds.length) {
+      const { error: notificationError } = await context.admin
+        .from("platform_notifications")
+        .update({ read_at: now })
+        .eq("company_id", context.companyId)
+        .eq("entity", "access_review_request")
+        .in("entity_id", requestIds);
+
+      if (notificationError) throw notificationError;
+    }
+
+    revalidateTechnical();
+    return ok("Nível de acesso vinculado ao usuário.");
+  } catch (error) {
+    return fail(error, "Não foi possível liberar o acesso.");
+  }
+}
+
+export async function removeTechnicalUserRoleAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const userRoleId = String(formData.get("user_role_id") ?? "");
+    if (!userRoleId) throw new Error("Vínculo de acesso inválido.");
+
+    const { data: userRole, error: userRoleError } = await context.admin
+      .from("user_roles")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("id", userRoleId)
+      .maybeSingle();
+
+    if (userRoleError) throw userRoleError;
+    if (!userRole) throw new Error("Vínculo de acesso não encontrado.");
+
+    const role = await findManagedRole(context, String((userRole as { role_id: string }).role_id));
+    if ((userRole as { profile_id: string }).profile_id === context.profileId && role.is_master_role) {
+      throw new Error("Você não pode remover seu próprio nível Administrador.");
+    }
+
+    const { error } = await context.admin.from("user_roles").delete().eq("id", userRoleId);
+    if (error) throw error;
+
+    revalidateTechnical();
+    return ok("Nível de acesso removido.");
+  } catch (error) {
+    return fail(error, "Não foi possível remover o nível de acesso.");
+  }
+}
+
+export async function setTechnicalProfileStatusAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const profileId = String(formData.get("profile_id") ?? "");
+    const status = String(formData.get("status") ?? "");
+
+    if (!profileId || (status !== "active" && status !== "inactive")) {
+      throw new Error("Dados inválidos para alterar o usuário.");
+    }
+
+    const profile = await findManagedProfile(context, profileId);
+    if (profile.id === context.profileId && status === "inactive") {
+      throw new Error("Você não pode inativar o próprio cadastro.");
+    }
+
+    const { error } = await context.admin
+      .from("profiles")
+      .update({ status })
+      .eq("company_id", context.companyId)
+      .eq("id", profile.id);
+
+    if (error) throw error;
+
+    revalidateTechnical();
+    return ok(status === "active" ? "Usuário reativado." : "Usuário inativado.");
+  } catch (error) {
+    return fail(error, "Não foi possível alterar o usuário.");
+  }
+}
+
+export async function rejectTechnicalAccessRequestAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const profileId = String(formData.get("profile_id") ?? "");
+    if (!profileId) throw new Error("Usuário inválido.");
+
+    const profile = await findManagedProfile(context, profileId);
+    if (profile.id === context.profileId || profile.user_id === context.authUserId) {
+      throw new Error("Você não pode excluir o próprio cadastro.");
+    }
+
+    const { data: requests, error: requestsError } = await context.admin
+      .from("access_review_requests")
+      .select("id")
+      .eq("company_id", context.companyId)
+      .eq("profile_id", profile.id);
+
+    if (requestsError) throw requestsError;
+
+    const requestIds = ((requests ?? []) as Array<{ id: string }>).map((request) => request.id);
+    if (requestIds.length) {
+      const { error: notificationError } = await context.admin
+        .from("platform_notifications")
+        .delete()
+        .eq("company_id", context.companyId)
+        .eq("entity", "access_review_request")
+        .in("entity_id", requestIds);
+
+      if (notificationError) throw notificationError;
+    }
+
+    const { error: metadataNotificationError } = await context.admin
+      .from("platform_notifications")
+      .delete()
+      .eq("company_id", context.companyId)
+      .eq("metadata->>profile_id", profile.id);
+
+    if (metadataNotificationError) throw metadataNotificationError;
+
+    if (profile.user_id) {
+      const { error: deleteAuthError } = await context.admin.auth.admin.deleteUser(profile.user_id);
+      if (deleteAuthError) throw deleteAuthError;
+    }
+
+    const { error: deleteProfileError } = await context.admin
+      .from("profiles")
+      .delete()
+      .eq("company_id", context.companyId)
+      .eq("id", profile.id);
+
+    if (deleteProfileError) throw deleteProfileError;
+
+    revalidateTechnical();
+    return ok("Cadastro recusado e removido.");
+  } catch (error) {
+    return fail(error, "Não foi possível recusar o cadastro.");
+  }
+}
+
 export async function guardUnhandledAction() {
   throw new HttpError(400, "Ação não implementada.");
+}
+
+const emptyActionState: ActionState = { ok: false, message: "" };
+
+export async function assignTechnicalUserRoleFormAction(formData: FormData) {
+  await assignTechnicalUserRoleAction(emptyActionState, formData);
+}
+
+export async function removeTechnicalUserRoleFormAction(formData: FormData) {
+  await removeTechnicalUserRoleAction(emptyActionState, formData);
+}
+
+export async function setTechnicalProfileStatusFormAction(formData: FormData) {
+  await setTechnicalProfileStatusAction(emptyActionState, formData);
+}
+
+export async function rejectTechnicalAccessRequestFormAction(formData: FormData) {
+  await rejectTechnicalAccessRequestAction(emptyActionState, formData);
 }
 
 export async function transitionTechnicalActionFormAction(formData: FormData) {
