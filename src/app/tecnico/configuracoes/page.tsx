@@ -1,8 +1,8 @@
-import { Settings } from "lucide-react";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/panel";
 import { SecurityAccessPanel } from "@/components/security-access-panel";
+import { TechnicalSettingsPanel } from "@/components/technical-settings-panel";
 import {
   appNavigationPermissionKeys,
   canAccessModule,
@@ -12,22 +12,6 @@ import {
 import { getCurrentPermissionFlags } from "@/lib/server-access";
 import { hasSupabaseEnv } from "@/lib/supabase/server";
 
-const settings = [
-  "Tipos de visita",
-  "Tipos de ação",
-  "Tipos de correção",
-  "Impactos",
-  "Motivos de cancelamento",
-  "Prioridades",
-  "Categorias de dúvidas",
-  "Tipos de materiais",
-  "Prazos internos",
-  "Percentuais de risco",
-  "Feriados",
-  "Parâmetros de relatórios",
-  "Parâmetros de notificação",
-];
-
 export default async function TechnicalSettingsPage() {
   const access = await getCurrentPermissionFlags(appNavigationPermissionKeys);
   if (!canAccessModule(access, MODULE_ACCESS.settings)) {
@@ -35,6 +19,7 @@ export default async function TechnicalSettingsPage() {
   }
 
   const supabaseConfigured = hasSupabaseEnv();
+  const canManageSettings = access.isMaster || access.permissions["technical.settings.manage"];
 
   return (
     <div className="space-y-6">
@@ -66,19 +51,15 @@ export default async function TechnicalSettingsPage() {
       <Panel>
         <PanelHeader title="Cadastros e parâmetros" />
         <PanelBody>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {settings.map((setting) => (
-              <div key={setting} className="rounded-md border border-border bg-white p-3">
-                <div className="flex items-center gap-2">
-                  <Settings className="size-4 text-accent" />
-                  <p className="font-semibold text-charcoal">{setting}</p>
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Parâmetro auditado e restrito aos perfis autorizados do módulo Técnico.
-                </p>
-              </div>
-            ))}
-          </div>
+          {canManageSettings && supabaseConfigured ? (
+            <TechnicalSettingsPanel />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {supabaseConfigured
+                ? "Seu perfil pode acessar configurações de segurança, mas não possui permissão para alterar cadastros e parâmetros técnicos."
+                : "Configure o Supabase para habilitar cadastros e parâmetros reais."}
+            </p>
+          )}
         </PanelBody>
       </Panel>
     </div>

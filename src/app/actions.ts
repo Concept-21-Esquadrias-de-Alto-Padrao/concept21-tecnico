@@ -32,6 +32,14 @@ import {
 } from "@/lib/server-access";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
+  deadlineSettingDefinitions,
+  editableSettingKeys,
+  listSettingDefinitions,
+  notificationSettingDefinition,
+  riskBandDefinitions,
+  technicalDoubtAreaOptions,
+} from "@/lib/technical-settings";
+import {
   addDeadlineDays,
   canAddPieceToProd,
   canApproveProd,
@@ -1570,6 +1578,222 @@ export async function rejectTechnicalAccessRequestAction(_: ActionState, formDat
     return ok("Cadastro recusado e removido.");
   } catch (error) {
     return fail(error, "Não foi possível recusar o cadastro.");
+  }
+}
+
+function formText(formData: FormData, key: string) {
+  return String(formData.get(key) ?? "").trim();
+}
+
+function nullableFormText(formData: FormData, key: string) {
+  const value = formText(formData, key);
+  return value || null;
+}
+
+function formBoolean(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return value === "on" || value === "true";
+}
+
+function parseRequiredNumber(value: string, label: string) {
+  const parsed = Number(value.replace(",", "."));
+  if (!Number.isFinite(parsed)) throw new Error(`${label}: informe um número válido.`);
+  return parsed;
+}
+
+async function upsertTechnicalSetting(
+  context: ActionContext,
+  key: string,
+  value: unknown,
+  description: string,
+) {
+  if (!editableSettingKeys.has(key)) throw new Error("Parâmetro não permitido.");
+
+  const { error } = await context.admin.from("technical_settings").upsert(
+    {
+      company_id: context.companyId,
+      key,
+      value,
+      description,
+      updated_by_profile_id: context.profileId,
+    },
+    { onConflict: "company_id,key" },
+  );
+
+  if (error) throw error;
+}
+
+export async function saveTechnicalListSettingAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.settings.manage");
+    const key = formText(formData, "key");
+    const definition = listSettingDefinitions.find((item) => item.key === key);
+    if (!definition) throw new Error("Cadastro não configurado.");
+
+    const items = splitTextList(formText(formData, "items"));
+    if (!items.length) throw new Error("Informe pelo menos um item.");
+
+    await upsertTechnicalSetting(context, definition.key, items, definition.description);
+    revalidateTechnical();
+    return ok(`${definition.title} atualizado.`);
+  } catch (error) {
+    return fail(error, "Não foi possível salvar o cadastro.");
+  }
+}
+
+export async function saveTechnicalDeadlineSettingsAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.settings.manage");
+
+    await Promise.all(
+      deadlineSettingDefinitions.map((definition) => {
+        const value = parseRequiredNumber(formText(formData, definition.key), definition.label);
+        if (!Number.isInteger(value) || value < 1) {
+          throw new Error(`${definition.label}: informe um número inteiro maior que zero.`);
+        }
+
+        return upsertTechnicalSetting(context, definition.key, value, definition.description);
+      }),
+    );
+
+    revalidateTechnical();
+    return ok("Prazos internos atualizados.");
+  } catch (error) {
+    return fail(error, "Não foi possível salvar os prazos.");
+  }
+}
+
+export async function saveTechnicalRiskSettingsAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.settings.manage");
+    const bands = riskBandDefinitions.map((definition) => {
+      const percentual = parseRequiredNumber(formText(formData, definition.key), definition.label);
+      if (percentual < 0 || percentual > 100) {
+        throw new Error(`${definition.label}: informe um percentual entre 0 e 100.`);
+      }
+
+      return { key: definition.key, percentual };
+    });
+
+    await upsertTechnicalSetting(context, "faixas_risco", bands, "Faixas de risco do contrato");
+    revalidateTechnical();
+    return ok("Percentuais de risco atualizados.");
+  } catch (error) {
+    return fail(error, "Não foi possível salvar os percentuais de risco.");
+  }
+}
+
+export async function saveTechnicalNotificationSettingsAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.settings.manage");
+    const intervalo = parseRequiredNumber(
+      formText(formData, "intervalo_reenvio_horas"),
+      "Intervalo de reenvio",
+    );
+
+    if (!Number.isInteger(intervalo) || intervalo < 1) {
+      throw new Error("Intervalo de reenvio: informe um número inteiro maior que zero.");
+    }
+
+    await upsertTechnicalSetting(
+      context,
+      notificationSettingDefinition.key,
+      {
+        intervalo_reenvio_horas: intervalo,
+        notificar_pendencias_entrega: formBoolean(formData, "notificar_pendencias_entrega"),
+      },
+      notificationSettingDefinition.description,
+    );
+
+    revalidateTechnical();
+    return ok("Parâmetros de notificação atualizados.");
+  } catch (error) {
+    return fail(error, "Não foi possível salvar os parâmetros de notificação.");
+  }
+}
+
+export async function saveTechnicalDoubtCategoryAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.settings.manage");
+    const id = nullableFormText(formData, "id");
+    const area = formText(formData, "area");
+    const name = formText(formData, "name");
+    const sortOrder = parseRequiredNumber(formText(formData, "sort_order"), "Ordem");
+    const active = formBoolean(formData, "active");
+
+    if (!technicalDoubtAreaOptions.some((option) => option.value === area)) {
+      throw new Error("Área inválida.");
+    }
+    if (!name) throw new Error("Informe o nome da categoria.");
+    if (!Number.isInteger(sortOrder) || sortOrder < 0) {
+      throw new Error("Ordem: informe um número inteiro igual ou maior que zero.");
+    }
+
+    const payload = {
+      area,
+      name,
+      sort_order: sortOrder,
+      active,
+    };
+
+    const result = id
+      ? await context.admin
+          .from("technical_doubt_categories")
+          .update(payload)
+          .eq("company_id", context.companyId)
+          .eq("id", id)
+      : await context.admin.from("technical_doubt_categories").insert({
+          company_id: context.companyId,
+          ...payload,
+        });
+
+    if (result.error) throw result.error;
+
+    revalidateTechnical();
+    return ok("Categoria de dúvida salva.");
+  } catch (error) {
+    return fail(error, "Não foi possível salvar a categoria.");
+  }
+}
+
+export async function saveTechnicalHolidayAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.settings.manage");
+    const id = nullableFormText(formData, "id");
+    const holidayDate = formText(formData, "holiday_date");
+    const scope = formText(formData, "scope");
+    const name = formText(formData, "name");
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(holidayDate)) throw new Error("Informe uma data válida.");
+    if (!["nacional", "estadual", "municipal"].includes(scope)) throw new Error("Escopo inválido.");
+    if (!name) throw new Error("Informe o nome do feriado.");
+
+    const payload = {
+      holiday_date: holidayDate,
+      scope,
+      name,
+      city: nullableFormText(formData, "city"),
+      state: nullableFormText(formData, "state")?.toUpperCase() ?? null,
+      active: formBoolean(formData, "active"),
+    };
+
+    const result = id
+      ? await context.admin
+          .from("technical_holidays")
+          .update(payload)
+          .eq("company_id", context.companyId)
+          .eq("id", id)
+      : await context.admin.from("technical_holidays").insert({
+          company_id: context.companyId,
+          ...payload,
+        });
+
+    if (result.error) throw result.error;
+
+    revalidateTechnical();
+    return ok("Feriado salvo.");
+  } catch (error) {
+    return fail(error, "Não foi possível salvar o feriado.");
   }
 }
 

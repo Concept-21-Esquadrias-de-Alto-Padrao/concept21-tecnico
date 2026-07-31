@@ -398,6 +398,41 @@ export type TechnicalDoubt = {
   updated_at: string;
 };
 
+export type TechnicalDoubtCategory = {
+  id: string;
+  company_id: string;
+  area: TechnicalDoubtArea;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TechnicalSetting = {
+  id: string;
+  company_id: string;
+  key: string;
+  value: unknown;
+  description: string | null;
+  updated_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TechnicalHoliday = {
+  id: string;
+  company_id: string;
+  holiday_date: string;
+  scope: "nacional" | "estadual" | "municipal";
+  name: string;
+  city: string | null;
+  state: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TechnicalAuditLog = {
   id: string;
   company_id: string;
