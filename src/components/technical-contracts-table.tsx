@@ -65,7 +65,81 @@ export function TechnicalContractsTable({
         </select>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="space-y-3 md:hidden">
+        {filtered.map((overview) => {
+          const progress = calculateReleaseProgress(overview.pieces);
+          const nextVisit = overview.visits
+            .filter((visit) => visit.status === "agendada")
+            .sort((left, right) => left.scheduled_date.localeCompare(right.scheduled_date))[0];
+          const openCorrections = overview.corrections.filter(
+            (correction) => !["encerrada", "cancelada"].includes(correction.status),
+          );
+          const pendingProds = overview.prodBatches.filter(
+            (prod) => !["concluido", "cancelado"].includes(prod.status),
+          );
+          const risk =
+            overview.technical?.risk_status === "atrasado" ||
+            openCorrections.some((correction) => correction.critical) ||
+            overview.actions.some((action) => isOverdue(action.due_date) && !["concluida", "validada", "cancelada"].includes(action.status));
+
+          return (
+            <article key={overview.contract.id} className="rounded-md border border-border bg-white p-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-charcoal">{overview.contract.contract_number}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {overview.client?.name ?? "Cliente não vinculado"}
+                  </p>
+                </div>
+                <StatusBadge
+                  status={overview.technical?.technical_status ?? "aguardando_pasta"}
+                  type="contract"
+                />
+              </div>
+
+              <p className="mt-2 text-xs text-muted-foreground">{overview.contract.work_name}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{overview.contract.full_address}</p>
+
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-md bg-muted/50 p-2">
+                  <dt className="text-muted-foreground">Próxima visita</dt>
+                  <dd className="mt-1 font-semibold text-charcoal">
+                    {nextVisit ? formatDate(nextVisit.scheduled_date) : "Sem visita"}
+                  </dd>
+                </div>
+                <div className="rounded-md bg-muted/50 p-2">
+                  <dt className="text-muted-foreground">Peças</dt>
+                  <dd className="mt-1 font-semibold text-charcoal">
+                    {progress.released}/{progress.total} liberadas
+                  </dd>
+                </div>
+                <div className="rounded-md bg-muted/50 p-2">
+                  <dt className="text-muted-foreground">Correções</dt>
+                  <dd className="mt-1 font-semibold text-charcoal">{openCorrections.length}</dd>
+                </div>
+                <div className="rounded-md bg-muted/50 p-2">
+                  <dt className="text-muted-foreground">PRODs</dt>
+                  <dd className="mt-1 font-semibold text-charcoal">{pendingProds.length}</dd>
+                </div>
+              </dl>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className={risk ? "text-sm font-semibold text-danger" : "text-sm font-semibold text-success"}>
+                  {risk ? "Em risco" : "Normal"}
+                </span>
+                <Link
+                  href={`/tecnico/contratos/${overview.contract.id}`}
+                  className="inline-flex min-h-10 items-center rounded-md bg-charcoal px-3 text-xs font-semibold text-white hover:bg-black"
+                >
+                  Abrir
+                </Link>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-md border border-border md:block">
         <table className="min-w-[1100px] w-full border-separate border-spacing-0 bg-white text-left text-sm">
           <thead>
             <tr className="text-xs uppercase text-muted-foreground">

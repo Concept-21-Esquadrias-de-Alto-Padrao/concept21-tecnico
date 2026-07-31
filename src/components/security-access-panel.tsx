@@ -46,7 +46,142 @@ export async function SecurityAccessPanel() {
         ) : null}
 
         {data.users.length ? (
-          <div className="overflow-x-auto">
+          <>
+          <div className="space-y-3 lg:hidden">
+            {data.users.map((user) => {
+              const pending = isPendingAccess(user);
+              const userRoles = activeUserRoles(user);
+
+              return (
+                <article key={user.id} className="rounded-md border border-border bg-white p-3 text-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="grid size-10 flex-none place-items-center rounded-full bg-muted text-muted-foreground">
+                      <UserRound className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-charcoal">{user.name}</p>
+                        {pending ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-800">
+                            <AlertTriangle className="size-3" />
+                            Pendente
+                          </span>
+                        ) : null}
+                        {user.is_master ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                            <ShieldCheck className="size-3" />
+                            Master
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 break-words text-xs text-muted-foreground">{user.email}</p>
+                      {user.title ? <p className="text-xs text-muted-foreground">{user.title}</p> : null}
+                      {user.access_review_requests[0]?.requested_at ? (
+                        <p className="mt-1 text-[11px] text-orange-800">
+                          Solicitado em {new Date(user.access_review_requests[0].requested_at).toLocaleString("pt-BR")}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <span
+                      className={cn(
+                        "inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1",
+                        pending
+                          ? "bg-orange-50 text-orange-800 ring-orange-200"
+                          : user.status === "active"
+                            ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                            : "bg-muted text-muted-foreground ring-border",
+                      )}
+                    >
+                      {pending ? "Pendente" : user.status === "active" ? "Ativo" : "Inativo"}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground">Níveis vinculados</p>
+                    {userRoles.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {userRoles.map((userRole) => (
+                          <form key={userRole.id} action={removeTechnicalUserRoleFormAction}>
+                            <input type="hidden" name="user_role_id" value={userRole.id} />
+                            <button
+                              type="submit"
+                              className="inline-flex min-h-9 items-center gap-1 rounded-full border border-border bg-white px-2.5 text-xs font-medium text-muted-foreground hover:border-red-200 hover:text-red-700"
+                              title="Remover nível de acesso"
+                            >
+                              {roleName(userRole.role?.name)}
+                              <Trash2 className="size-3" />
+                            </button>
+                          </form>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Nenhum nível vinculado.</p>
+                    )}
+                  </div>
+
+                  <form action={assignTechnicalUserRoleFormAction} className="mt-3 grid gap-2">
+                    <input type="hidden" name="profile_id" value={user.id} />
+                    <select
+                      name="role_id"
+                      className="min-h-11 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-accent"
+                      defaultValue=""
+                      disabled={user.status !== "active"}
+                      required
+                    >
+                      <option value="">Selecionar nível de acesso</option>
+                      {data.roles
+                        .filter((role) => role.active)
+                        .map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {roleName(role.name)}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={user.status !== "active"}
+                      className="inline-flex min-h-11 items-center justify-center rounded-md bg-accent px-3 text-xs font-semibold text-accent-foreground hover:bg-orange-500 disabled:opacity-60"
+                    >
+                      Liberar acesso
+                    </button>
+                  </form>
+
+                  <div className="mt-3 flex gap-2">
+                    <form action={setTechnicalProfileStatusFormAction} className="flex-1">
+                      <input type="hidden" name="profile_id" value={user.id} />
+                      <input type="hidden" name="status" value={user.status === "active" ? "inactive" : "active"} />
+                      <button
+                        type="submit"
+                        disabled={user.id === data.currentProfileId && user.status === "active"}
+                        className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-border text-xs font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent disabled:opacity-50"
+                      >
+                        {user.status === "active" ? <Power className="size-4" /> : <RotateCcw className="size-4" />}
+                        {user.status === "active" ? "Inativar" : "Reativar"}
+                      </button>
+                    </form>
+
+                    {user.id !== data.currentProfileId ? (
+                      <form action={rejectTechnicalAccessRequestFormAction} className="flex-1">
+                        <input type="hidden" name="profile_id" value={user.id} />
+                        <button
+                          type="submit"
+                          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-50"
+                        >
+                          <UserX className="size-4" />
+                          Excluir
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[900px] border-separate border-spacing-0 text-left text-sm">
               <thead className="text-xs uppercase text-muted-foreground">
                 <tr>
@@ -204,6 +339,7 @@ export async function SecurityAccessPanel() {
               </tbody>
             </table>
           </div>
+          </>
         ) : (
           <EmptyState
             icon={UserRound}

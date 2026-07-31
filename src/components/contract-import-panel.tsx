@@ -267,7 +267,94 @@ export function ContractImportPanel() {
                 Adicionar peça
               </button>
             </div>
-            <div className="overflow-x-auto">
+            <div className="space-y-3 md:hidden">
+              {preview.pieces.map((piece, index) => (
+                <article key={`${piece.code}-${index}-mobile`} className="rounded-md border border-border bg-white p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-charcoal">Peça {index + 1}</p>
+                    <button
+                      type="button"
+                      onClick={() => removePiece(index)}
+                      className="grid size-10 place-items-center rounded-md border border-border text-danger hover:bg-red-50"
+                      title="Remover peça"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Código">
+                      <input
+                        className={inputClass}
+                        value={piece.code}
+                        onChange={(event) => updatePiece(index, { code: event.target.value })}
+                      />
+                    </Field>
+                    <Field label="Tipo">
+                      <input
+                        className={inputClass}
+                        value={piece.piece_type ?? ""}
+                        onChange={(event) => updatePiece(index, { piece_type: event.target.value })}
+                      />
+                    </Field>
+                    <Field label="Quantidade">
+                      <input
+                        type="number"
+                        min={1}
+                        className={inputClass}
+                        value={piece.quantity}
+                        onChange={(event) => updatePiece(index, { quantity: Number(event.target.value) || 1 })}
+                      />
+                    </Field>
+                    <Field label="Largura">
+                      <input
+                        type="number"
+                        className={inputClass}
+                        value={piece.sale_width_mm ?? ""}
+                        onChange={(event) => updatePiece(index, { sale_width_mm: event.target.value ? Number(event.target.value) : null })}
+                      />
+                    </Field>
+                    <Field label="Altura">
+                      <input
+                        type="number"
+                        className={inputClass}
+                        value={piece.sale_height_mm ?? ""}
+                        onChange={(event) => updatePiece(index, { sale_height_mm: event.target.value ? Number(event.target.value) : null })}
+                      />
+                    </Field>
+                    <Field label="Ambiente">
+                      <input
+                        className={inputClass}
+                        value={piece.environment ?? ""}
+                        onChange={(event) => updatePiece(index, { environment: event.target.value })}
+                      />
+                    </Field>
+                    <Field label="Vidro">
+                      <input
+                        className={inputClass}
+                        value={piece.glass ?? ""}
+                        onChange={(event) => updatePiece(index, { glass: event.target.value })}
+                      />
+                    </Field>
+                    <Field label="Cor">
+                      <input
+                        className={inputClass}
+                        value={piece.color ?? ""}
+                        onChange={(event) => updatePiece(index, { color: event.target.value })}
+                      />
+                    </Field>
+                    <Field label="Linha">
+                      <input
+                        className={inputClass}
+                        value={piece.line ?? ""}
+                        onChange={(event) => updatePiece(index, { line: event.target.value })}
+                      />
+                    </Field>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="min-w-[900px] w-full border-separate border-spacing-0 text-left text-sm">
                 <thead>
                   <tr className="text-xs uppercase text-muted-foreground">

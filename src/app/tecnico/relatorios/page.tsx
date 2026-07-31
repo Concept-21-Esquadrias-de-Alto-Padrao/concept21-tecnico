@@ -39,7 +39,43 @@ export default async function TechnicalReportsPage() {
       </div>
       <Panel>
         <PanelHeader title="Painel gerencial por contrato" />
-        <PanelBody className="overflow-x-auto">
+        <PanelBody className="space-y-3">
+          <div className="space-y-3 md:hidden">
+            {overviews.map((overview) => {
+              const progress = calculateReleaseProgress(overview.pieces);
+              return (
+                <article key={overview.contract.id} className="rounded-md border border-border bg-white p-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-charcoal">{overview.contract.contract_number}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {overview.client?.name ?? "-"}
+                      </p>
+                    </div>
+                    <span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-charcoal">
+                      {formatNumber(progress.percent)}%
+                    </span>
+                  </div>
+                  <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-md bg-muted/50 p-2">
+                      <dt className="text-muted-foreground">Liberado</dt>
+                      <dd className="mt-1 font-semibold text-charcoal">{formatNumber(progress.percent)}%</dd>
+                    </div>
+                    <div className="rounded-md bg-muted/50 p-2">
+                      <dt className="text-muted-foreground">Correções</dt>
+                      <dd className="mt-1 font-semibold text-charcoal">{overview.corrections.length}</dd>
+                    </div>
+                    <div className="rounded-md bg-muted/50 p-2">
+                      <dt className="text-muted-foreground">Dúvidas</dt>
+                      <dd className="mt-1 font-semibold text-charcoal">{overview.doubts.length}</dd>
+                    </div>
+                  </dl>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
           <table className="min-w-[800px] w-full border-separate border-spacing-0 bg-white text-left text-sm">
             <thead><tr className="text-xs uppercase text-muted-foreground"><th className="border-b border-border px-3 py-3">Contrato</th><th className="border-b border-border px-3 py-3">Cliente</th><th className="border-b border-border px-3 py-3">Liberado</th><th className="border-b border-border px-3 py-3">Correções</th><th className="border-b border-border px-3 py-3">Dúvidas</th></tr></thead>
             <tbody>
@@ -57,6 +93,7 @@ export default async function TechnicalReportsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </PanelBody>
       </Panel>
     </div>

@@ -61,6 +61,64 @@ function hiddenContract(contractId: string) {
   return <input type="hidden" name="contract_id" value={contractId} />;
 }
 
+function PieceActionForms({
+  piece,
+  canMeasure,
+  canRelease,
+  canManageProds,
+  className,
+}: {
+  piece: TechnicalPiece;
+  canMeasure: boolean;
+  canRelease: boolean;
+  canManageProds: boolean;
+  className?: string;
+}) {
+  if (!canMeasure && !canRelease && !canManageProds) return null;
+
+  return (
+    <div className={className ?? "grid gap-2"}>
+      {canMeasure ? (
+        <ActionForm action={updatePieceMeasurementAction} submitLabel="Medir" className="rounded-md bg-muted/40 p-2">
+          <input type="hidden" name="id" value={piece.id} />
+          <div className="grid grid-cols-2 gap-2">
+            <input name="measured_width_mm" type="number" className={inputClass} placeholder="Largura" defaultValue={piece.measured_width_mm ?? ""} />
+            <input name="measured_height_mm" type="number" className={inputClass} placeholder="Altura" defaultValue={piece.measured_height_mm ?? ""} />
+          </div>
+        </ActionForm>
+      ) : null}
+      {canRelease ? (
+        <ActionForm action={releasePieceAction} submitLabel="Liberar" className="rounded-md bg-muted/40 p-2">
+          <input type="hidden" name="id" value={piece.id} />
+          <input type="hidden" name="visit_id" value={piece.release_visit_id ?? ""} />
+          <Field label="Previsão excepcional">
+            <input name="exceptional_due_date" type="date" className={inputClass} />
+          </Field>
+        </ActionForm>
+      ) : null}
+      {canManageProds ? (
+        <ActionForm action={updatePieceCemAction} submitLabel="Atualizar CEM" className="rounded-md bg-muted/40 p-2">
+          <input type="hidden" name="id" value={piece.id} />
+          <label className="flex items-center gap-2 text-xs font-semibold text-charcoal">
+            <input name="cem_registered" type="checkbox" defaultChecked={piece.cem_registered} />
+            Cadastrada
+          </label>
+          <label className="flex items-center gap-2 text-xs font-semibold text-charcoal">
+            <input name="cem_checked" type="checkbox" defaultChecked={piece.cem_checked} />
+            Conferida
+          </label>
+        </ActionForm>
+      ) : null}
+      {canMeasure ? (
+        <ActionForm action={splitPieceAction} submitLabel="Desdobrar" className="rounded-md bg-muted/40 p-2">
+          <input type="hidden" name="id" value={piece.id} />
+          <input name="suffix" className={inputClass} placeholder="A" />
+        </ActionForm>
+      ) : null}
+    </div>
+  );
+}
+
 export default async function TechnicalContractDetailPage({ params }: ContractDetailPageProps) {
   const { id } = await params;
   const access = await getCurrentPermissionFlags([
@@ -439,7 +497,56 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
       <Panel id="pecas">
         <PanelHeader title="Peças, medições e liberações" />
         <PanelBody className="space-y-3">
-          <div className="overflow-x-auto rounded-md border border-border">
+          <div className="space-y-3 lg:hidden">
+            {pieces.map((piece) => (
+              <article key={piece.id} className="rounded-md border border-border bg-white p-3 text-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-charcoal">{piece.code}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{piece.environment ?? "Sem ambiente"}</p>
+                  </div>
+                  <StatusBadge status={piece.status} type="piece" />
+                </div>
+
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-md bg-muted/50 p-2">
+                    <dt className="text-muted-foreground">Venda</dt>
+                    <dd className="mt-1 font-semibold text-charcoal">
+                      {piece.sale_width_mm ?? "-"} x {piece.sale_height_mm ?? "-"}
+                    </dd>
+                  </div>
+                  <div className="rounded-md bg-muted/50 p-2">
+                    <dt className="text-muted-foreground">Medição</dt>
+                    <dd className="mt-1 font-semibold text-charcoal">
+                      {piece.measured_width_mm ?? "-"} x {piece.measured_height_mm ?? "-"}
+                    </dd>
+                  </div>
+                  <div className="rounded-md bg-muted/50 p-2">
+                    <dt className="text-muted-foreground">CEM</dt>
+                    <dd className="mt-1 font-semibold text-charcoal">
+                      {piece.cem_registered ? "Cad." : "Pendente"} / {piece.cem_checked ? "Conf." : "Pendente"}
+                    </dd>
+                  </div>
+                  <div className="rounded-md bg-muted/50 p-2">
+                    <dt className="text-muted-foreground">Prazo</dt>
+                    <dd className="mt-1 font-semibold text-charcoal">
+                      {formatDate(piece.exceptional_due_date ?? piece.release_due_date)}
+                    </dd>
+                  </div>
+                </dl>
+
+                <PieceActionForms
+                  piece={piece}
+                  canMeasure={canMeasure}
+                  canRelease={canRelease}
+                  canManageProds={canManageProds}
+                  className="mt-3 grid gap-2"
+                />
+              </article>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-md border border-border lg:block">
             <table className="min-w-[1200px] w-full border-separate border-spacing-0 bg-white text-left text-sm">
               <thead>
                 <tr className="text-xs uppercase text-muted-foreground">
@@ -464,45 +571,12 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     <td className="border-b border-border px-3 py-3">{piece.cem_registered ? "Cad." : "Pendente"} / {piece.cem_checked ? "Conf." : "Pendente"}</td>
                     <td className="border-b border-border px-3 py-3">{formatDate(piece.exceptional_due_date ?? piece.release_due_date)}</td>
                     <td className="border-b border-border px-3 py-3">
-                      <div className="grid gap-2">
-                        {canMeasure ? (
-                          <ActionForm action={updatePieceMeasurementAction} submitLabel="Medir" className="rounded-md bg-muted/40 p-2">
-                            <input type="hidden" name="id" value={piece.id} />
-                            <div className="grid grid-cols-2 gap-2">
-                              <input name="measured_width_mm" type="number" className={inputClass} placeholder="Largura" defaultValue={piece.measured_width_mm ?? ""} />
-                              <input name="measured_height_mm" type="number" className={inputClass} placeholder="Altura" defaultValue={piece.measured_height_mm ?? ""} />
-                            </div>
-                          </ActionForm>
-                        ) : null}
-                        {canRelease ? (
-                          <ActionForm action={releasePieceAction} submitLabel="Liberar" className="rounded-md bg-muted/40 p-2">
-                            <input type="hidden" name="id" value={piece.id} />
-                            <input type="hidden" name="visit_id" value={piece.release_visit_id ?? ""} />
-                            <Field label="Previsão excepcional">
-                              <input name="exceptional_due_date" type="date" className={inputClass} />
-                            </Field>
-                          </ActionForm>
-                        ) : null}
-                        {canManageProds ? (
-                          <ActionForm action={updatePieceCemAction} submitLabel="Atualizar CEM" className="rounded-md bg-muted/40 p-2">
-                            <input type="hidden" name="id" value={piece.id} />
-                            <label className="flex items-center gap-2 text-xs font-semibold text-charcoal">
-                              <input name="cem_registered" type="checkbox" defaultChecked={piece.cem_registered} />
-                              Cadastrada
-                            </label>
-                            <label className="flex items-center gap-2 text-xs font-semibold text-charcoal">
-                              <input name="cem_checked" type="checkbox" defaultChecked={piece.cem_checked} />
-                              Conferida
-                            </label>
-                          </ActionForm>
-                        ) : null}
-                        {canMeasure ? (
-                          <ActionForm action={splitPieceAction} submitLabel="Desdobrar" className="rounded-md bg-muted/40 p-2">
-                            <input type="hidden" name="id" value={piece.id} />
-                            <input name="suffix" className={inputClass} placeholder="A" />
-                          </ActionForm>
-                        ) : null}
-                      </div>
+                      <PieceActionForms
+                        piece={piece}
+                        canMeasure={canMeasure}
+                        canRelease={canRelease}
+                        canManageProds={canManageProds}
+                      />
                     </td>
                   </tr>
                 ))}
