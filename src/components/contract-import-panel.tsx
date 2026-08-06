@@ -1,10 +1,22 @@
 "use client";
 
-import { AlertTriangle, FileSearch, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Box,
+  FileSearch,
+  Layers,
+  Loader2,
+  MapPin,
+  Palette,
+  Plus,
+  Ruler,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { confirmContractImportAction } from "@/app/actions";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
 import type { ParsedTechnicalContract, ParsedTechnicalPiece } from "@/lib/technical-pdf";
+import { cn } from "@/lib/utils";
 
 type PreviewPayload = {
   fileName: string;
@@ -28,6 +40,208 @@ function emptyPiece(index: number): ParsedTechnicalPiece {
     color: null,
     line: null,
   };
+}
+
+function numberOrNull(value: string) {
+  return value ? Number(value) : null;
+}
+
+function pieceQuantityTotal(pieces: ParsedTechnicalPiece[]) {
+  return pieces.reduce((total, piece) => total + (Number.isFinite(piece.quantity) ? piece.quantity : 0), 0);
+}
+
+function pieceArea(piece: ParsedTechnicalPiece) {
+  if (!piece.sale_width_mm || !piece.sale_height_mm) return null;
+  return (piece.sale_width_mm * piece.sale_height_mm * piece.quantity) / 1_000_000;
+}
+
+function formatArea(value: number | null) {
+  if (value === null) return "-";
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function PieceMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Ruler;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+      <Icon className="size-4 flex-none text-accent" />
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase text-muted-foreground">{label}</p>
+        <p className="truncate text-sm font-semibold text-charcoal" title={value}>
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PieceInput({
+  label,
+  value,
+  onChange,
+  className,
+  type = "text",
+}: {
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  className?: string;
+  type?: "text" | "number";
+}) {
+  return (
+    <Field label={label} className={className}>
+      <input
+        type={type}
+        className={inputClass}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </Field>
+  );
+}
+
+function PieceCard({
+  index,
+  onRemove,
+  onUpdate,
+  piece,
+}: {
+  index: number;
+  onRemove: () => void;
+  onUpdate: (patch: Partial<ParsedTechnicalPiece>) => void;
+  piece: ParsedTechnicalPiece;
+}) {
+  const dimensions =
+    piece.sale_width_mm && piece.sale_height_mm
+      ? `${piece.sale_width_mm} x ${piece.sale_height_mm} mm`
+      : "Sem medida";
+  const area = pieceArea(piece);
+
+  return (
+    <article className="rounded-md border border-border bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-border pb-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-charcoal px-2.5 py-1 text-sm font-semibold text-white">
+              {piece.code || `Peça ${index + 1}`}
+            </span>
+            <span className="rounded-md bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+              Qtd {piece.quantity || 1}
+            </span>
+            {piece.line ? (
+              <span className="rounded-md bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-800 ring-1 ring-orange-200">
+                {piece.line}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-sm font-semibold text-charcoal">
+            {piece.piece_type || "Tipo não informado"}
+          </p>
+          {piece.environment ? (
+            <p className="mt-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <MapPin className="size-3.5 text-accent" />
+              {piece.environment}
+            </p>
+          ) : null}
+        </div>
+
+        <button
+          type="button"
+          onClick={onRemove}
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50 lg:flex-none"
+          title="Remover peça"
+        >
+          <Trash2 className="size-4" />
+          Remover
+        </button>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <PieceMetric icon={Ruler} label="Medida" value={dimensions} />
+        <PieceMetric icon={Box} label="Área estimada" value={`${formatArea(area)} m²`} />
+        <PieceMetric icon={Layers} label="Vidro" value={piece.glass || "Não informado"} />
+        <PieceMetric icon={Palette} label="Cor" value={piece.color || "Não informada"} />
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-12">
+        <PieceInput
+          label="Código"
+          value={piece.code}
+          className="lg:col-span-2"
+          onChange={(value) => onUpdate({ code: value })}
+        />
+        <PieceInput
+          label="Quantidade"
+          type="number"
+          value={piece.quantity}
+          className="lg:col-span-2"
+          onChange={(value) => onUpdate({ quantity: Number(value) || 1 })}
+        />
+        <PieceInput
+          label="Largura"
+          type="number"
+          value={piece.sale_width_mm ?? ""}
+          className="lg:col-span-2"
+          onChange={(value) => onUpdate({ sale_width_mm: numberOrNull(value) })}
+        />
+        <PieceInput
+          label="Altura"
+          type="number"
+          value={piece.sale_height_mm ?? ""}
+          className="lg:col-span-2"
+          onChange={(value) => onUpdate({ sale_height_mm: numberOrNull(value) })}
+        />
+        <PieceInput
+          label="Linha"
+          value={piece.line ?? ""}
+          className="lg:col-span-2"
+          onChange={(value) => onUpdate({ line: value })}
+        />
+        <PieceInput
+          label="Ambiente"
+          value={piece.environment ?? ""}
+          className="lg:col-span-2"
+          onChange={(value) => onUpdate({ environment: value })}
+        />
+        <Field label="Tipo" className="lg:col-span-6">
+          <textarea
+            className={cn(textareaClass, "min-h-20")}
+            value={piece.piece_type ?? ""}
+            onChange={(event) =>
+              onUpdate({
+                piece_type: event.target.value,
+                description: event.target.value,
+              })
+            }
+          />
+        </Field>
+        <Field label="Vidro" className="lg:col-span-3">
+          <textarea
+            className={cn(textareaClass, "min-h-20")}
+            value={piece.glass ?? ""}
+            onChange={(event) => onUpdate({ glass: event.target.value })}
+          />
+        </Field>
+        <Field label="Cor/acabamento" className="lg:col-span-3">
+          <textarea
+            className={cn(textareaClass, "min-h-20")}
+            value={piece.color ?? ""}
+            onChange={(event) => onUpdate({ color: event.target.value })}
+          />
+        </Field>
+      </div>
+    </article>
+  );
 }
 
 export function ContractImportPanel() {
@@ -127,6 +341,10 @@ export function ContractImportPanel() {
         : null,
     [preview],
   );
+  const quantityTotal = preview ? pieceQuantityTotal(preview.pieces) : 0;
+  const areaTotal = preview
+    ? preview.pieces.reduce((total, piece) => total + (pieceArea(piece) ?? 0), 0)
+    : 0;
 
   return (
     <div className="space-y-4">
@@ -155,17 +373,25 @@ export function ContractImportPanel() {
       </div>
 
       {preview ? (
-        <div className="space-y-4 rounded-md border border-border bg-white p-4">
-          <div className="flex flex-col gap-2 border-b border-border pb-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-charcoal">{preview.fileName}</p>
-              <p className="text-xs text-muted-foreground">
+        <div className="space-y-5 rounded-md border border-border bg-white p-4">
+          <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-charcoal">{preview.fileName}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 Revise os dados antes de gravar. Nada é salvo automaticamente.
               </p>
             </div>
-            <span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
-              {preview.pieces.length} peça(s)
-            </span>
+            <div className="grid grid-cols-3 gap-2 text-center sm:flex sm:text-left">
+              <span className="rounded-md bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                {preview.pieces.length} item(ns)
+              </span>
+              <span className="rounded-md bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                {quantityTotal} peça(s)
+              </span>
+              <span className="rounded-md bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                {formatArea(areaTotal)} m²
+              </span>
+            </div>
           </div>
 
           {preview.warnings.length ? (
@@ -181,281 +407,115 @@ export function ContractImportPanel() {
             </div>
           ) : null}
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Número do contrato">
-              <input
-                className={inputClass}
-                value={preview.contract.contract_number ?? ""}
-                onChange={(event) => updateContract("contract_number", event.target.value)}
-              />
-            </Field>
-            <Field label="Cliente">
-              <input
-                className={inputClass}
-                value={preview.contract.client_name ?? ""}
-                onChange={(event) => updateContract("client_name", event.target.value)}
-              />
-            </Field>
-            <Field label="Data do contrato">
-              <input
-                type="date"
-                className={inputClass}
-                value={preview.contract.contract_date ?? ""}
-                onChange={(event) => updateContract("contract_date", event.target.value)}
-              />
-            </Field>
-            <Field label="Prazo contratual">
-              <div className="grid grid-cols-[1fr_1.2fr] gap-2">
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-charcoal">Dados do contrato</h3>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Número do contrato">
                 <input
-                  type="number"
                   className={inputClass}
-                  value={preview.contract.deadline_value ?? ""}
-                  onChange={(event) =>
-                    updateContract(
-                      "deadline_value",
-                      event.target.value ? Number(event.target.value) : null,
-                    )
-                  }
+                  value={preview.contract.contract_number ?? ""}
+                  onChange={(event) => updateContract("contract_number", event.target.value)}
                 />
-                <select
+              </Field>
+              <Field label="Cliente">
+                <input
                   className={inputClass}
-                  value={preview.contract.deadline_unit}
-                  onChange={(event) =>
-                    updateContract(
-                      "deadline_unit",
-                      event.target.value as ParsedTechnicalContract["deadline_unit"],
-                    )
-                  }
-                >
-                  <option value="dias_uteis">Dias úteis</option>
-                  <option value="dias_corridos">Dias corridos</option>
-                </select>
-              </div>
-            </Field>
-            <Field label="Obra">
-              <input
-                className={inputClass}
-                value={preview.contract.work_name ?? ""}
-                onChange={(event) => updateContract("work_name", event.target.value)}
-              />
-            </Field>
-            <Field label="Endereço da obra">
-              <input
-                className={inputClass}
-                value={preview.contract.work_address ?? ""}
-                onChange={(event) => updateContract("work_address", event.target.value)}
-              />
-            </Field>
-            <Field label="Descrição" className="md:col-span-2">
-              <textarea
-                className={textareaClass}
-                value={preview.contract.description ?? ""}
-                onChange={(event) => updateContract("description", event.target.value)}
-              />
-            </Field>
-          </div>
+                  value={preview.contract.client_name ?? ""}
+                  onChange={(event) => updateContract("client_name", event.target.value)}
+                />
+              </Field>
+              <Field label="Data do contrato">
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={preview.contract.contract_date ?? ""}
+                  onChange={(event) => updateContract("contract_date", event.target.value)}
+                />
+              </Field>
+              <Field label="Prazo contratual">
+                <div className="grid grid-cols-[1fr_1.2fr] gap-2">
+                  <input
+                    type="number"
+                    className={inputClass}
+                    value={preview.contract.deadline_value ?? ""}
+                    onChange={(event) =>
+                      updateContract(
+                        "deadline_value",
+                        event.target.value ? Number(event.target.value) : null,
+                      )
+                    }
+                  />
+                  <select
+                    className={inputClass}
+                    value={preview.contract.deadline_unit}
+                    onChange={(event) =>
+                      updateContract(
+                        "deadline_unit",
+                        event.target.value as ParsedTechnicalContract["deadline_unit"],
+                      )
+                    }
+                  >
+                    <option value="dias_uteis">Dias úteis</option>
+                    <option value="dias_corridos">Dias corridos</option>
+                  </select>
+                </div>
+              </Field>
+              <Field label="Obra">
+                <input
+                  className={inputClass}
+                  value={preview.contract.work_name ?? ""}
+                  onChange={(event) => updateContract("work_name", event.target.value)}
+                />
+              </Field>
+              <Field label="Endereço da obra">
+                <input
+                  className={inputClass}
+                  value={preview.contract.work_address ?? ""}
+                  onChange={(event) => updateContract("work_address", event.target.value)}
+                />
+              </Field>
+              <Field label="Descrição" className="md:col-span-2">
+                <textarea
+                  className={textareaClass}
+                  value={preview.contract.description ?? ""}
+                  onChange={(event) => updateContract("description", event.target.value)}
+                />
+              </Field>
+            </div>
+          </section>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-charcoal">Peças extraídas</h3>
+          <section className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-charcoal">Peças extraídas</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {preview.pieces.length} item(ns), {quantityTotal} peça(s), {formatArea(areaTotal)} m²
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={addPiece}
-                className="inline-flex min-h-9 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-semibold text-charcoal hover:bg-muted"
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-semibold text-charcoal hover:bg-muted"
               >
                 <Plus className="size-4" />
                 Adicionar peça
               </button>
             </div>
-            <div className="space-y-3 md:hidden">
+
+            <div className="grid gap-3">
               {preview.pieces.map((piece, index) => (
-                <article key={`${piece.code}-${index}-mobile`} className="rounded-md border border-border bg-white p-3">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-charcoal">Peça {index + 1}</p>
-                    <button
-                      type="button"
-                      onClick={() => removePiece(index)}
-                      className="grid size-10 place-items-center rounded-md border border-border text-danger hover:bg-red-50"
-                      title="Remover peça"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Código">
-                      <input
-                        className={inputClass}
-                        value={piece.code}
-                        onChange={(event) => updatePiece(index, { code: event.target.value })}
-                      />
-                    </Field>
-                    <Field label="Tipo">
-                      <input
-                        className={inputClass}
-                        value={piece.piece_type ?? ""}
-                        onChange={(event) => updatePiece(index, { piece_type: event.target.value })}
-                      />
-                    </Field>
-                    <Field label="Quantidade">
-                      <input
-                        type="number"
-                        min={1}
-                        className={inputClass}
-                        value={piece.quantity}
-                        onChange={(event) => updatePiece(index, { quantity: Number(event.target.value) || 1 })}
-                      />
-                    </Field>
-                    <Field label="Largura">
-                      <input
-                        type="number"
-                        className={inputClass}
-                        value={piece.sale_width_mm ?? ""}
-                        onChange={(event) => updatePiece(index, { sale_width_mm: event.target.value ? Number(event.target.value) : null })}
-                      />
-                    </Field>
-                    <Field label="Altura">
-                      <input
-                        type="number"
-                        className={inputClass}
-                        value={piece.sale_height_mm ?? ""}
-                        onChange={(event) => updatePiece(index, { sale_height_mm: event.target.value ? Number(event.target.value) : null })}
-                      />
-                    </Field>
-                    <Field label="Ambiente">
-                      <input
-                        className={inputClass}
-                        value={piece.environment ?? ""}
-                        onChange={(event) => updatePiece(index, { environment: event.target.value })}
-                      />
-                    </Field>
-                    <Field label="Vidro">
-                      <input
-                        className={inputClass}
-                        value={piece.glass ?? ""}
-                        onChange={(event) => updatePiece(index, { glass: event.target.value })}
-                      />
-                    </Field>
-                    <Field label="Cor">
-                      <input
-                        className={inputClass}
-                        value={piece.color ?? ""}
-                        onChange={(event) => updatePiece(index, { color: event.target.value })}
-                      />
-                    </Field>
-                    <Field label="Linha">
-                      <input
-                        className={inputClass}
-                        value={piece.line ?? ""}
-                        onChange={(event) => updatePiece(index, { line: event.target.value })}
-                      />
-                    </Field>
-                  </div>
-                </article>
+                <PieceCard
+                  key={`${piece.code}-${index}`}
+                  index={index}
+                  piece={piece}
+                  onRemove={() => removePiece(index)}
+                  onUpdate={(patch) => updatePiece(index, patch)}
+                />
               ))}
             </div>
-
-            <div className="hidden overflow-x-auto md:block">
-              <table className="min-w-[900px] w-full border-separate border-spacing-0 text-left text-sm">
-                <thead>
-                  <tr className="text-xs uppercase text-muted-foreground">
-                    <th className="border-b border-border py-2 pr-2">Código</th>
-                    <th className="border-b border-border px-2 py-2">Tipo</th>
-                    <th className="border-b border-border px-2 py-2">Qtd</th>
-                    <th className="border-b border-border px-2 py-2">Largura</th>
-                    <th className="border-b border-border px-2 py-2">Altura</th>
-                    <th className="border-b border-border px-2 py-2">Ambiente</th>
-                    <th className="border-b border-border px-2 py-2">Vidro</th>
-                    <th className="border-b border-border px-2 py-2">Cor</th>
-                    <th className="border-b border-border px-2 py-2">Linha</th>
-                    <th className="border-b border-border py-2 pl-2">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.pieces.map((piece, index) => (
-                    <tr key={`${piece.code}-${index}`}>
-                      <td className="border-b border-border py-2 pr-2">
-                        <input
-                          className={inputClass}
-                          value={piece.code}
-                          onChange={(event) => updatePiece(index, { code: event.target.value })}
-                        />
-                      </td>
-                      <td className="border-b border-border px-2 py-2">
-                        <input
-                          className={inputClass}
-                          value={piece.piece_type ?? ""}
-                          onChange={(event) => updatePiece(index, { piece_type: event.target.value })}
-                        />
-                      </td>
-                      <td className="border-b border-border px-2 py-2">
-                        <input
-                          type="number"
-                          min={1}
-                          className={inputClass}
-                          value={piece.quantity}
-                          onChange={(event) => updatePiece(index, { quantity: Number(event.target.value) || 1 })}
-                        />
-                      </td>
-                      <td className="border-b border-border px-2 py-2">
-                        <input
-                          type="number"
-                          className={inputClass}
-                          value={piece.sale_width_mm ?? ""}
-                          onChange={(event) => updatePiece(index, { sale_width_mm: event.target.value ? Number(event.target.value) : null })}
-                        />
-                      </td>
-                      <td className="border-b border-border px-2 py-2">
-                        <input
-                          type="number"
-                          className={inputClass}
-                          value={piece.sale_height_mm ?? ""}
-                          onChange={(event) => updatePiece(index, { sale_height_mm: event.target.value ? Number(event.target.value) : null })}
-                        />
-                      </td>
-                      <td className="border-b border-border px-2 py-2">
-                        <input
-                          className={inputClass}
-                          value={piece.environment ?? ""}
-                          onChange={(event) => updatePiece(index, { environment: event.target.value })}
-                        />
-                      </td>
-                      <td className="border-b border-border px-2 py-2">
-                        <input
-                          className={inputClass}
-                          value={piece.glass ?? ""}
-                          onChange={(event) => updatePiece(index, { glass: event.target.value })}
-                        />
-                      </td>
-                      <td className="border-b border-border px-2 py-2">
-                        <input
-                          className={inputClass}
-                          value={piece.color ?? ""}
-                          onChange={(event) => updatePiece(index, { color: event.target.value })}
-                        />
-                      </td>
-                      <td className="border-b border-border px-2 py-2">
-                        <input
-                          className={inputClass}
-                          value={piece.line ?? ""}
-                          onChange={(event) => updatePiece(index, { line: event.target.value })}
-                        />
-                      </td>
-                      <td className="border-b border-border py-2 pl-2">
-                        <button
-                          type="button"
-                          onClick={() => removePiece(index)}
-                          className="grid size-10 place-items-center rounded-md border border-border text-danger hover:bg-red-50"
-                          title="Remover peça"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          </section>
 
           <ActionForm action={confirmContractImportAction} submitLabel="Confirmar e gravar contrato">
             <input type="hidden" name="contract_json" value={hiddenPayloads?.contract ?? ""} />
