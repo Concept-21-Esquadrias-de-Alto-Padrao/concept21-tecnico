@@ -106,6 +106,13 @@ export type Role = {
   active: boolean;
 };
 
+export type RolePermission = {
+  id: string;
+  company_id: string;
+  role_id: string;
+  permission_id: string;
+};
+
 export type UserRole = {
   id: string;
   company_id: string;

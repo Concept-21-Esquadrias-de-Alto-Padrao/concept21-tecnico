@@ -1,6 +1,6 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { requireMasterAccess } from "@/lib/server-access";
-import type { AccessReviewRequest, Profile, Role, UserRole } from "@/lib/types";
+import type { AccessReviewRequest, Permission, Profile, Role, RolePermission, UserRole } from "@/lib/types";
 
 export type TechnicalSecurityUser = Profile & {
   user_roles: Array<UserRole & { role: Role | null }>;
@@ -9,6 +9,8 @@ export type TechnicalSecurityUser = Profile & {
 
 export type TechnicalSecurityData = {
   roles: Role[];
+  permissions: Permission[];
+  rolePermissions: RolePermission[];
   users: TechnicalSecurityUser[];
   currentProfileId: string;
 };
@@ -30,12 +32,28 @@ export async function getTechnicalSecurityData(): Promise<TechnicalSecurityData>
   noStore();
 
   const context = await requireMasterAccess();
-  const [rolesResult, profilesResult, userRolesResult, requestsResult] = await Promise.all([
+  const [
+    rolesResult,
+    permissionsResult,
+    rolePermissionsResult,
+    profilesResult,
+    userRolesResult,
+    requestsResult,
+  ] = await Promise.all([
     context.admin
       .from("roles")
       .select("*")
       .eq("company_id", context.profile.company_id)
       .order("name", { ascending: true }),
+    context.admin
+      .from("permissions")
+      .select("*")
+      .like("key", "technical.%")
+      .order("key", { ascending: true }),
+    context.admin
+      .from("role_permissions")
+      .select("*")
+      .eq("company_id", context.profile.company_id),
     context.admin
       .from("profiles")
       .select("*")
@@ -53,6 +71,8 @@ export async function getTechnicalSecurityData(): Promise<TechnicalSecurityData>
 
   const queryError = [
     rolesResult.error,
+    permissionsResult.error,
+    rolePermissionsResult.error,
     profilesResult.error,
     userRolesResult.error,
     requestsResult.error,
@@ -88,6 +108,8 @@ export async function getTechnicalSecurityData(): Promise<TechnicalSecurityData>
 
   return {
     roles,
+    permissions: (permissionsResult.data ?? []) as Permission[],
+    rolePermissions: (rolePermissionsResult.data ?? []) as RolePermission[],
     users: sortUsers(users),
     currentProfileId: context.profile.id,
   };

@@ -1396,7 +1396,185 @@ async function findManagedRole(context: ActionContext, roleId: string) {
   if (error) throw error;
   if (!data) throw new Error("Nível de acesso não encontrado.");
 
-  return data as { id: string; active: boolean; is_master_role: boolean; name: string };
+  return data as {
+    id: string;
+    company_id: string;
+    active: boolean;
+    is_master_role: boolean;
+    name: string;
+    description: string | null;
+  };
+}
+
+function assertEditableRole(role: { is_master_role: boolean }) {
+  if (role.is_master_role) {
+    throw new Error("O nível Administrador é protegido.");
+  }
+}
+
+export async function createTechnicalRoleAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const name = formText(formData, "name");
+    const description = nullableFormText(formData, "description");
+
+    if (!name) throw new Error("Informe o nome do nível de acesso.");
+
+    const { error } = await context.admin.from("roles").insert({
+      company_id: context.companyId,
+      name,
+      description,
+      is_master_role: false,
+      active: true,
+    });
+
+    if (error) throw error;
+
+    revalidateTechnical();
+    return ok("Nível de acesso criado.");
+  } catch (error) {
+    return fail(error, "Não foi possível criar o nível de acesso.");
+  }
+}
+
+export async function updateTechnicalRoleAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const roleId = formText(formData, "role_id");
+    const name = formText(formData, "name");
+    const description = nullableFormText(formData, "description");
+
+    if (!roleId || !name) throw new Error("Informe o nível de acesso e o nome.");
+
+    const role = await findManagedRole(context, roleId);
+    assertEditableRole(role);
+
+    const { error } = await context.admin
+      .from("roles")
+      .update({ name, description })
+      .eq("company_id", context.companyId)
+      .eq("id", role.id);
+
+    if (error) throw error;
+
+    revalidateTechnical();
+    return ok("Nível de acesso atualizado.");
+  } catch (error) {
+    return fail(error, "Não foi possível atualizar o nível de acesso.");
+  }
+}
+
+export async function toggleTechnicalRoleStatusAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const roleId = formText(formData, "role_id");
+    const active = formBoolean(formData, "active");
+
+    if (!roleId) throw new Error("Nível de acesso inválido.");
+
+    const role = await findManagedRole(context, roleId);
+    assertEditableRole(role);
+
+    const { error } = await context.admin
+      .from("roles")
+      .update({ active })
+      .eq("company_id", context.companyId)
+      .eq("id", role.id);
+
+    if (error) throw error;
+
+    revalidateTechnical();
+    return ok(active ? "Nível de acesso reativado." : "Nível de acesso inativado.");
+  } catch (error) {
+    return fail(error, "Não foi possível alterar o nível de acesso.");
+  }
+}
+
+export async function deleteTechnicalRoleAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const roleId = formText(formData, "role_id");
+
+    if (!roleId) throw new Error("Nível de acesso inválido.");
+
+    const role = await findManagedRole(context, roleId);
+    assertEditableRole(role);
+
+    const { error } = await context.admin
+      .from("roles")
+      .delete()
+      .eq("company_id", context.companyId)
+      .eq("id", role.id);
+
+    if (error) throw error;
+
+    revalidateTechnical();
+    return ok("Nível de acesso excluído.");
+  } catch (error) {
+    return fail(error, "Não foi possível excluir o nível de acesso.");
+  }
+}
+
+export async function saveTechnicalRolePermissionsAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const roleId = formText(formData, "role_id");
+    const permissionIds = idsFromForm(formData, "permission_id");
+
+    if (!roleId) throw new Error("Nível de acesso inválido.");
+
+    const role = await findManagedRole(context, roleId);
+    assertEditableRole(role);
+
+    let validPermissionIds: string[] = [];
+    if (permissionIds.length) {
+      const { data: permissions, error: permissionsError } = await context.admin
+        .from("permissions")
+        .select("id,key")
+        .in("id", permissionIds);
+
+      if (permissionsError) throw permissionsError;
+
+      const loadedPermissions = (permissions ?? []) as Array<{ id: string; key: string }>;
+      const loadedIds = new Set(loadedPermissions.map((permission) => permission.id));
+      const missingPermission = permissionIds.some((permissionId) => !loadedIds.has(permissionId));
+
+      if (missingPermission) throw new Error("Permissão inválida selecionada.");
+      if (loadedPermissions.some((permission) => !permission.key.startsWith("technical."))) {
+        throw new Error("Somente permissões do módulo Técnico podem ser vinculadas.");
+      }
+      if (loadedPermissions.some((permission) => permission.key === "technical.permissions.manage")) {
+        throw new Error("A permissão de gerenciar acessos é exclusiva do Administrador.");
+      }
+
+      validPermissionIds = loadedPermissions.map((permission) => permission.id);
+    }
+
+    const { error: deleteError } = await context.admin
+      .from("role_permissions")
+      .delete()
+      .eq("company_id", context.companyId)
+      .eq("role_id", role.id);
+
+    if (deleteError) throw deleteError;
+
+    if (validPermissionIds.length) {
+      const { error: insertError } = await context.admin.from("role_permissions").insert(
+        validPermissionIds.map((permissionId) => ({
+          company_id: context.companyId,
+          role_id: role.id,
+          permission_id: permissionId,
+        })),
+      );
+
+      if (insertError) throw insertError;
+    }
+
+    revalidateTechnical();
+    return ok("Matriz de permissões salva.");
+  } catch (error) {
+    return fail(error, "Não foi possível salvar a matriz de permissões.");
+  }
 }
 
 export async function assignTechnicalUserRoleAction(_: ActionState, formData: FormData) {
@@ -1817,6 +1995,14 @@ export async function setTechnicalProfileStatusFormAction(formData: FormData) {
 
 export async function rejectTechnicalAccessRequestFormAction(formData: FormData) {
   await rejectTechnicalAccessRequestAction(emptyActionState, formData);
+}
+
+export async function toggleTechnicalRoleStatusFormAction(formData: FormData) {
+  await toggleTechnicalRoleStatusAction(emptyActionState, formData);
+}
+
+export async function deleteTechnicalRoleFormAction(formData: FormData) {
+  await deleteTechnicalRoleAction(emptyActionState, formData);
 }
 
 export async function transitionTechnicalActionFormAction(formData: FormData) {
