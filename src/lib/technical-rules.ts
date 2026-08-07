@@ -2,9 +2,12 @@ import type {
   DepartmentKey,
   TechnicalAction,
   TechnicalContract,
+  TechnicalContractStatus,
   TechnicalCorrection,
   TechnicalPiece,
   TechnicalProdBatch,
+  TechnicalStageValidation,
+  TechnicalStageValidationParticipant,
   TechnicalVisit,
 } from "@/lib/types";
 
@@ -12,6 +15,23 @@ export type CalendarHoliday = {
   date: string;
   scope?: "nacional" | "estadual" | "municipal";
 };
+
+export const technicalContractProcessOrder: Record<TechnicalContractStatus, number> = {
+  aguardando_pasta: 10,
+  aguardando_reuniao: 20,
+  em_acompanhamento: 30,
+  aguardando_visita: 40,
+  em_medicao: 50,
+  em_liberacao: 60,
+  em_prod: 70,
+  repassado: 80,
+  concluido: 90,
+  cancelado: 100,
+};
+
+export function getTechnicalContractProcessOrder(status: TechnicalContractStatus | null | undefined) {
+  return technicalContractProcessOrder[status ?? "aguardando_pasta"];
+}
 
 export function addDeadlineDays({
   startDate,
@@ -73,6 +93,17 @@ export function canScheduleInitialVisit({
 
 export function hasPerformedMeeting(meetings: Array<{ status: string }>) {
   return meetings.some((meeting) => meeting.status === "concluida");
+}
+
+export function isStageValidationSatisfied({
+  validation,
+  participants,
+}: {
+  validation?: Pick<TechnicalStageValidation, "validation_required"> | null;
+  participants: Array<Pick<TechnicalStageValidationParticipant, "signed_at">>;
+}) {
+  if (!validation?.validation_required) return true;
+  return participants.length > 0 && participants.every((participant) => Boolean(participant.signed_at));
 }
 
 export function canAdvanceToVisit({

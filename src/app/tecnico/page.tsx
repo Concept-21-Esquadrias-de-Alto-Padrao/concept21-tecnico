@@ -22,7 +22,12 @@ import {
   MODULE_ACCESS,
 } from "@/lib/module-access";
 import { getCurrentPermissionFlags } from "@/lib/server-access";
-import { calculateReleaseProgress, isOverdue, visitRequiresReport } from "@/lib/technical-rules";
+import {
+  calculateReleaseProgress,
+  getTechnicalContractProcessOrder,
+  isOverdue,
+  visitRequiresReport,
+} from "@/lib/technical-rules";
 import { formatDate } from "@/lib/utils";
 
 export default async function TechnicalDashboardPage() {
@@ -45,8 +50,8 @@ export default async function TechnicalDashboardPage() {
         item.technical?.commercial_folder_received &&
         !snapshot.meetings.some((meeting) => meeting.contract_id === item.contract.id && meeting.status === "concluida"),
     ).length,
-    blockingActionsOverdue: snapshot.actions.filter(
-      (action) => action.blocking && isOverdue(action.due_date) && !["concluida", "validada", "cancelada"].includes(action.status),
+    openActions: snapshot.actions.filter(
+      (action) => !action.deleted_at && !["concluida", "validada", "cancelada"].includes(action.status),
     ).length,
     visitsToday: snapshot.visits.filter((visit) => visit.scheduled_date === today && visit.status === "agendada").length,
     upcomingVisits: snapshot.visits.filter(
@@ -77,9 +82,28 @@ export default async function TechnicalDashboardPage() {
         overdueAction?.title ??
         criticalCorrection?.description ??
         (progress.balance > 0 ? `${progress.balance} peça(s) a liberar` : null);
-      return reason ? { overview, progress, reason } : null;
+      return reason
+        ? {
+            overview,
+            progress,
+            reason,
+            dueDate: overdueAction?.due_date ?? criticalCorrection?.due_date ?? "9999-12-31",
+            processOrder: getTechnicalContractProcessOrder(overview.technical?.technical_status),
+            urgencyOrder: overdueAction ? 0 : criticalCorrection ? 1 : 2,
+          }
+        : null;
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort(
+      (left, right) =>
+        left.processOrder - right.processOrder ||
+        left.urgencyOrder - right.urgencyOrder ||
+        left.dueDate.localeCompare(right.dueDate) ||
+        left.overview.contract.contract_number.localeCompare(right.overview.contract.contract_number, "pt-BR", {
+          numeric: true,
+          sensitivity: "base",
+        }),
+    )
     .slice(0, 8);
 
   return (
@@ -101,7 +125,7 @@ export default async function TechnicalDashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Aguardando pasta" value={metrics.waitingFolder} icon={FolderClock} href="/tecnico/contratos" />
         <StatCard label="Aguardando reunião" value={metrics.waitingMeeting} icon={CalendarDays} tone="warning" href="/tecnico/contratos" />
-        <StatCard label="Ações bloqueantes vencidas" value={metrics.blockingActionsOverdue} icon={AlertTriangle} tone="danger" href="/tecnico/acoes" />
+        <StatCard label="Ações abertas" value={metrics.openActions} icon={AlertTriangle} tone="warning" href="/tecnico/acoes" />
         <StatCard label="Visitas hoje" value={metrics.visitsToday} icon={CalendarDays} tone="accent" href="/tecnico/agenda" />
         <StatCard label="Próximas visitas" value={metrics.upcomingVisits} icon={CalendarDays} href="/tecnico/agenda" />
         <StatCard label="Visitas aguardando relatório" value={metrics.visitsWaitingReport} icon={ClipboardList} tone="warning" href="/tecnico/agenda" />
@@ -117,7 +141,7 @@ export default async function TechnicalDashboardPage() {
         <Panel>
           <PanelHeader
             title="Atividades prioritárias"
-            description="Contratos com ações vencidas, correções críticas ou saldo de liberação."
+            description="Contratos ordenados pela sequência interna: pasta, reunião, visitas, medição, liberação e PROD."
           />
           <PanelBody className="space-y-3">
             {priorityContracts.length ? (

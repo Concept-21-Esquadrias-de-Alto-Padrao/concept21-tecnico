@@ -40,7 +40,7 @@ async function getPublicMaintenanceStatus() {
   });
 
   if (!response.ok) {
-    throw new Error("Nao foi possivel consultar o status da manutencao.");
+    throw new Error("Não foi possível consultar o status da manutenção.");
   }
 
   const payload = (await response.json()) as {
@@ -97,7 +97,7 @@ function MaintenanceMessage({
                 Concept21 Aluminium
               </p>
               <h1 className="mt-1 text-xl font-semibold text-charcoal">
-                Sistema em manutencao
+                Sistema em manutenção
               </h1>
             </div>
           </div>
@@ -105,19 +105,19 @@ function MaintenanceMessage({
 
         <div className="space-y-4 px-5 py-5 text-sm leading-6 text-muted-foreground">
           <p className="text-base font-medium text-charcoal">
-            A plataforma foi bloqueada temporariamente para uma atualizacao controlada.
+            A plataforma foi bloqueada temporariamente para uma atualização controlada.
           </p>
           <p>
-            Sua sessao foi encerrada para evitar alteracoes durante a manutencao. Assim que o
+            Sua sessão foi encerrada para evitar alterações durante a manutenção. Assim que o
             Administrador liberar o acesso novamente, entre com suas credenciais normalmente.
           </p>
           {maintenance.activated_at ? (
             <p className="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-              Inicio da manutencao: {formatDateTime(maintenance.activated_at)}
+              Início da manutenção: {formatDateTime(maintenance.activated_at)}
             </p>
           ) : null}
           {email ? (
-            <p className="font-mono text-xs text-muted-foreground">Usuario: {email}</p>
+            <p className="font-mono text-xs text-muted-foreground">Usuário: {email}</p>
           ) : null}
         </div>
       </section>
@@ -170,7 +170,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             redirectToLoginAfterMaintenance();
           }
         } catch (error) {
-          console.warn("Nao foi possivel consultar o status da manutencao.", error);
+          console.warn("Não foi possível consultar o status da manutenção.", error);
         }
       }
 
@@ -250,7 +250,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             try {
               requestId = await requestCurrentUserAccessReview();
             } catch (requestError) {
-              console.warn("Nao foi possivel registrar a revisao de acesso.", requestError);
+              console.warn("Não foi possível registrar a revisão de acesso.", requestError);
             }
           }
 
@@ -270,7 +270,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         if (!active) return;
         setState({
           status: "error",
-          message: toUserFriendlyErrorMessage(error, "Nao foi possivel validar a sessao."),
+          message: toUserFriendlyErrorMessage(error, "Não foi possível validar a sessão."),
         });
       } finally {
         loading = false;
@@ -300,14 +300,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (state.status === "loading") {
     return (
       <div className="rounded-md border border-border bg-white p-5 text-sm text-muted-foreground shadow-sm">
-        Validando sessao...
+        Validando sessão...
       </div>
     );
   }
 
   if (state.status === "error") {
     return (
-      <AccessMessage tone="red" title="Nao foi possivel validar o acesso.">
+      <AccessMessage tone="red" title="Não foi possível validar o acesso.">
         {state.message}
       </AccessMessage>
     );
@@ -321,7 +321,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return (
       <AccessMessage title="Confirme seu e-mail para acessar.">
         <p>
-          Sua sessao foi encerrada porque o e-mail ainda nao foi confirmado. Use o link enviado
+          Sua sessão foi encerrada porque o e-mail ainda não foi confirmado. Use o link enviado
           para {state.email ?? "seu e-mail"} e tente novamente.
         </p>
         <Link
@@ -339,15 +339,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return (
       <AccessMessage tone="red" title="Cadastro sem acesso ativo.">
         <p>
-          Este cadastro foi inativado ou recusado pelo Administrador. Entre com outro usuario ou
-          solicite revisao internamente.
+          Este cadastro foi inativado ou recusado pelo Administrador. Entre com outro usuário ou
+          solicite revisão internamente.
         </p>
         <Link
           href="/login"
           className="mt-4 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-orange-500"
         >
           <LogIn className="size-4" />
-          Entrar com outro usuario
+          Entrar com outro usuário
         </Link>
       </AccessMessage>
     );
@@ -355,10 +355,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (state.status === "missing-profile") {
     return (
-      <AccessMessage title="Cadastro autenticado, aguardando vinculo no sistema.">
+      <AccessMessage title="Cadastro autenticado, aguardando vínculo no sistema.">
         <p>
-          Seu login foi confirmado, mas ainda nao existe um perfil interno vinculado ao cadastro.
-          Peca ao Administrador para revisar o acesso em Configuracoes.
+          Seu login foi confirmado, mas ainda não existe um perfil interno vinculado ao cadastro.
+          Peça ao Administrador para revisar o acesso em Configurações.
         </p>
         <p className="mt-2 font-mono text-xs text-orange-800">E-mail: {state.email ?? "-"}</p>
         <button
@@ -367,23 +367,23 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           className="mt-4 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-orange-500"
         >
           <LogIn className="size-4" />
-          Entrar com outro usuario
+          Entrar com outro usuário
         </button>
       </AccessMessage>
     );
   }
 
   return (
-    <AccessMessage title="Cadastro confirmado, aguardando liberacao de acesso.">
+    <AccessMessage title="Cadastro confirmado, aguardando liberação de acesso.">
       <p>
-        O usuario {state.email ?? "atual"} esta autenticado, mas ainda nao possui perfil de
-        acesso. Peca ao Administrador para liberar o cadastro em Configuracoes.
+        O usuário {state.email ?? "atual"} está autenticado, mas ainda não possui perfil de
+        acesso. Peça ao Administrador para liberar o cadastro em Configurações.
       </p>
       {state.requestId ? (
-        <p className="mt-2 font-mono text-xs text-orange-800">Solicitacao: {state.requestId}</p>
+        <p className="mt-2 font-mono text-xs text-orange-800">Solicitação: {state.requestId}</p>
       ) : (
         <p className="mt-2 text-xs text-orange-800">
-          A solicitacao automatica nao pode ser registrada agora. Informe seu e-mail de cadastro ao
+          A solicitação automática não pode ser registrada agora. Informe seu e-mail de cadastro ao
           Administrador.
         </p>
       )}
@@ -393,7 +393,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         className="mt-4 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-orange-500"
       >
         <LogIn className="size-4" />
-        Entrar com outro usuario
+        Entrar com outro usuário
       </button>
     </AccessMessage>
   );

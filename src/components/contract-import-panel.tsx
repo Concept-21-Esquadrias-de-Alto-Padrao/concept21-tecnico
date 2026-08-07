@@ -487,21 +487,13 @@ export function ContractImportPanel() {
           </section>
 
           <section className="space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
               <div>
                 <h3 className="text-sm font-semibold text-charcoal">Peças extraídas</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {preview.pieces.length} item(ns), {quantityTotal} peça(s), {formatArea(areaTotal)} m²
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={addPiece}
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-semibold text-charcoal hover:bg-muted"
-              >
-                <Plus className="size-4" />
-                Adicionar peça
-              </button>
             </div>
 
             <div className="grid gap-3">
@@ -514,6 +506,17 @@ export function ContractImportPanel() {
                   onUpdate={(patch) => updatePiece(index, patch)}
                 />
               ))}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={addPiece}
+                className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-semibold text-charcoal hover:bg-muted sm:w-auto"
+              >
+                <Plus className="size-4" />
+                Adicionar peça
+              </button>
             </div>
           </section>
 

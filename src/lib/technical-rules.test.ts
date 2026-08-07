@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { TechnicalContractStatus } from "./types";
 import {
   addDeadlineDays,
   canAddPieceToProd,
@@ -7,6 +8,8 @@ import {
   canConfirmDepartmentDelivery,
   canReleasePiece,
   calculateReleaseProgress,
+  getTechnicalContractProcessOrder,
+  isStageValidationSatisfied,
 } from "./technical-rules";
 
 describe("technical deadline rules", () => {
@@ -33,6 +36,22 @@ describe("technical deadline rules", () => {
 });
 
 describe("technical workflow gates", () => {
+  it("orders dashboard activities by the internal process sequence", () => {
+    const statuses: TechnicalContractStatus[] = [
+      "aguardando_visita",
+      "em_liberacao",
+      "aguardando_reuniao",
+      "aguardando_pasta",
+    ];
+
+    expect(
+      statuses.sort(
+        (left, right) =>
+          getTechnicalContractProcessOrder(left) - getTechnicalContractProcessOrder(right),
+      ),
+    ).toEqual(["aguardando_pasta", "aguardando_reuniao", "aguardando_visita", "em_liberacao"]);
+  });
+
   it("blocks first visit without commercial folder", () => {
     expect(
       canAdvanceToVisit({
@@ -71,6 +90,40 @@ describe("technical workflow gates", () => {
         actions: [{ blocking: true, blocking_stage: "entrada_inicial", status: "validada" }],
       }),
     ).toMatchObject({ ok: true });
+  });
+
+  it("treats stage validation as optional when the flag is not enabled", () => {
+    expect(isStageValidationSatisfied({ validation: null, participants: [] })).toBe(true);
+    expect(
+      isStageValidationSatisfied({
+        validation: { validation_required: false },
+        participants: [{ signed_at: null }],
+      }),
+    ).toBe(true);
+  });
+
+  it("requires every linked participant to sign required stage validations", () => {
+    expect(
+      isStageValidationSatisfied({
+        validation: { validation_required: true },
+        participants: [],
+      }),
+    ).toBe(false);
+    expect(
+      isStageValidationSatisfied({
+        validation: { validation_required: true },
+        participants: [{ signed_at: "2026-08-07T10:00:00Z" }, { signed_at: null }],
+      }),
+    ).toBe(false);
+    expect(
+      isStageValidationSatisfied({
+        validation: { validation_required: true },
+        participants: [
+          { signed_at: "2026-08-07T10:00:00Z" },
+          { signed_at: "2026-08-07T10:05:00Z" },
+        ],
+      }),
+    ).toBe(true);
   });
 });
 

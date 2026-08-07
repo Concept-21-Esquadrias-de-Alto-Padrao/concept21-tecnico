@@ -105,7 +105,7 @@ export async function requireAuthenticatedProfile(): Promise<AuthenticatedProfil
     if (maintenance.enabled) {
       throw new HttpError(
         503,
-        "Sistema em manutencao. Sua sessao sera encerrada para preservar a atualizacao em andamento.",
+        "Sistema em manutenção. Sua sessão será encerrada para preservar a atualização em andamento.",
       );
     }
   }

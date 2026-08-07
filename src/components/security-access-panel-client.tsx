@@ -219,7 +219,7 @@ function EditUserForm({
 }) {
   return (
     <div className="mt-3 rounded-md border border-border bg-muted/40 p-3">
-      <ActionForm action={updateTechnicalProfileAction} submitLabel="Salvar usuario">
+      <ActionForm action={updateTechnicalProfileAction} submitLabel="Salvar usuário">
         <input type="hidden" name="profile_id" value={user.id} />
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Nome">
@@ -234,7 +234,7 @@ function EditUserForm({
               required
             />
           </Field>
-          <Field label="Cargo/funcao" className="sm:col-span-2">
+          <Field label="Cargo/função" className="sm:col-span-2">
             <input name="title" className={inputClass} defaultValue={user.title ?? ""} />
           </Field>
         </div>
@@ -243,7 +243,7 @@ function EditUserForm({
           onClick={onCancel}
           className="inline-flex min-h-10 items-center justify-center rounded-md border border-border px-3 text-sm font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent"
         >
-          Cancelar edicao
+          Cancelar edição
         </button>
       </ActionForm>
     </div>
@@ -280,8 +280,8 @@ function PasswordResetModal({
           <ActionForm action={resetTechnicalUserPasswordAction} submitLabel="Redefinir senha">
             <input type="hidden" name="profile_id" value={user.id} />
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              Defina uma senha temporaria e informe ao usuario por um canal seguro. A senha nao
-              sera exibida nem armazenada no sistema.
+              Defina uma senha temporária e informe ao usuário por um canal seguro. A senha não
+              será exibida nem armazenada no sistema.
             </div>
             <Field label="Nova senha">
               <input
@@ -340,7 +340,7 @@ function UserActions({
         type="button"
         onClick={onEdit}
         className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-md border border-border px-3 text-xs font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent lg:size-10 lg:flex-none lg:px-0"
-        title={editing ? "Fechar edicao do usuario" : "Editar usuario"}
+        title={editing ? "Fechar edição do usuário" : "Editar usuário"}
       >
         {editing ? <X className="size-4" /> : <Pencil className="size-4" />}
         <span className="sm:hidden">{editing ? "Fechar" : "Editar"}</span>
@@ -351,7 +351,7 @@ function UserActions({
         onClick={onResetPassword}
         disabled={!user.user_id}
         className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-md border border-border px-3 text-xs font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent disabled:opacity-50 lg:size-10 lg:flex-none lg:px-0"
-        title={user.user_id ? "Redefinir senha" : "Cadastro sem usuario Auth vinculado"}
+        title={user.user_id ? "Redefinir senha" : "Cadastro sem usuário Auth vinculado"}
       >
         <KeyRound className="size-4" />
         <span className="sm:hidden">Senha</span>

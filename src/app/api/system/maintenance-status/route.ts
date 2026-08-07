@@ -74,7 +74,7 @@ export async function GET() {
       { headers: noStoreHeaders },
     );
   } catch (error) {
-    console.error("Falha ao consultar status publico da manutencao", error);
+    console.error("Falha ao consultar status público da manutenção", error);
 
     return NextResponse.json(
       { maintenance: fallbackMaintenance(), unavailable: true },

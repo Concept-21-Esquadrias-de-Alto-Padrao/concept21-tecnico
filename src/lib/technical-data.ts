@@ -17,6 +17,8 @@ import type {
   TechnicalProdBatch,
   TechnicalProdBatchPiece,
   TechnicalProdDocument,
+  TechnicalStageValidation,
+  TechnicalStageValidationParticipant,
   TechnicalSnapshot,
   TechnicalVisit,
   TechnicalVisitPiece,
@@ -47,6 +49,8 @@ function emptySnapshot(): TechnicalSnapshot {
     technicalContracts: [],
     pieces: [],
     meetings: [],
+    stageValidations: [],
+    stageValidationParticipants: [],
     actions: [],
     visits: [],
     visitPieces: [],
@@ -159,6 +163,28 @@ async function loadTechnicalSnapshot(
       },
       apply: (target, data) => {
         target.meetings = data as TechnicalMeeting[];
+      },
+    });
+    addSnapshotQuery(queries, include, {
+      key: "stageValidations",
+      optionalMissing: true,
+      load: () => {
+        const query = supabase.from("technical_stage_validations").select("*");
+        return filters.contractId ? query.eq("contract_id", filters.contractId) : query.order("updated_at", { ascending: false });
+      },
+      apply: (target, data) => {
+        target.stageValidations = data as TechnicalStageValidation[];
+      },
+    });
+    addSnapshotQuery(queries, include, {
+      key: "stageValidationParticipants",
+      optionalMissing: true,
+      load: () => {
+        const query = supabase.from("technical_stage_validation_participants").select("*");
+        return filters.contractId ? query.eq("contract_id", filters.contractId) : query.order("created_at");
+      },
+      apply: (target, data) => {
+        target.stageValidationParticipants = data as TechnicalStageValidationParticipant[];
       },
     });
     addSnapshotQuery(queries, include, {
@@ -301,6 +327,8 @@ export async function getTechnicalDashboardData() {
       "technicalContracts",
       "pieces",
       "meetings",
+      "stageValidations",
+      "stageValidationParticipants",
       "actions",
       "visits",
       "corrections",
@@ -327,6 +355,8 @@ export async function getTechnicalContractDetailData(contractId: string) {
       "technicalContracts",
       "pieces",
       "meetings",
+      "stageValidations",
+      "stageValidationParticipants",
       "actions",
       "visits",
       "visitPieces",

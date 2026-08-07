@@ -3,6 +3,7 @@ import {
   DEADLINE_UNITS,
   DEPARTMENT_KEYS,
   PRIORITIES,
+  TECHNICAL_CONTRACT_STAGE_KEYS,
   TECHNICAL_DOUBT_AREAS,
 } from "@/lib/types";
 
@@ -33,6 +34,10 @@ const optionalNumber = z
     return Number.isFinite(parsed) ? parsed : null;
   });
 
+const checkboxBoolean = z
+  .union([z.literal("on"), z.literal("true"), z.literal("false"), z.null(), z.undefined()])
+  .transform((value) => value === "on" || value === "true");
+
 export const manualContractSchema = z.object({
   contract_number: z.string().trim().min(1, "Informe o número do contrato."),
   client_name: z.string().trim().min(1, "Informe o cliente."),
@@ -60,6 +65,12 @@ export const receiveFolderSchema = z.object({
   technical_notes: optionalText,
 });
 
+export const reopenContractStageSchema = z.object({
+  contract_id: z.string().uuid(),
+  stage: z.enum(["entrada_comercial", "reuniao_ata"]),
+  reason: z.string().trim().min(5, "Informe o motivo da reabertura."),
+});
+
 export const meetingSchema = z.object({
   contract_id: z.string().uuid(),
   meeting_date: z.string().min(1, "Informe a data."),
@@ -70,6 +81,17 @@ export const meetingSchema = z.object({
   blockers: optionalText,
   create_action_title: optionalText,
   create_action_due_date: optionalDate,
+});
+
+export const stageValidationSchema = z.object({
+  contract_id: z.string().uuid(),
+  stage: z.enum(TECHNICAL_CONTRACT_STAGE_KEYS),
+  validation_required: checkboxBoolean,
+});
+
+export const stageSignatureSchema = z.object({
+  contract_id: z.string().uuid(),
+  stage: z.enum(TECHNICAL_CONTRACT_STAGE_KEYS),
 });
 
 export const actionSchema = z.object({
@@ -118,6 +140,16 @@ export const pieceMeasurementSchema = z.object({
   measured_width_mm: optionalNumber,
   measured_height_mm: optionalNumber,
   notes: optionalText,
+});
+
+export const pieceRegistrationSchema = z.object({
+  id: z.string().uuid(),
+  code: z.string().trim().min(1, "Informe o código da peça."),
+  piece_type: optionalText,
+  environment: optionalText,
+  sale_width_mm: optionalNumber,
+  sale_height_mm: optionalNumber,
+  adjustment_reason: z.string().trim().min(5, "Informe o motivo do ajuste."),
 });
 
 export const splitPieceSchema = z.object({

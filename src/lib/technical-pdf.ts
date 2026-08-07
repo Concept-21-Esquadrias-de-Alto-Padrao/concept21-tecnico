@@ -46,7 +46,28 @@ type SmartCemPieceData = {
   width: number | null;
   height: number | null;
   line: string | null;
+  location: string | null;
+  rowType: string | null;
+  source: "collapsed" | "layout";
 };
+
+type PdfTextItem = {
+  str?: string;
+  transform?: number[];
+  width?: number;
+};
+
+type PdfPageData = {
+  getTextContent: (options: {
+    normalizeWhitespace: boolean;
+    disableCombineTextItems: boolean;
+  }) => Promise<{ items?: PdfTextItem[] }>;
+};
+
+type PdfParseWithOptions = (
+  buffer: Buffer,
+  options?: { pagerender?: (pageData: PdfPageData) => Promise<string> },
+) => Promise<{ text: string; numpages: number }>;
 
 const knownWorkTypes = [
   "RESIDENCIAL",
@@ -217,6 +238,10 @@ function cleanValue(value: string | null | undefined) {
       .replace(/,\s*,/g, ",")
       .trim(),
   );
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseBrazilianDate(value: string | null) {
@@ -513,15 +538,16 @@ function parseLegacyPieceLine(line: string): ParsedTechnicalPiece | null {
     normalized.match(/(\d{2,5})\s*[xX]\s*(\d{2,5})/) ??
     normalized.match(/L(?:argura)?\s*[:\-]?\s*(\d{2,5}).*A(?:ltura)?\s*[:\-]?\s*(\d{2,5})/i);
 
-  if (!quantityMatch && !dimensionMatch && !/tipo|ambiente|vidro|linha|cor/i.test(normalized)) {
-    return null;
-  }
-
   const pieceType = boundedLabelValue(normalized, "tipo");
   const environment = boundedLabelValue(normalized, "ambiente") ?? boundedLabelValue(normalized, "local");
   const glass = boundedLabelValue(normalized, "vidro");
   const color = boundedLabelValue(normalized, "cor");
   const lineName = boundedLabelValue(normalized, "linha") ?? boundedLabelValue(normalized, "sistema");
+  const hasUsefulLabel = Boolean(pieceType || environment || glass || color || lineName);
+
+  if (!dimensionMatch && !hasUsefulLabel) {
+    return null;
+  }
 
   return {
     code,
@@ -537,26 +563,62 @@ function parseLegacyPieceLine(line: string): ParsedTechnicalPiece | null {
   };
 }
 
+function parseDimensionSegment(value: string) {
+  if (!/^\d+$/.test(value)) return null;
+  if (value.length > 1 && value.startsWith("0")) return null;
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 200 || parsed > 10000) return null;
+  return parsed;
+}
+
 function parseJoinedDimensions(value: string) {
   for (let widthLength = 3; widthLength <= 5; widthLength += 1) {
     const heightLength = value.length - widthLength;
     if (heightLength < 3 || heightLength > 5) continue;
 
-    const width = Number(value.slice(0, widthLength));
-    const height = Number(value.slice(widthLength));
-    if (
-      Number.isFinite(width) &&
-      Number.isFinite(height) &&
-      width >= 200 &&
-      height >= 200 &&
-      width <= 10000 &&
-      height <= 10000
-    ) {
+    const width = parseDimensionSegment(value.slice(0, widthLength));
+    const height = parseDimensionSegment(value.slice(widthLength));
+    if (width && height) {
       return { width, height };
     }
   }
 
   return { width: null, height: null };
+}
+
+const smartCemLineNames = [
+  "CONCEPT LINE 50",
+  "CONCEPT LINE",
+  "QUADRO FIXO",
+  "PELE DE VIDRO",
+  "SUPREMA",
+  "SUPREME",
+  "BRISE",
+  "GOLD",
+  "PRIME",
+  "GRID",
+  "UNIT",
+  "UNNITY",
+  "INFINITY",
+  "SLIM",
+];
+
+function splitSmartCemLineAndLocation(value: string) {
+  const normalized = cleanValue(value);
+  if (!normalized) return { line: null, location: null };
+
+  for (const lineName of smartCemLineNames) {
+    const match = normalized.match(new RegExp(`^(${escapeRegExp(lineName)})(?:\\s+(.+))?$`, "i"));
+    if (match) {
+      return {
+        line: cleanValue(match[1]),
+        location: cleanValue(match[2]),
+      };
+    }
+  }
+
+  return { line: normalized, location: null };
 }
 
 function splitSmartCemLineAndQuantity(value: string) {
@@ -573,9 +635,11 @@ function splitSmartCemLineAndQuantity(value: string) {
 
     const line = cleanValue(normalized.slice(0, -quantityLength));
     if (!line) continue;
+    const lineAndLocation = splitSmartCemLineAndLocation(line);
 
     return {
-      line,
+      line: lineAndLocation.line,
+      location: lineAndLocation.location,
       quantity,
     };
   }
@@ -622,6 +686,9 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
         width: dimensions.width,
         height: dimensions.height,
         line: parsedLineAndQuantity.line,
+        location: parsedLineAndQuantity.location,
+        rowType: null,
+        source: "collapsed",
       };
     }
   }
@@ -639,6 +706,9 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
         width: dimensions.width,
         height: dimensions.height,
         line: parsedLineAndQuantity.line,
+        location: parsedLineAndQuantity.location,
+        rowType: null,
+        source: "collapsed",
       };
     }
   }
@@ -646,20 +716,91 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
   const spacedMatch = normalized.match(
     /^([A-Z]{1,4}\d{2}(?:_[A-Z][A-Z0-9]?)?)\s+(\d+)\s+(\d{2,5})\s+(\d{2,5})\s+(.+)$/i,
   );
-  if (!spacedMatch) return null;
+  if (spacedMatch) {
+    const [, code, quantity, width, height, lineAndLocation] = spacedMatch;
+    const parsedWidth = parseDimensionSegment(width);
+    const parsedHeight = parseDimensionSegment(height);
+    const splitLine = splitSmartCemLineAndLocation(lineAndLocation);
+    if (!parsedWidth || !parsedHeight || !splitLine.line) return null;
 
-  const [, code, quantity, width, height, lineName] = spacedMatch;
+    return {
+      code: code.toUpperCase(),
+      quantity: Math.max(1, Number(quantity)),
+      width: parsedWidth,
+      height: parsedHeight,
+      line: splitLine.line,
+      location: splitLine.location,
+      rowType: null,
+      source: "layout",
+    };
+  }
+
+  const layoutMatch = normalized.match(/^(.+?)\s+(\d{1,3})\s+(\d{2,5})\s+(\d{2,5})\s+(.+)$/i);
+  if (!layoutMatch) return null;
+
+  const [, rowType, quantity, width, height, lineAndLocation] = layoutMatch;
+  const parsedWidth = parseDimensionSegment(width);
+  const parsedHeight = parseDimensionSegment(height);
+  const splitLine = splitSmartCemLineAndLocation(lineAndLocation);
+  const cleanRowType = cleanValue(rowType);
+  if (!cleanRowType || !parsedWidth || !parsedHeight || !splitLine.line) return null;
+
   return {
-    code: code.toUpperCase(),
+    code: null,
     quantity: Math.max(1, Number(quantity)),
-    width: Number(width),
-    height: Number(height),
-    line: cleanValue(lineName),
+    width: parsedWidth,
+    height: parsedHeight,
+    line: splitLine.line,
+    location: splitLine.location,
+    rowType: cleanRowType,
+    source: "layout",
   };
 }
 
 function isLocationLabel(line: string) {
-  return searchable(line).startsWith("localizacao");
+  return searchable(line).startsWith("localiza");
+}
+
+function looksLikeProductDescriptionLine(line: string) {
+  const normalized = searchable(line);
+  return [
+    "brise",
+    "painel",
+    "porta",
+    "portao",
+    "janela",
+    "quadro",
+    "portinhola",
+    "persiana",
+    "pele",
+    "guarda",
+    "corrimao",
+    "fixo",
+  ].some((prefix) => normalized.startsWith(`${prefix} `));
+}
+
+function findLastProductDescriptionStart(lines: string[]) {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (looksLikeProductDescriptionLine(lines[index])) return index;
+  }
+
+  return -1;
+}
+
+function isPieceContextMetadataLine(line: string) {
+  const normalized = searchable(line);
+  return (
+    normalized.startsWith("acabamento") ||
+    normalized.startsWith("vidros") ||
+    normalized.startsWith("sem vidros") ||
+    normalized.startsWith("area esquadria") ||
+    normalized.startsWith("tipo")
+  );
+}
+
+function isSmartCemRowTypeFragment(line: string) {
+  const normalized = searchable(line);
+  return /^\d+x\d+$/.test(normalized) || /\bmux\b/.test(normalized);
 }
 
 function isSmartCemHeader(line: string) {
@@ -673,16 +814,35 @@ function isSmartCemHeader(line: string) {
   );
 }
 
+function hasSmartCemHeaderBefore(lines: string[], index: number, maxDistance: number) {
+  for (let cursor = index - 1; cursor >= Math.max(0, index - maxDistance); cursor -= 1) {
+    if (isSmartCemHeader(lines[cursor])) return true;
+  }
+
+  return false;
+}
+
+function isInvalidLocationCandidate(line: string) {
+  return (
+    isPageOrDocumentMarker(line) ||
+    isLocationLabel(line) ||
+    isSmartCemHeader(line) ||
+    isPieceContextMetadataLine(line) ||
+    looksLikeProductDescriptionLine(line) ||
+    Boolean(parseSmartCemDataLine(line))
+  );
+}
+
 function locationAfterDataLine(lines: string[], index: number) {
   const nextLine = lines[index + 1];
   if (!nextLine) return null;
 
   const inline = valueAfterInlineLabel(nextLine, "Localização");
-  if (inline) return inline;
+  if (inline && !isInvalidLocationCandidate(inline)) return inline;
 
   if (isLocationLabel(nextLine)) {
     const location = lines[index + 2];
-    if (location && !isPageOrDocumentMarker(location) && !parseSmartCemDataLine(location)) {
+    if (location && !isInvalidLocationCandidate(location)) {
       return cleanValue(location);
     }
   }
@@ -695,20 +855,19 @@ function contextBeforeDataLine(lines: string[], index: number) {
 
   for (let cursor = index - 1; cursor >= 0 && context.length < 12; cursor -= 1) {
     const line = lines[cursor];
+    if (isPageOrDocumentMarker(line) || isLocationLabel(line) || parseSmartCemDataLine(line)) {
+      break;
+    }
+
     if (
       isSmartCemHeader(line) ||
       (cursor > 0 && isSmartCemHeader(lines[cursor - 1])) ||
-      (cursor > 1 && isSmartCemHeader(lines[cursor - 2]))
+      (cursor > 1 && isSmartCemHeader(lines[cursor - 2]) && isSmartCemRowTypeFragment(line))
     ) {
       continue;
     }
 
-    if (
-      isPageOrDocumentMarker(line) ||
-      isLocationLabel(line) ||
-      parseSmartCemDataLine(line) ||
-      (cursor > 0 && isLocationLabel(lines[cursor - 1]))
-    ) {
+    if (cursor > 0 && isLocationLabel(lines[cursor - 1]) && !looksLikeProductDescriptionLine(line)) {
       break;
     }
 
@@ -735,7 +894,10 @@ function contextBeforeDataLine(lines: string[], index: number) {
   const productStart = descriptionLines.findIndex((line) =>
     /^(brise|painel|porta|port[aã]o|janela|quadro|portinhola|persiana|pele|guarda|corrim[aã]o|fixo)\b/i.test(line),
   );
-  const productDescriptionLines = productStart >= 0 ? descriptionLines.slice(productStart) : descriptionLines;
+  const normalizedProductStart = findLastProductDescriptionStart(descriptionLines);
+  const effectiveProductStart = normalizedProductStart >= 0 ? normalizedProductStart : productStart;
+  const productDescriptionLines =
+    effectiveProductStart >= 0 ? descriptionLines.slice(effectiveProductStart) : descriptionLines;
 
   return {
     color,
@@ -785,10 +947,13 @@ function parseSmartCemPieces(lines: string[], contractNumber: string | null) {
   for (let index = 0; index < lines.length; index += 1) {
     const data = parseSmartCemDataLine(lines[index]);
     if (!data) continue;
+    if (!data.code && !hasSmartCemHeaderBefore(lines, index, data.source === "layout" ? 8 : 4)) {
+      continue;
+    }
 
     const context = contextBeforeDataLine(lines, index);
-    const rowType = rowTypeBeforeDataLine(lines, index);
-    const location = locationAfterDataLine(lines, index);
+    const rowType = data.rowType ?? rowTypeBeforeDataLine(lines, index);
+    const location = data.location ?? locationAfterDataLine(lines, index);
     const code =
       data.code ??
       generatedSmartCemCode(
@@ -874,7 +1039,54 @@ export function parseTechnicalContractText(text: string, pages = 1): TechnicalPd
   };
 }
 
+async function renderPdfPageWithLayout(pageData: PdfPageData) {
+  const textContent = await pageData.getTextContent({
+    normalizeWhitespace: false,
+    disableCombineTextItems: false,
+  });
+  const items = (textContent.items ?? [])
+    .filter((item) => item.str?.trim() && item.transform && item.transform.length >= 6)
+    .map((item) => ({
+      str: item.str?.trim() ?? "",
+      x: item.transform?.[4] ?? 0,
+      y: item.transform?.[5] ?? 0,
+      width: item.width ?? 0,
+    }));
+  const lines: Array<{ y: number; items: typeof items }> = [];
+  const yTolerance = 2.5;
+
+  for (const item of items) {
+    let line = lines.find((candidate) => Math.abs(candidate.y - item.y) <= yTolerance);
+    if (!line) {
+      line = { y: item.y, items: [] };
+      lines.push(line);
+    }
+    line.items.push(item);
+  }
+
+  return lines
+    .sort((left, right) => right.y - left.y)
+    .map((line) => {
+      const sorted = line.items.sort((left, right) => left.x - right.x);
+      let text = "";
+      let lastRight: number | null = null;
+
+      for (const item of sorted) {
+        const gap = lastRight === null ? 0 : item.x - lastRight;
+        const needsSpace = Boolean(text) && (gap > 1.5 || !/[\s([{/-]$/.test(text));
+        text += `${needsSpace ? " " : ""}${item.str}`;
+        lastRight = item.x + item.width;
+      }
+
+      return text.replace(/\s+/g, " ").trim();
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 export async function parseTechnicalContractPdf(buffer: Buffer): Promise<TechnicalPdfParseResult> {
-  const parsedPdf = await pdfParse(buffer);
+  const parsedPdf = await (pdfParse as PdfParseWithOptions)(buffer, {
+    pagerender: renderPdfPageWithLayout,
+  });
   return parseTechnicalContractText(parsedPdf.text, parsedPdf.numpages);
 }

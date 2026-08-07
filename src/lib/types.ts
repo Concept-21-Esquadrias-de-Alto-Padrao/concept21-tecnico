@@ -63,6 +63,16 @@ export const TECHNICAL_DOUBT_AREAS = ["producao", "obras_instalacoes"] as const;
 export const DEPARTMENT_KEYS = ["suprimentos", "producao"] as const;
 export const PRIORITIES = ["baixa", "normal", "alta", "urgente"] as const;
 export const DEADLINE_UNITS = ["dias_uteis", "dias_corridos"] as const;
+export const TECHNICAL_CONTRACT_STAGE_KEYS = [
+  "entrada_comercial",
+  "reuniao_ata",
+  "acoes",
+  "visitas",
+  "pecas_medicoes_liberacoes",
+  "correcoes",
+  "prods",
+  "duvidas",
+] as const;
 
 export type TechnicalContractStatus = (typeof TECHNICAL_CONTRACT_STATUSES)[number];
 export type TechnicalActionStatus = (typeof TECHNICAL_ACTION_STATUSES)[number];
@@ -74,6 +84,7 @@ export type TechnicalDoubtArea = (typeof TECHNICAL_DOUBT_AREAS)[number];
 export type DepartmentKey = (typeof DEPARTMENT_KEYS)[number];
 export type Priority = (typeof PRIORITIES)[number];
 export type DeadlineUnit = (typeof DEADLINE_UNITS)[number];
+export type TechnicalContractStageKey = (typeof TECHNICAL_CONTRACT_STAGE_KEYS)[number];
 
 export type LabelMap<T extends string> = Record<T, string>;
 
@@ -268,6 +279,30 @@ export type TechnicalMeeting = {
   blockers: string | null;
   status: "rascunho" | "concluida" | "cancelada";
   registered_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TechnicalStageValidation = {
+  id: string;
+  company_id: string;
+  contract_id: string;
+  stage: TechnicalContractStageKey;
+  validation_required: boolean;
+  configured_by_profile_id: string | null;
+  configured_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TechnicalStageValidationParticipant = {
+  id: string;
+  company_id: string;
+  contract_id: string;
+  stage: TechnicalContractStageKey;
+  profile_id: string;
+  signed_at: string | null;
+  signed_by_auth_user_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -485,6 +520,8 @@ export type TechnicalSnapshot = {
   technicalContracts: TechnicalContract[];
   pieces: TechnicalPiece[];
   meetings: TechnicalMeeting[];
+  stageValidations: TechnicalStageValidation[];
+  stageValidationParticipants: TechnicalStageValidationParticipant[];
   actions: TechnicalAction[];
   visits: TechnicalVisit[];
   visitPieces: TechnicalVisitPiece[];

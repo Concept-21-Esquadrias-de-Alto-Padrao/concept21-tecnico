@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { cancelVisitAction, createVisitAction, generateVisitReportFormAction, recordVisitResultAction } from "@/app/actions";
+import { cancelVisitAction, generateVisitReportFormAction, recordVisitResultAction } from "@/app/actions";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/panel";
 import { StatusBadge } from "@/components/status-badge";
 import { VisitReportPdfButton } from "@/components/visit-report-pdf-button";
+import { VisitScheduleForm } from "@/components/visit-schedule-form";
 import {
   appNavigationPermissionKeys,
   canAccessModule,
@@ -88,30 +89,7 @@ export default async function TechnicalAgendaPage() {
           <Panel>
             <PanelHeader title="Nova visita" />
             <PanelBody>
-              <ActionForm action={createVisitAction} submitLabel="Agendar visita">
-                <Field label="Contrato">
-                  <select name="contract_id" className={inputClass} required>
-                    <option value="">Selecione</option>
-                    {snapshot.contracts.map((contract) => (
-                      <option key={contract.id} value={contract.id}>{contract.contract_number} · {contract.work_name}</option>
-                    ))}
-                  </select>
-                </Field>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Tipo"><input name="visit_type" className={inputClass} defaultValue="Medição" required /></Field>
-                  <Field label="Data"><input name="scheduled_date" type="date" className={inputClass} required /></Field>
-                  <Field label="Horário"><input name="scheduled_time" type="time" className={inputClass} /></Field>
-                  <Field label="Técnicos"><input name="technicians" className={inputClass} required /></Field>
-                </div>
-                <Field label="Objetivos"><textarea name="objectives" className={textareaClass} required /></Field>
-                <Field label="Peças">
-                  <select name="piece_ids" multiple className="min-h-40 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-charcoal outline-none focus:border-accent">
-                    {snapshot.pieces.map((piece) => (
-                      <option key={piece.id} value={piece.id}>{piece.code} · {piece.environment ?? "Sem ambiente"}</option>
-                    ))}
-                  </select>
-                </Field>
-              </ActionForm>
+              <VisitScheduleForm contracts={snapshot.contracts} pieces={snapshot.pieces} />
             </PanelBody>
           </Panel>
         ) : null}

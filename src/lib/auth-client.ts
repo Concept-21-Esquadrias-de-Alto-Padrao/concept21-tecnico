@@ -65,7 +65,7 @@ export async function signInWithEmail(email: string, password: string) {
   if (isMaintenanceBlockingAccess(access)) {
     await supabase.auth.signOut();
     throw new Error(
-      "Sistema em manutencao. A plataforma esta temporariamente bloqueada para usuarios que nao sao administradores.",
+      "Sistema em manutenção. A plataforma está temporariamente bloqueada para usuários que não são administradores.",
     );
   }
 

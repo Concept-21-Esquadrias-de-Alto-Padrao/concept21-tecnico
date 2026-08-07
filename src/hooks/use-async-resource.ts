@@ -25,7 +25,7 @@ type AsyncResourceState<T> = {
 const resourceCache = new Map<string, CacheEntry<unknown>>();
 
 function normalizeError(error: unknown) {
-  return error instanceof Error ? error : new Error("Nao foi possivel carregar os dados.");
+  return error instanceof Error ? error : new Error("Não foi possível carregar os dados.");
 }
 
 function readCache<T>(key: string) {

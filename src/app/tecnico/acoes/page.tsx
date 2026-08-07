@@ -22,16 +22,25 @@ export default async function TechnicalActionsPage() {
   if (!canAccessModule(access, MODULE_ACCESS.actions)) redirect(firstAllowedAppRoute(access) ?? "/login");
   const snapshot = await getTechnicalOperationalData();
   const canManage = access.isMaster || access.permissions["technical.actions.manage"];
+  const openActions = snapshot.actions
+    .filter((action) => !action.deleted_at && !["concluida", "validada", "cancelada"].includes(action.status))
+    .sort(
+      (left, right) =>
+        Number(right.blocking) - Number(left.blocking) ||
+        Number(isOverdue(right.due_date)) - Number(isOverdue(left.due_date)) ||
+        String(left.due_date ?? "9999-12-31").localeCompare(String(right.due_date ?? "9999-12-31")),
+    );
 
   return (
     <div className="space-y-6">
       <PageHeader title="Ações Técnicas" description="Pendências da reunião de fechamento e acompanhamento técnico-operacional." />
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Panel>
-          <PanelHeader title="Ações abertas e recentes" />
+          <PanelHeader title="Ações abertas" description="Todas as ações pendentes, com indicação de vencimento e bloqueio." />
           <PanelBody className="space-y-3">
-            {snapshot.actions.map((action) => {
+            {openActions.map((action) => {
               const contract = snapshot.contracts.find((item) => item.id === action.contract_id);
+              const overdue = isOverdue(action.due_date);
               return (
                 <article key={action.id} className="rounded-md border border-border bg-white p-3 text-sm">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -40,11 +49,19 @@ export default async function TechnicalActionsPage() {
                         {action.title}
                       </Link>
                       <p className="mt-1 text-muted-foreground">{contract?.contract_number ?? "Contrato"} · Prazo: {formatDate(action.due_date)}</p>
-                      {isOverdue(action.due_date) && !["concluida", "validada", "cancelada"].includes(action.status) ? (
+                      {overdue ? (
                         <p className="mt-1 font-semibold text-danger">Vencida</p>
                       ) : null}
                     </div>
-                    <div className="flex flex-wrap gap-2"><PriorityBadge priority={action.priority} /><StatusBadge status={action.status} type="action" /></div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {action.blocking ? (
+                        <span className="inline-flex rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-800 ring-1 ring-red-200">
+                          Bloqueante
+                        </span>
+                      ) : null}
+                      <PriorityBadge priority={action.priority} />
+                      <StatusBadge status={action.status} type="action" />
+                    </div>
                   </div>
                   {canManage ? (
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -60,6 +77,9 @@ export default async function TechnicalActionsPage() {
                 </article>
               );
             })}
+            {!openActions.length ? (
+              <p className="text-sm text-muted-foreground">Nenhuma ação aberta no momento.</p>
+            ) : null}
           </PanelBody>
         </Panel>
         {canManage ? (

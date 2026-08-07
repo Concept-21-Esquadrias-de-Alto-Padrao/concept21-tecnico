@@ -20,11 +20,11 @@ async function parseResponse(response: Response) {
     | null;
 
   if (!response.ok) {
-    throw new Error(payload?.error ?? "Nao foi possivel carregar as configuracoes do sistema.");
+    throw new Error(payload?.error ?? "Não foi possível carregar as configurações do sistema.");
   }
 
   if (!payload?.maintenance) {
-    throw new Error("Nao foi possivel carregar a manutencao do sistema.");
+    throw new Error("Não foi possível carregar a manutenção do sistema.");
   }
 
   return payload as SystemSettingsResponse;
@@ -52,7 +52,7 @@ export function SystemMaintenanceSettings() {
   async function setMaintenance(enabled: boolean) {
     if (enabled) {
       const confirmed = window.confirm(
-        "Ativar a manutencao do sistema agora? Todos os usuarios que nao sao administradores serao desconectados.",
+        "Ativar a manutenção do sistema agora? Todos os usuários que não são administradores serão desconectados.",
       );
 
       if (!confirmed) return;
@@ -73,12 +73,12 @@ export function SystemMaintenanceSettings() {
 
       const nextData = await parseResponse(response);
       resource.setData(nextData);
-      setMessage(enabled ? "Manutencao ativada." : "Manutencao desativada.");
+      setMessage(enabled ? "Manutenção ativada." : "Manutenção desativada.");
     } catch (error) {
       setMessage(
         error instanceof Error
           ? error.message
-          : "Nao foi possivel alterar a manutencao do sistema.",
+          : "Não foi possível alterar a manutenção do sistema.",
       );
     } finally {
       setSaving(false);
@@ -90,7 +90,7 @@ export function SystemMaintenanceSettings() {
       <Panel>
         <PanelBody className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          Carregando manutencao do sistema...
+          Carregando manutenção do sistema...
         </PanelBody>
       </Panel>
     );
@@ -104,7 +104,7 @@ export function SystemMaintenanceSettings() {
             icon={ShieldCheck}
             title="Controle restrito ao Administrador"
             description={
-              resource.error?.message ?? "Nao foi possivel carregar as configuracoes do sistema."
+              resource.error?.message ?? "Não foi possível carregar as configurações do sistema."
             }
           />
         </PanelBody>
@@ -118,8 +118,8 @@ export function SystemMaintenanceSettings() {
   return (
     <Panel>
       <PanelHeader
-        title="Manutencao do sistema"
-        description="Controle exclusivo do Administrador para bloquear a plataforma durante atualizacoes."
+        title="Manutenção do sistema"
+        description="Controle exclusivo do Administrador para bloquear a plataforma durante atualizações."
         actions={
           <span
             className={cn(
@@ -130,7 +130,7 @@ export function SystemMaintenanceSettings() {
             )}
           >
             {active ? <AlertTriangle className="size-4" /> : <CheckCircle2 className="size-4" />}
-            {active ? "Manutencao ativa" : "Operacao normal"}
+            {active ? "Manutenção ativa" : "Operação normal"}
           </span>
         }
       />
@@ -153,12 +153,12 @@ export function SystemMaintenanceSettings() {
               </span>
               <div>
                 <h3 className="text-base font-semibold text-charcoal">
-                  {active ? "Plataforma bloqueada para usuarios comuns" : "Plataforma liberada"}
+                  {active ? "Plataforma bloqueada para usuários comuns" : "Plataforma liberada"}
                 </h3>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
                   {active
-                    ? "Usuarios que nao sao administradores sao desconectados e novas acoes ficam bloqueadas enquanto a manutencao estiver ativa."
-                    : "Ative a manutencao antes de publicar atualizacoes que exijam a plataforma sem movimentacoes operacionais."}
+                    ? "Usuários que não são administradores são desconectados e novas ações ficam bloqueadas enquanto a manutenção estiver ativa."
+                    : "Ative a manutenção antes de publicar atualizações que exijam a plataforma sem movimentações operacionais."}
                 </p>
               </div>
             </div>
@@ -178,8 +178,8 @@ export function SystemMaintenanceSettings() {
               {saving
                 ? "Atualizando..."
                 : active
-                  ? "Desativar manutencao"
-                  : "Ativar manutencao"}
+                  ? "Desativar manutenção"
+                  : "Ativar manutenção"}
             </button>
           </div>
         </div>
@@ -192,14 +192,14 @@ export function SystemMaintenanceSettings() {
             </p>
           </div>
           <div className="rounded-md border border-border bg-muted/40 p-3">
-            <p className="text-xs font-semibold uppercase text-muted-foreground">Ativacao</p>
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Ativação</p>
             <p className="mt-1 text-sm font-semibold text-charcoal">
               {maintenance.activated_at ? formatDateTime(maintenance.activated_at) : "Nunca ativada"}
             </p>
           </div>
           <div className="rounded-md border border-border bg-muted/40 p-3">
             <p className="text-xs font-semibold uppercase text-muted-foreground">
-              Ultima atualizacao
+              Última atualização
             </p>
             <p className="mt-1 text-sm font-semibold text-charcoal">
               {formatDateTime(maintenance.updated_at)}
@@ -211,7 +211,7 @@ export function SystemMaintenanceSettings() {
           <p
             className={cn(
               "rounded-md border px-3 py-2 text-sm font-medium",
-              message.includes("Nao")
+              message.includes("Não")
                 ? "border-red-200 bg-red-50 text-red-700"
                 : "border-emerald-200 bg-emerald-50 text-emerald-700",
             )}

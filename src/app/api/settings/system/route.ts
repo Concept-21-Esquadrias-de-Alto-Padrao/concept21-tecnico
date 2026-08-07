@@ -36,7 +36,7 @@ export async function GET() {
       currentProfileId: context.profile.id,
     });
   } catch (error) {
-    return jsonError(error, "Nao foi possivel carregar a manutencao do sistema.");
+    return jsonError(error, "Não foi possível carregar a manutenção do sistema.");
   }
 }
 
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as SystemActionBody;
 
     if (typeof body.enabled !== "boolean") {
-      throw new HttpError(400, "Informe se a manutencao deve ficar ativa ou inativa.");
+      throw new HttpError(400, "Informe se a manutenção deve ficar ativa ou inativa.");
     }
 
     const now = new Date().toISOString();
@@ -88,6 +88,6 @@ export async function POST(request: Request) {
       currentProfileId: context.profile.id,
     });
   } catch (error) {
-    return jsonError(error, "Nao foi possivel alterar a manutencao do sistema.");
+    return jsonError(error, "Não foi possível alterar a manutenção do sistema.");
   }
 }

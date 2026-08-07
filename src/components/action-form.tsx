@@ -19,16 +19,26 @@ export function ActionForm({
   children,
   submitLabel,
   className,
+  confirmMessage,
 }: {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
   children: React.ReactNode;
   submitLabel: string;
   className?: string;
+  confirmMessage?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
 
   return (
-    <form action={formAction} className={cn("space-y-4", className)}>
+    <form
+      action={formAction}
+      className={cn("space-y-4", className)}
+      onSubmit={(event) => {
+        if (confirmMessage && !window.confirm(confirmMessage)) {
+          event.preventDefault();
+        }
+      }}
+    >
       {children}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button

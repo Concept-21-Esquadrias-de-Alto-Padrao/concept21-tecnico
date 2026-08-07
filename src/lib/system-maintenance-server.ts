@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SystemMaintenance } from "@/lib/types";
 
 export const DEFAULT_MAINTENANCE_MESSAGE =
-  "Sistema em manutencao para atualizacao controlada.";
+  "Sistema em manutenção para atualização controlada.";
 
 type QueryError = {
   code?: string;

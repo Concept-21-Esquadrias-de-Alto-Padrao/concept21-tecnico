@@ -252,6 +252,120 @@ describe("parseTechnicalContractText", () => {
     });
   });
 
+  it("keeps SmartCEM dimensions aligned and ignores loose numeric rows", () => {
+    const result = parseTechnicalContractText(`
+      CONTRATO NÂº: 26-0721
+      Contato: ARQ. CAROL Telefone: 6298117-3710
+
+      JANELA DE CORRER 2 FOLHAS
+      Acabamento: PINTURA BEGE CAPPUCCINO
+      Vidros: TEMPERADO DE 8 MM incolor
+      Tipo:Linha:L:H:Qtd:
+      J0120002250QUADRO FIXO1
+      LocalizaÃ§Ã£o:
+      JANELA DE CORRER 3 FOLHAS
+      Acabamento: PINTURA BEGE CAPPUCCINO
+      Vidros: TEMPERADO DE 8 MM incolor
+      Tipo:Linha:L:H:Qtd:
+      J0350001550QUADRO FIXO1
+      LocalizaÃ§Ã£o:
+      PORTA DE CORRER 2 FOLHAS
+      Acabamento: PINTURA BEGE CAPPUCCINO
+      Vidros: sem vidro
+      Tipo:Linha:L:H:Qtd:
+      P0730002300GOLD1
+      LocalizaÃ§Ã£o:
+      SUÃTE MASTER
+      JANELA DE CORRER 2 FOLHAS
+      Acabamento: PINTURA BEGE CAPPUCCINO
+      Vidros: TEMPERADO DE 8 MM incolor
+      Tipo:Linha:L:H:Qtd:
+      J05_A18002000GOLD1
+      LocalizaÃ§Ã£o:
+      SUÃTE FILHAS
+      J05_A118002000GOLD1
+      LocalizaÃ§Ã£o:
+      SUÃTES FILHAS
+      PORTA DE GIRO 1 FOLHA
+      Acabamento: PINTURA BEGE CAPPUCCINO
+      Vidros: sem vidro
+      Tipo:Linha:L:H:Qtd:
+      P1320002000GOLD1
+      LocalizaÃ§Ã£o:
+      VARANDA
+    `);
+
+    expect(result.pieces).toHaveLength(6);
+    expect(result.pieces.map((piece) => piece.code)).not.toContain("26-0721-03-08-202602-46-PM-TELEF-01");
+    expect(result.pieces.find((piece) => piece.code === "J01")).toMatchObject({
+      sale_width_mm: 2000,
+      sale_height_mm: 2250,
+    });
+    expect(result.pieces.find((piece) => piece.code === "J03")).toMatchObject({
+      sale_width_mm: 5000,
+      sale_height_mm: 1550,
+      environment: null,
+    });
+    expect(result.pieces.find((piece) => piece.code === "P07")).toMatchObject({
+      sale_width_mm: 3000,
+      sale_height_mm: 2300,
+      environment: "SUÃTE MASTER",
+      piece_type: "PORTA DE CORRER 2 FOLHAS",
+    });
+    expect(result.pieces.find((piece) => piece.code === "J05_A1")).toMatchObject({
+      sale_width_mm: 1800,
+      sale_height_mm: 2000,
+    });
+    expect(result.pieces.find((piece) => piece.code === "P13")).toMatchObject({
+      sale_width_mm: 2000,
+      sale_height_mm: 2000,
+    });
+  });
+
+  it("extracts position-rendered SmartCEM rows with inline locations", () => {
+    const result = parseTechnicalContractText(`
+      CONTRATO NÂº: 26-0771
+      PORTA DE GIRO 1 FOLHA
+      Acabamento: PINTURA BEGE CAPPUCCINO
+      Vidros: sem vidro
+      Tipo: Qtd: L: H: Linha: LocalizaÃ§Ã£o:
+      P06_A 1 900 2140 GOLD GARAGEM
+      QUADRO FIXO DE VIDRO - SEM DIVISÃƒO
+      Acabamento: PINTURA BEGE CAPPUCCINO
+      Vidros: TEMPERADO DE 8 MM incolor
+      Tipo: Qtd: L: H: Linha: LocalizaÃ§Ã£o:
+      J02_A 1 1700 2500 QUADRO FIXO SALA DE ESTAR
+      BRISE CORRER 3 FOLHAS - MUXARABI RIPADO 20X20MM
+      Acabamento: PINTURA CORTEN
+      Vidros: sem vidro
+      BZ - MUX 1 5078 2500 CONCEPT LINE 50 GARAGEM
+    `);
+
+    expect(result.pieces).toHaveLength(3);
+    expect(result.pieces[0]).toMatchObject({
+      code: "P06_A",
+      line: "GOLD",
+      environment: "GARAGEM",
+      sale_width_mm: 900,
+      sale_height_mm: 2140,
+    });
+    expect(result.pieces[1]).toMatchObject({
+      code: "J02_A",
+      line: "QUADRO FIXO",
+      environment: "SALA DE ESTAR",
+      sale_width_mm: 1700,
+      sale_height_mm: 2500,
+      piece_type: "QUADRO FIXO DE VIDRO - SEM DIVISÃƒO",
+    });
+    expect(result.pieces[2]).toMatchObject({
+      code: "26-0771-BZ-MUX-03",
+      line: "CONCEPT LINE 50",
+      environment: "GARAGEM",
+      sale_width_mm: 5078,
+      sale_height_mm: 2500,
+    });
+  });
+
   it("emits warnings when minimum data is missing", () => {
     const result = parseTechnicalContractText("Documento sem estrutura conhecida");
     expect(result.warnings).toContain("Número do contrato não identificado.");
