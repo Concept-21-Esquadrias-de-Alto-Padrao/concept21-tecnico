@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, hasSupabaseEnv } from "@/lib/supabase/server";
 import { TECHNICAL_PERMISSIONS } from "@/lib/module-access";
-import type { AccessReviewRequest, Permission, Profile, Role, UserRole } from "@/lib/types";
+import { getSystemMaintenanceState } from "@/lib/system-maintenance-server";
+import type {
+  AccessReviewRequest,
+  Permission,
+  Profile,
+  Role,
+  SystemMaintenance,
+  UserRole,
+} from "@/lib/types";
 
 type SupabaseAuthUser = {
   email_confirmed_at?: string | null;
@@ -43,6 +51,7 @@ export async function GET() {
       },
       roles: [{ id: "master", name: "Administrador", is_master_role: true }],
       permissions: {},
+      maintenance: null,
     });
   }
 
@@ -71,8 +80,11 @@ export async function GET() {
   let roles: Role[] = [];
   let permissions: Record<string, boolean> = {};
   let accessReviewRequests: AccessReviewRequest[] = [];
+  let maintenance: SystemMaintenance | null = null;
 
   if (profile) {
+    maintenance = await getSystemMaintenanceState(admin, profile.company_id);
+
     const { data: requestData, error: requestError } = await admin
       .from("access_review_requests")
       .select("*")
@@ -162,5 +174,6 @@ export async function GET() {
       : null,
     roles,
     permissions,
+    maintenance,
   });
 }

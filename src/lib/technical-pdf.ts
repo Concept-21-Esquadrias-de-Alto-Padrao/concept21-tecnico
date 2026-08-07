@@ -41,7 +41,7 @@ type ContractTableData = {
 };
 
 type SmartCemPieceData = {
-  code: string;
+  code: string | null;
   quantity: number;
   width: number | null;
   height: number | null;
@@ -340,7 +340,7 @@ function inferWorkAddress(lines: string[]) {
 }
 
 function stripTrailingZipCode(value: string) {
-  return cleanValue(value.replace(/\s+\d{5}-?\d{3}\s*$/, ""));
+  return cleanValue(value.replace(/\s+\d{2}\.?\d{3}-?\d{3}\s*$/, ""));
 }
 
 function inferWorkName(lines: string[], tableData: ContractTableData, clientName: string | null) {
@@ -348,6 +348,7 @@ function inferWorkName(lines: string[], tableData: ContractTableData, clientName
     .map((line) => {
       const colonIndex = line.indexOf(":");
       if (colonIndex < 0 || searchable(line.slice(0, colonIndex)) !== "obra") return null;
+      if (/^\s*obra\s*:\s*\d{2}[-/]\d{4}\s+-/i.test(line)) return null;
       return cleanValue(line.slice(colonIndex + 1));
     })
     .find(Boolean);
@@ -396,7 +397,7 @@ function parseAuthorizedContactLine(line: string) {
   if (!beforePhone) return null;
 
   const knownRolePattern =
-    /(propriet[aá]ri[oa]|arquitet[ao]|engenheir[oa]|financeiro|respons[aá]vel(?:\s+t[eé]cnico)?|mestre|encarregado)$/i;
+    /(propriet[aá]ri[oa]|arquitet[ao]|engenheir[oa]|financeiro|respons[aá]vel(?:\s+t[eé]cnico)?|construtor[ao]?|mestre|encarregado)$/i;
   const roleMatch = beforePhone.match(knownRolePattern);
   const hyphenParts = beforePhone.split(/\s+-\s+/);
   const name = cleanValue(
@@ -467,7 +468,7 @@ function extractCommercialData(lines: string[]) {
     lines.map((line) => valueAfterInlineLabel(line, "Vendedor")).find(Boolean) ??
     cleanValue(lines.find((line) => /RENATA CAPUTO|EDUARDO RODRIGUES/i.test(line)));
   const proposalIssuedBy = joined.match(/Emitido por\s+(.+?)\s+em\s+\d{2}\/\d{2}\/\d{4}/i)?.[1];
-  const zipCode = joined.match(/ENDEREÇO DA OBRA\s+CEP\S*\s+.+?\s+(\d{5}-?\d{3})/i)?.[1];
+  const zipCode = extractWorkZipCode(lines);
 
   return Object.fromEntries(
     Object.entries({
@@ -478,6 +479,18 @@ function extractCommercialData(lines: string[]) {
       cep_obra: zipCode ?? null,
     }).filter(([, value]) => value),
   ) as Record<string, string>;
+}
+
+function extractWorkZipCode(lines: string[]) {
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!searchable(lines[index]).includes("endereco da obra")) continue;
+
+    const windowText = lines.slice(index, index + 3).join(" ");
+    const match = windowText.match(/(\d{2}\.?\d{3}-?\d{3})/);
+    if (match?.[1]) return match[1].replace(".", "");
+  }
+
+  return null;
 }
 
 function boundedLabelValue(line: string, label: string) {
@@ -546,6 +559,30 @@ function parseJoinedDimensions(value: string) {
   return { width: null, height: null };
 }
 
+function splitSmartCemLineAndQuantity(value: string) {
+  const normalized = cleanValue(value);
+  if (!normalized) return null;
+
+  for (let quantityLength = 1; quantityLength <= 3; quantityLength += 1) {
+    const rawQuantity = normalized.slice(-quantityLength);
+    if (!/^\d+$/.test(rawQuantity)) continue;
+    if (rawQuantity.length > 1 && rawQuantity.startsWith("0")) continue;
+
+    const quantity = Number(rawQuantity);
+    if (!Number.isFinite(quantity) || quantity < 1 || quantity > 100) continue;
+
+    const line = cleanValue(normalized.slice(0, -quantityLength));
+    if (!line) continue;
+
+    return {
+      line,
+      quantity,
+    };
+  }
+
+  return null;
+}
+
 function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
   const normalized = line.replace(/\s+/g, " ").trim();
   const collapsedBase = normalized.match(/^([A-Z]{1,4}\d{2})(.*)$/i);
@@ -572,18 +609,36 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
   }
 
   for (const candidate of collapsedCandidates) {
-    const collapsedMatch = candidate.rest.match(/^(\d{6,8})(\D.+?)(\d{1,3})$/i);
+    const collapsedMatch = candidate.rest.match(/^(\d{6,10})(.+)$/i);
     if (!collapsedMatch) continue;
 
-    const [, joinedDimensions, lineName, quantity] = collapsedMatch;
+    const [, joinedDimensions, lineAndQuantity] = collapsedMatch;
     const dimensions = parseJoinedDimensions(joinedDimensions);
-    if (dimensions.width && dimensions.height) {
+    const parsedLineAndQuantity = splitSmartCemLineAndQuantity(lineAndQuantity);
+    if (dimensions.width && dimensions.height && parsedLineAndQuantity) {
       return {
         code: candidate.code.toUpperCase(),
-        quantity: Math.max(1, Number(quantity)),
+        quantity: parsedLineAndQuantity.quantity,
         width: dimensions.width,
         height: dimensions.height,
-        line: cleanValue(lineName),
+        line: parsedLineAndQuantity.line,
+      };
+    }
+  }
+
+  const noCodeCollapsedMatch = normalized.match(/^(\d{6,10})(.+)$/i);
+  if (noCodeCollapsedMatch) {
+    const [, joinedDimensions, lineAndQuantity] = noCodeCollapsedMatch;
+    const dimensions = parseJoinedDimensions(joinedDimensions);
+    const parsedLineAndQuantity = splitSmartCemLineAndQuantity(lineAndQuantity);
+
+    if (dimensions.width && dimensions.height && parsedLineAndQuantity) {
+      return {
+        code: null,
+        quantity: parsedLineAndQuantity.quantity,
+        width: dimensions.width,
+        height: dimensions.height,
+        line: parsedLineAndQuantity.line,
       };
     }
   }
@@ -605,6 +660,17 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
 
 function isLocationLabel(line: string) {
   return searchable(line).startsWith("localizacao");
+}
+
+function isSmartCemHeader(line: string) {
+  const tokens = searchable(line).split(" ");
+  return (
+    tokens.includes("tipo") &&
+    tokens.includes("linha") &&
+    tokens.includes("qtd") &&
+    tokens.includes("l") &&
+    tokens.includes("h")
+  );
 }
 
 function locationAfterDataLine(lines: string[], index: number) {
@@ -629,6 +695,14 @@ function contextBeforeDataLine(lines: string[], index: number) {
 
   for (let cursor = index - 1; cursor >= 0 && context.length < 12; cursor -= 1) {
     const line = lines[cursor];
+    if (
+      isSmartCemHeader(line) ||
+      (cursor > 0 && isSmartCemHeader(lines[cursor - 1])) ||
+      (cursor > 1 && isSmartCemHeader(lines[cursor - 2]))
+    ) {
+      continue;
+    }
+
     if (
       isPageOrDocumentMarker(line) ||
       isLocationLabel(line) ||
@@ -659,7 +733,7 @@ function contextBeforeDataLine(lines: string[], index: number) {
   }
 
   const productStart = descriptionLines.findIndex((line) =>
-    /^(porta|janela|quadro|portinhola|persiana|pele|guarda|corrim[aã]o|fixo)\b/i.test(line),
+    /^(brise|painel|porta|port[aã]o|janela|quadro|portinhola|persiana|pele|guarda|corrim[aã]o|fixo)\b/i.test(line),
   );
   const productDescriptionLines = productStart >= 0 ? descriptionLines.slice(productStart) : descriptionLines;
 
@@ -670,7 +744,42 @@ function contextBeforeDataLine(lines: string[], index: number) {
   };
 }
 
-function parseSmartCemPieces(lines: string[]) {
+function rowTypeBeforeDataLine(lines: string[], index: number) {
+  const values: string[] = [];
+
+  for (let cursor = index - 1; cursor >= 0 && values.length < 4; cursor -= 1) {
+    const line = lines[cursor];
+    if (isSmartCemHeader(line)) break;
+    if (isPageOrDocumentMarker(line) || isLocationLabel(line) || parseSmartCemDataLine(line)) {
+      return null;
+    }
+
+    values.unshift(line);
+  }
+
+  return cleanValue(values.join(" "));
+}
+
+function codeSafeSegment(value: string | null | undefined, fallback: string) {
+  const normalized = normalizeText(value ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return (normalized || fallback).slice(0, 24);
+}
+
+function generatedSmartCemCode(
+  contractNumber: string | null,
+  source: string | null,
+  index: number,
+) {
+  const contractSegment = codeSafeSegment(contractNumber, "PDF");
+  const pieceSegment = codeSafeSegment(source, "PECA");
+  return `${contractSegment}-${pieceSegment}-${String(index + 1).padStart(2, "0")}`;
+}
+
+function parseSmartCemPieces(lines: string[], contractNumber: string | null) {
   const pieces: ParsedTechnicalPiece[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -678,10 +787,18 @@ function parseSmartCemPieces(lines: string[]) {
     if (!data) continue;
 
     const context = contextBeforeDataLine(lines, index);
+    const rowType = rowTypeBeforeDataLine(lines, index);
     const location = locationAfterDataLine(lines, index);
+    const code =
+      data.code ??
+      generatedSmartCemCode(
+        contractNumber,
+        rowType ?? context.description ?? data.line,
+        pieces.length,
+      );
 
     pieces.push({
-      code: data.code,
+      code,
       piece_type: context.description,
       quantity: data.quantity,
       sale_width_mm: data.width,
@@ -733,7 +850,7 @@ export function parseTechnicalContractText(text: string, pages = 1): TechnicalPd
   };
 
   const pieceMap = new Map<string, ParsedTechnicalPiece>();
-  for (const piece of parseSmartCemPieces(lines)) {
+  for (const piece of parseSmartCemPieces(lines, contract.contract_number)) {
     mergePiece(pieceMap, piece);
   }
   for (const line of lines) {

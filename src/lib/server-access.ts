@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, hasSupabaseEnv } from "@/lib/supabase/server";
 import type { PermissionLookup } from "@/lib/module-access";
+import { getSystemMaintenanceState } from "@/lib/system-maintenance-server";
 import type { Profile, Role, UserRole } from "@/lib/types";
 
 export class HttpError extends Error {
@@ -97,6 +98,17 @@ export async function requireAuthenticatedProfile(): Promise<AuthenticatedProfil
 
   const profile = profileData as Profile;
   if (profile.status !== "active") throw new HttpError(403, "Cadastro inativo.");
+
+  const canBypassMaintenance = await hasActiveMasterRole(admin, profile);
+  if (!canBypassMaintenance) {
+    const maintenance = await getSystemMaintenanceState(admin, profile.company_id);
+    if (maintenance.enabled) {
+      throw new HttpError(
+        503,
+        "Sistema em manutencao. Sua sessao sera encerrada para preservar a atualizacao em andamento.",
+      );
+    }
+  }
 
   return {
     admin,

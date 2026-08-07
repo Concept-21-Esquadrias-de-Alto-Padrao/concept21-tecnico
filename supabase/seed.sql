@@ -2,6 +2,11 @@ insert into public.companies (name)
 values ('Concept21 Aluminium')
 on conflict do nothing;
 
+insert into public.system_maintenance (company_id)
+select id
+from public.companies
+on conflict (company_id) do nothing;
+
 insert into public.permissions (key, description)
 values
   ('technical.dashboard.view', 'Visualizar painel técnico'),

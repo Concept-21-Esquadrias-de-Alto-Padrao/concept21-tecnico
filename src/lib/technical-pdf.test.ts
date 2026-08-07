@@ -138,6 +138,120 @@ describe("parseTechnicalContractText", () => {
     });
   });
 
+  it("extracts SmartCEM tabular rows without explicit piece codes", () => {
+    const result = parseTechnicalContractText(`
+      CONTRATO COMERCIAL
+      NOME DO CLIENTE:
+      Manuel André Rodriguez Cala
+      Nº DO CONTRATO
+      26-0771
+      ENDEREÇO DA OBRA
+      Rua Pomerol
+      Qd.13 Lt.07
+      Jardins França
+      Goiânia - Go
+
+      CONTRATO Nº: 26-0771
+      Goiânia, 06 de agosto de 2026.
+      CONTRATANTE OBRA DATA NASCIMENTO
+      MANUEL ANDRÉ RODRIGUEZ CALA RESIDENCIAL 21/03/1962
+      ENDEREÇO DA OBRA CEP’
+      RUA POMEROL, QD.13 LT.07, JARDINS FRANÇA, GOIÂNIA - GO 74.886-154
+      VENDEDOR TELEFONE
+      EDUARDO RODRIGUES (62) 98118-5701
+      2.1. O Investimento é de R$ 56.484,04
+      NOME RESPONSABILIDADE TELEFONE - EMAIL
+      Manuel André Rodriguez Cala Construtor (62) 9 8240-1333
+      5.2. O prazo de entrega das esquadrias é de:
+      Até 60 dias úteis, sendo este prazo estipulado somente após a validação das liberações.
+
+      Proposta Nº
+      26-0771
+      MANUEL ANDRÉ RODRIGUEZ CALA
+      Emitido por ADYNA FERREIRA em 06/08/2026, às 08:32
+      BRISE CORRER 3 FOLHAS - MUXARABI RIPADO 20X20MM - ESPAÇAMENTO DE 20MM
+      Acabamento: PINTURA CORTEN
+      Área Esquadria:12,70m²Área Vidro:-
+      Vidros: sem vidro
+      Tipo:Linha:L:H:Qtd:
+      BZ - MUX
+      20X20
+      50782500CONCEPT LINE 501
+      Localização:
+      GARAGEM
+      PAINEL FIXO COM TUBOS MUXARABI 20X20MM COM ESPAÇAMENTO 20 SOMENTE LADO
+      EXTERNO
+      Acabamento: PINTURA CORTEN
+      Área Esquadria:4,00m²Área Vidro:-
+      Sem Vidros
+      Tipo:Linha:L:H:Qtd:
+      FIXOS - MUX
+      20X20
+      8002500BRISE2
+      Localização:
+      RIPASOS LATERAIS
+      PORTA PIVOTANTE MUXARABI RIPADO MUXARABI - TUBOS 20X20 MM REVESTIDO LADO
+      INTERNO E EXTERNO - ESPAÇAMENTO DE 20MM
+      FECHADURA POR CONTA DO CLIENTE
+      Acabamento: PINTURA CORTEN
+      Área Esquadria:3,50m²Área Vidro:-
+      Vidros: sem vidro
+      Tipo:Linha:L:H:Qtd:
+      PT - MUX -
+      20X20
+      14002500CONCEPT LINE1
+      Localização:
+      PORTÃO
+      Obra: 26-0771 - MANUEL ANDRÉ RODRIGUEZ CALA
+    `);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.contract).toMatchObject({
+      contract_number: "26-0771",
+      client_name: "Manuel André Rodriguez Cala",
+      contract_date: "2026-08-06",
+      deadline_value: 60,
+      deadline_unit: "dias_uteis",
+      work_name: "RESIDENCIAL",
+    });
+    expect(result.contract.work_address).toBe(
+      "RUA POMEROL, QD.13 LT.07, JARDINS FRANÇA, GOIÂNIA - GO",
+    );
+    expect(result.contract.commercial_data.cep_obra).toBe("74886-154");
+    expect(result.contract.authorized_contacts).toEqual([
+      { name: "Manuel André Rodriguez Cala", role: "Construtor", phone: "(62) 9 8240-1333" },
+    ]);
+
+    expect(result.pieces).toHaveLength(3);
+    expect(result.pieces[0]).toMatchObject({
+      code: "26-0771-BZ-MUX-20X20-01",
+      quantity: 1,
+      sale_width_mm: 5078,
+      sale_height_mm: 2500,
+      environment: "GARAGEM",
+      glass: "sem vidro",
+      color: "PINTURA CORTEN",
+      line: "CONCEPT LINE 50",
+      piece_type: "BRISE CORRER 3 FOLHAS - MUXARABI RIPADO 20X20MM - ESPAÇAMENTO DE 20MM",
+    });
+    expect(result.pieces[1]).toMatchObject({
+      code: "26-0771-FIXOS-MUX-20X20-02",
+      quantity: 2,
+      sale_width_mm: 800,
+      sale_height_mm: 2500,
+      environment: "RIPASOS LATERAIS",
+      line: "BRISE",
+    });
+    expect(result.pieces[2]).toMatchObject({
+      code: "26-0771-PT-MUX-20X20-03",
+      quantity: 1,
+      sale_width_mm: 1400,
+      sale_height_mm: 2500,
+      environment: "PORTÃO",
+      line: "CONCEPT LINE",
+    });
+  });
+
   it("emits warnings when minimum data is missing", () => {
     const result = parseTechnicalContractText("Documento sem estrutura conhecida");
     expect(result.warnings).toContain("Número do contrato não identificado.");

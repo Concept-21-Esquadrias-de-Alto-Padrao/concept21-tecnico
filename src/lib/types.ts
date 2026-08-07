@@ -139,6 +139,18 @@ export type AccessReviewRequest = {
   updated_at?: string;
 };
 
+export type SystemMaintenance = {
+  company_id: string;
+  enabled: boolean;
+  message: string;
+  activated_at: string | null;
+  activated_by: string | null;
+  deactivated_at: string | null;
+  deactivated_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+};
+
 export type PlatformNotification = {
   id: string;
   recipient_profile_id: string | null;

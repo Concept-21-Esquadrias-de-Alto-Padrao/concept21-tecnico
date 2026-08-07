@@ -7,7 +7,7 @@ import {
   hasSupabaseBrowserEnv,
 } from "@/lib/supabase/client";
 import { getPublicAppOrigin } from "@/lib/supabase/config";
-import type { AccessReviewRequest, Profile } from "@/lib/types";
+import type { AccessReviewRequest, Profile, SystemMaintenance } from "@/lib/types";
 
 type SupabaseUserWithConfirmedAt = User & {
   confirmed_at?: string | null;
@@ -23,6 +23,7 @@ export type CurrentUserAccess = {
     | null;
   roles: Array<{ id: string; name: string; is_master_role: boolean }>;
   permissions: Record<string, boolean>;
+  maintenance: SystemMaintenance | null;
 };
 
 function getSignupEmailRedirectTo() {
@@ -37,8 +38,13 @@ export function isAuthUserEmailConfirmed(user?: User | null) {
   return Boolean(confirmedAt);
 }
 
-export function isCurrentUserMaster(access: CurrentUserAccess) {
+export function isCurrentUserMaster(access?: CurrentUserAccess | null) {
+  if (!access) return false;
   return Boolean(access.profile?.is_master || access.roles.some((role) => role.is_master_role));
+}
+
+export function isMaintenanceBlockingAccess(access?: CurrentUserAccess | null) {
+  return Boolean(access?.maintenance?.enabled && !isCurrentUserMaster(access));
 }
 
 export async function signInWithEmail(email: string, password: string) {
@@ -53,6 +59,14 @@ export async function signInWithEmail(email: string, password: string) {
   if (!isAuthUserEmailConfirmed(data.user)) {
     await supabase.auth.signOut();
     throw new Error("Confirme seu e-mail antes de acessar a plataforma.");
+  }
+
+  const access = await getCurrentUserAccess();
+  if (isMaintenanceBlockingAccess(access)) {
+    await supabase.auth.signOut();
+    throw new Error(
+      "Sistema em manutencao. A plataforma esta temporariamente bloqueada para usuarios que nao sao administradores.",
+    );
   }
 
   return data;

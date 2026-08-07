@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/panel";
 import { SecurityAccessPanel } from "@/components/security-access-panel";
+import { SystemMaintenanceSettings } from "@/components/system-maintenance-settings";
 import { TechnicalSettingsPanel } from "@/components/technical-settings-panel";
 import {
   appNavigationPermissionKeys,
@@ -47,6 +48,8 @@ export default async function TechnicalSettingsPage() {
           </PanelBody>
         </Panel>
       )}
+
+      {access.isMaster && supabaseConfigured ? <SystemMaintenanceSettings /> : null}
 
       <Panel>
         <PanelHeader title="Cadastros e parâmetros" />
