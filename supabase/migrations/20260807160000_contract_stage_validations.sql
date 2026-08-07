@@ -188,15 +188,15 @@ begin
   where contract_id = target_contract_id;
 
   if technical_record.contract_id is null then
-    raise exception 'Contrato tecnico nao encontrado.';
+    raise exception 'Contrato técnico não encontrado.';
   end if;
 
   if not technical_record.commercial_folder_received then
-    raise exception 'Contrato sem pasta comercial entregue nao avanca para visita inicial.';
+    raise exception 'Contrato sem pasta comercial entregue não avança para visita inicial.';
   end if;
 
   if not public.technical_stage_validation_satisfied(target_contract_id, 'entrada_comercial') then
-    raise exception 'Entrada comercial aguarda ciencia de todos os participantes.';
+    raise exception 'Entrada comercial aguarda ciência de todos os participantes.';
   end if;
 
   if not exists (
@@ -205,15 +205,15 @@ begin
     where meeting.contract_id = target_contract_id
       and meeting.status = 'concluida'
   ) then
-    raise exception 'Contrato sem reuniao de fechamento nao avanca para visita inicial.';
+    raise exception 'Contrato sem reunião de fechamento não avança para visita inicial.';
   end if;
 
   if not public.technical_stage_validation_satisfied(target_contract_id, 'reuniao_ata') then
-    raise exception 'Reuniao e ata aguardam ciencia de todos os participantes.';
+    raise exception 'Reunião e ata aguardam ciência de todos os participantes.';
   end if;
 
   if not public.technical_stage_validation_satisfied(target_contract_id, 'acoes') then
-    raise exception 'Acoes da etapa inicial aguardam ciencia de todos os participantes.';
+    raise exception 'Ações da etapa inicial aguardam ciência de todos os participantes.';
   end if;
 
   if exists (
@@ -225,7 +225,7 @@ begin
       and action.status not in ('concluida', 'validada', 'cancelada')
       and action.deleted_at is null
   ) then
-    raise exception 'Acao bloqueante da etapa inicial impede a visita.';
+    raise exception 'Ação bloqueante da etapa inicial impede a visita.';
   end if;
 
   return true;
