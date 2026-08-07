@@ -22,9 +22,11 @@ import {
   deleteTechnicalRoleFormAction,
   rejectTechnicalAccessRequestFormAction,
   removeTechnicalUserRoleFormAction,
+  resetTechnicalUserPasswordAction,
   saveTechnicalRolePermissionsAction,
   setTechnicalProfileStatusFormAction,
   toggleTechnicalRoleStatusFormAction,
+  updateTechnicalProfileAction,
   updateTechnicalRoleAction,
 } from "@/app/actions";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
@@ -208,24 +210,160 @@ function AssignRoleForm({
   );
 }
 
+function EditUserForm({
+  onCancel,
+  user,
+}: {
+  onCancel: () => void;
+  user: TechnicalSecurityUser;
+}) {
+  return (
+    <div className="mt-3 rounded-md border border-border bg-muted/40 p-3">
+      <ActionForm action={updateTechnicalProfileAction} submitLabel="Salvar usuario">
+        <input type="hidden" name="profile_id" value={user.id} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Nome">
+            <input name="name" className={inputClass} defaultValue={user.name} required />
+          </Field>
+          <Field label="E-mail">
+            <input
+              name="email"
+              type="email"
+              className={inputClass}
+              defaultValue={user.email}
+              required
+            />
+          </Field>
+          <Field label="Cargo/funcao" className="sm:col-span-2">
+            <input name="title" className={inputClass} defaultValue={user.title ?? ""} />
+          </Field>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex min-h-10 items-center justify-center rounded-md border border-border px-3 text-sm font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent"
+        >
+          Cancelar edicao
+        </button>
+      </ActionForm>
+    </div>
+  );
+}
+
+function PasswordResetModal({
+  onClose,
+  user,
+}: {
+  onClose: () => void;
+  user: TechnicalSecurityUser;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4">
+      <div className="w-full max-w-lg rounded-md border border-border bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border p-4">
+          <div>
+            <p className="text-lg font-semibold text-charcoal">Redefinir senha</p>
+            <p className="mt-1 break-words text-sm text-muted-foreground">
+              {user.name} - {user.email}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid size-9 place-items-center rounded-md border border-border text-muted-foreground hover:border-orange-200 hover:text-accent"
+            title="Fechar"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="p-4">
+          <ActionForm action={resetTechnicalUserPasswordAction} submitLabel="Redefinir senha">
+            <input type="hidden" name="profile_id" value={user.id} />
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Defina uma senha temporaria e informe ao usuario por um canal seguro. A senha nao
+              sera exibida nem armazenada no sistema.
+            </div>
+            <Field label="Nova senha">
+              <input
+                name="password"
+                type="password"
+                className={inputClass}
+                minLength={6}
+                placeholder="Minimo de 6 caracteres"
+                autoComplete="new-password"
+                required
+              />
+            </Field>
+            <Field label="Confirmar nova senha">
+              <input
+                name="password_confirmation"
+                type="password"
+                className={inputClass}
+                minLength={6}
+                placeholder="Repita a nova senha"
+                autoComplete="new-password"
+                required
+              />
+            </Field>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex min-h-10 items-center justify-center rounded-md border border-border px-3 text-sm font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent"
+            >
+              Cancelar
+            </button>
+          </ActionForm>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UserActions({
   currentProfileId,
+  editing,
+  onEdit,
+  onResetPassword,
   pending,
   user,
 }: {
   currentProfileId: string;
+  editing: boolean;
+  onEdit: () => void;
+  onResetPassword: () => void;
   pending: boolean;
   user: TechnicalSecurityUser;
 }) {
   return (
-    <div className="flex gap-2">
-      <form action={setTechnicalProfileStatusFormAction} className="flex-1">
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={onEdit}
+        className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-md border border-border px-3 text-xs font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent lg:size-10 lg:flex-none lg:px-0"
+        title={editing ? "Fechar edicao do usuario" : "Editar usuario"}
+      >
+        {editing ? <X className="size-4" /> : <Pencil className="size-4" />}
+        <span className="sm:hidden">{editing ? "Fechar" : "Editar"}</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={onResetPassword}
+        disabled={!user.user_id}
+        className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-md border border-border px-3 text-xs font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent disabled:opacity-50 lg:size-10 lg:flex-none lg:px-0"
+        title={user.user_id ? "Redefinir senha" : "Cadastro sem usuario Auth vinculado"}
+      >
+        <KeyRound className="size-4" />
+        <span className="sm:hidden">Senha</span>
+      </button>
+
+      <form action={setTechnicalProfileStatusFormAction} className="flex-1 lg:flex-none">
         <input type="hidden" name="profile_id" value={user.id} />
         <input type="hidden" name="status" value={user.status === "active" ? "inactive" : "active"} />
         <button
           type="submit"
           disabled={user.id === currentProfileId && user.status === "active"}
-          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-border text-xs font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent disabled:opacity-50"
+          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-border px-3 text-xs font-semibold text-muted-foreground hover:border-orange-200 hover:text-accent disabled:opacity-50 lg:size-10 lg:px-0"
           title={user.status === "active" ? "Inativar usuário" : "Reativar usuário"}
         >
           {user.status === "active" ? <Power className="size-4" /> : <RotateCcw className="size-4" />}
@@ -234,11 +372,11 @@ function UserActions({
       </form>
 
       {user.id !== currentProfileId ? (
-        <form action={rejectTechnicalAccessRequestFormAction} className="flex-1">
+        <form action={rejectTechnicalAccessRequestFormAction} className="flex-1 lg:flex-none">
           <input type="hidden" name="profile_id" value={user.id} />
           <button
             type="submit"
-            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-50"
+            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50 lg:size-10 lg:px-0"
             title={pending ? "Recusar e excluir cadastro" : "Excluir cadastro"}
           >
             <UserX className="size-4" />
@@ -261,6 +399,13 @@ function UsersPanel({
   roles: Role[];
   users: TechnicalSecurityUser[];
 }) {
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [passwordResetUser, setPasswordResetUser] = useState<TechnicalSecurityUser | null>(null);
+
+  function toggleProfileEdit(profileId: string) {
+    setEditingProfileId((current) => (current === profileId ? null : profileId));
+  }
+
   return (
     <Panel>
       <PanelHeader
@@ -268,6 +413,13 @@ function UsersPanel({
         description="Cadastros confirmados sem nível ficam pendentes até o Administrador vincular um nível de acesso."
       />
       <PanelBody className="space-y-4">
+        {passwordResetUser ? (
+          <PasswordResetModal
+            user={passwordResetUser}
+            onClose={() => setPasswordResetUser(null)}
+          />
+        ) : null}
+
         {pendingCount ? (
           <div className="rounded-md border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900">
             <div className="flex gap-3">
@@ -293,6 +445,7 @@ function UsersPanel({
                 const pending = isPendingAccess(user);
                 const userRoles = activeUserRoles(user);
                 const requestedAt = formatRequestedAt(user.access_review_requests[0]?.requested_at);
+                const editing = editingProfileId === user.id;
 
                 return (
                   <article key={user.id} className="rounded-md border border-border bg-white p-3 text-sm">
@@ -324,6 +477,13 @@ function UsersPanel({
                       </div>
                     </div>
 
+                    {editing ? (
+                      <EditUserForm
+                        user={user}
+                        onCancel={() => setEditingProfileId(null)}
+                      />
+                    ) : null}
+
                     <div className="mt-3">
                       <StatusPill pending={pending} status={user.status} />
                     </div>
@@ -338,7 +498,14 @@ function UsersPanel({
                     </div>
 
                     <div className="mt-3">
-                      <UserActions currentProfileId={currentProfileId} pending={pending} user={user} />
+                      <UserActions
+                        currentProfileId={currentProfileId}
+                        editing={editing}
+                        onEdit={() => toggleProfileEdit(user.id)}
+                        onResetPassword={() => setPasswordResetUser(user)}
+                        pending={pending}
+                        user={user}
+                      />
                     </div>
                   </article>
                 );
@@ -346,7 +513,7 @@ function UsersPanel({
             </div>
 
             <div className="hidden overflow-x-auto rounded-md border border-border lg:block">
-              <table className="w-full min-w-[940px] border-separate border-spacing-0 bg-white text-left text-sm">
+              <table className="w-full min-w-[1080px] border-separate border-spacing-0 bg-white text-left text-sm">
                 <thead className="text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="border-b border-border px-3 py-2 font-semibold">Usuário</th>
@@ -361,6 +528,7 @@ function UsersPanel({
                     const pending = isPendingAccess(user);
                     const userRoles = activeUserRoles(user);
                     const requestedAt = formatRequestedAt(user.access_review_requests[0]?.requested_at);
+                    const editing = editingProfileId === user.id;
 
                     return (
                       <tr key={user.id} className="align-top">
@@ -397,6 +565,12 @@ function UsersPanel({
                               ) : null}
                             </div>
                           </div>
+                          {editing ? (
+                            <EditUserForm
+                              user={user}
+                              onCancel={() => setEditingProfileId(null)}
+                            />
+                          ) : null}
                         </td>
 
                         <td className="border-b border-border px-3 py-3">
@@ -412,7 +586,14 @@ function UsersPanel({
                         </td>
 
                         <td className="border-b border-border px-3 py-3">
-                          <UserActions currentProfileId={currentProfileId} pending={pending} user={user} />
+                          <UserActions
+                            currentProfileId={currentProfileId}
+                            editing={editing}
+                            onEdit={() => toggleProfileEdit(user.id)}
+                            onResetPassword={() => setPasswordResetUser(user)}
+                            pending={pending}
+                            user={user}
+                          />
                         </td>
                       </tr>
                     );

@@ -1382,7 +1382,14 @@ async function findManagedProfile(context: ActionContext, profileId: string) {
   if (error) throw error;
   if (!data) throw new Error("Usuário não encontrado.");
 
-  return data as { id: string; user_id: string | null; email: string; name: string; status: string };
+  return data as {
+    id: string;
+    user_id: string | null;
+    email: string;
+    name: string;
+    title: string | null;
+    status: string;
+  };
 }
 
 async function findManagedRole(context: ActionContext, roleId: string) {
@@ -1574,6 +1581,148 @@ export async function saveTechnicalRolePermissionsAction(_: ActionState, formDat
     return ok("Matriz de permissões salva.");
   } catch (error) {
     return fail(error, "Não foi possível salvar a matriz de permissões.");
+  }
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+export async function updateTechnicalProfileAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const profileId = formText(formData, "profile_id");
+    const name = formText(formData, "name");
+    const email = formText(formData, "email").toLowerCase();
+    const title = nullableFormText(formData, "title");
+
+    if (!profileId || !name || !email) {
+      throw new Error("Informe o usuario, nome e e-mail.");
+    }
+
+    if (!isValidEmail(email)) {
+      throw new Error("Informe um e-mail valido.");
+    }
+
+    const profile = await findManagedProfile(context, profileId);
+    const previousEmail = profile.email.toLowerCase();
+    const emailChanged = email !== previousEmail;
+
+    if (emailChanged) {
+      const { data: existingProfile, error: existingProfileError } = await context.admin
+        .from("profiles")
+        .select("id")
+        .eq("company_id", context.companyId)
+        .eq("email", email)
+        .neq("id", profile.id)
+        .limit(1);
+
+      if (existingProfileError) throw existingProfileError;
+      if ((existingProfile ?? []).length) {
+        throw new Error("Ja existe outro usuario cadastrado com este e-mail.");
+      }
+    }
+
+    if (emailChanged && profile.user_id) {
+      const { error: authError } = await context.admin.auth.admin.updateUserById(profile.user_id, {
+        email,
+        email_confirm: true,
+      });
+
+      if (authError) throw authError;
+    }
+
+    const { error } = await context.admin
+      .from("profiles")
+      .update({ name, email, title })
+      .eq("company_id", context.companyId)
+      .eq("id", profile.id);
+
+    if (error) throw error;
+
+    const { error: requestError } = await context.admin
+      .from("access_review_requests")
+      .update({ name, email })
+      .eq("company_id", context.companyId)
+      .eq("profile_id", profile.id);
+
+    if (requestError) throw requestError;
+
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "profiles",
+      entity_id: profile.id,
+      action: "profile_update",
+      user_id: context.authUserId,
+      before_data: {
+        name: profile.name,
+        email: profile.email,
+        title: profile.title,
+      },
+      after_data: {
+        name,
+        email,
+        title,
+        auth_email_updated: emailChanged && Boolean(profile.user_id),
+      },
+      notes: `Cadastro de usuario atualizado pelo Administrador para ${name}.`,
+    });
+
+    if (auditError) throw auditError;
+
+    revalidateTechnical();
+    return ok("Usuario atualizado.");
+  } catch (error) {
+    return fail(error, "Nao foi possivel atualizar o usuario.");
+  }
+}
+
+export async function resetTechnicalUserPasswordAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const profileId = formText(formData, "profile_id");
+    const password = formText(formData, "password");
+    const passwordConfirmation = formText(formData, "password_confirmation");
+
+    if (!profileId || password.length < 6) {
+      throw new Error("Informe o usuario e uma senha com pelo menos 6 caracteres.");
+    }
+
+    if (password !== passwordConfirmation) {
+      throw new Error("A confirmacao de senha nao confere.");
+    }
+
+    const profile = await findManagedProfile(context, profileId);
+    if (!profile.user_id) {
+      throw new Error("Este cadastro nao possui usuario Auth vinculado.");
+    }
+
+    const { error } = await context.admin.auth.admin.updateUserById(profile.user_id, {
+      password,
+    });
+
+    if (error) throw error;
+
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "profiles",
+      entity_id: profile.id,
+      action: "password_reset",
+      user_id: context.authUserId,
+      after_data: {
+        profile_id: profile.id,
+        auth_user_id: profile.user_id,
+        email: profile.email,
+      },
+      notes: `Senha redefinida pelo Administrador para ${profile.name}.`,
+    });
+
+    if (auditError) throw auditError;
+
+    revalidateTechnical();
+    return ok("Senha redefinida. O usuario ja pode entrar com a nova senha.");
+  } catch (error) {
+    return fail(error, "Nao foi possivel redefinir a senha.");
   }
 }
 
