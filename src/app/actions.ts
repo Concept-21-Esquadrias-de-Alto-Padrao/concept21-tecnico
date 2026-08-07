@@ -297,7 +297,7 @@ async function assertStageCanBeSigned(
       .eq("company_id", context.companyId)
       .eq("contract_id", contractId)
       .is("deleted_at", null)
-      .not("status", "in", "(concluida,validada,cancelada)")
+      .not("status", "in", "(concluida,cancelada)")
       .limit(1);
     if (error) throw error;
     if ((data ?? []).length) throw new Error("Conclua, valide ou cancele as ações abertas antes da ciência.");
@@ -1043,28 +1043,51 @@ export async function transitionTechnicalActionAction(first: ActionState | FormD
     const parsed = actionTransitionSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-    if (parsed.data.next_status === "aberta") {
+    if (["aberta", "validada"].includes(parsed.data.next_status)) {
       const canReopen = await hasContextPermission(context, "technical.actions.reopen");
-      if (!canReopen) throw new Error("Você não possui permissão para reabrir ações.");
+      if (!canReopen) {
+        throw new Error(
+          parsed.data.next_status === "validada"
+            ? "Somente Gestor Técnico ou Administrador pode validar ações."
+            : "Você não possui permissão para reabrir ações.",
+        );
+      }
     }
 
     const now = new Date().toISOString();
     const { data: current, error: currentError } = await context.admin
       .from("technical_actions")
-      .select("contract_id")
+      .select("contract_id, status, validated_at")
       .eq("company_id", context.companyId)
       .eq("id", parsed.data.id)
       .maybeSingle();
 
     if (currentError) throw currentError;
     if (!current) throw new Error("Ação não encontrada.");
+    if (
+      ["concluida", "cancelada"].includes((current as { status: string }).status) &&
+      parsed.data.next_status !== "aberta"
+    ) {
+      throw new Error("Ação já encerrada. Reabra a ação antes de alterar o status.");
+    }
+    if (
+      parsed.data.next_status === "concluida" &&
+      (current as { status: string }).status !== "validada"
+    ) {
+      throw new Error("Valide a ação antes de concluir.");
+    }
 
     const { error } = await context.admin
       .from("technical_actions")
       .update({
         status: parsed.data.next_status,
         completed_at: parsed.data.next_status === "concluida" ? now : null,
-        validated_at: parsed.data.next_status === "validada" ? now : null,
+        validated_at:
+          parsed.data.next_status === "validada"
+            ? now
+            : parsed.data.next_status === "concluida"
+              ? (current as { validated_at: string | null }).validated_at
+              : null,
       })
       .eq("company_id", context.companyId)
       .eq("id", parsed.data.id);

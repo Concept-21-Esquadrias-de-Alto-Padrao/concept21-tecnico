@@ -35,12 +35,12 @@ import {
   saveStageValidationAction,
   signStageValidationAction,
   splitPieceAction,
-  transitionTechnicalActionFormAction,
   updatePieceCemAction,
   updatePieceMeasurementAction,
   updatePieceRegistrationAction,
   approveProdBatchFormAction,
 } from "@/app/actions";
+import { ActionTransitionButtons } from "@/components/action-transition-buttons";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/panel";
@@ -72,6 +72,10 @@ type ContractDetailPageProps = {
 
 function profileName(profiles: Array<{ id: string; name: string }>, id?: string | null) {
   return profiles.find((profile) => profile.id === id)?.name ?? "A definir";
+}
+
+function profileTitle(profile: Pick<Profile, "title">) {
+  return profile.title?.trim() || "Sem cargo";
 }
 
 function hiddenContract(contractId: string) {
@@ -184,18 +188,26 @@ function StageValidationPanel({
             Necessária validação
           </label>
           <Field label="Participantes da etapa">
-            <select
-              name="participant_profile_ids"
-              multiple
-              defaultValue={participantIds}
-              className="min-h-36 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-charcoal outline-none focus:border-accent"
-            >
+            <div className="grid gap-2 md:grid-cols-2">
               {activeProfiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name} - {profile.email}
-                </option>
+                <label
+                  key={profile.id}
+                  className="flex cursor-pointer items-start gap-3 rounded-md border border-border bg-white px-3 py-3 text-sm transition hover:border-accent/60 hover:bg-muted/40"
+                >
+                  <input
+                    name="participant_profile_ids"
+                    type="checkbox"
+                    value={profile.id}
+                    defaultChecked={participantIds.includes(profile.id)}
+                    className="mt-1 size-4 accent-orange-600"
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-charcoal">{profile.name}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{profileTitle(profile)}</span>
+                  </span>
+                </label>
               ))}
-            </select>
+            </div>
           </Field>
         </ActionForm>
       ) : null}
@@ -427,12 +439,13 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
     .filter((visit) => visit.status === "agendada")
     .sort((left, right) => left.scheduled_date.localeCompare(right.scheduled_date))[0];
   const nextAction = actions
-    .filter((action) => !["concluida", "validada", "cancelada"].includes(action.status))
+    .filter((action) => !["concluida", "cancelada"].includes(action.status))
     .sort((left, right) => String(left.due_date ?? "").localeCompare(String(right.due_date ?? "")))[0];
 
   const canReceiveFolder = access.isMaster || access.permissions["technical.folder.receive"];
   const canManageMeetings = access.isMaster || access.permissions["technical.meetings.manage"];
   const canManageActions = access.isMaster || access.permissions["technical.actions.manage"];
+  const canValidateActions = access.isMaster || access.permissions["technical.actions.reopen"];
   const canManageVisits = access.isMaster || access.permissions["technical.visits.manage"];
   const canCancelVisits = access.isMaster || access.permissions["technical.visits.cancel"];
   const canMeasure = access.isMaster || access.permissions["technical.measurements.manage"];
@@ -449,7 +462,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const hasCommercialFolder = Boolean(technical?.commercial_folder_received);
   const completedMeetings = snapshot.meetings.filter((meeting) => meeting.status === "concluida");
   const hasCompletedMeeting = completedMeetings.length > 0;
-  const activeActions = actions.filter((action) => !["concluida", "validada", "cancelada"].includes(action.status));
+  const activeActions = actions.filter((action) => !["concluida", "cancelada"].includes(action.status));
   const performedVisits = visits.filter((visit) =>
     ["realizada", "aguardando_relatorio", "relatorio_emitido"].includes(visit.status),
   );
@@ -733,7 +746,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             validation={acoesValidation}
             canManage={canReopenStages}
             stageComplete={activeActions.length === 0}
-            completeMessage="Conclua, valide ou cancele as ações abertas para liberar a assinatura dos participantes."
+            completeMessage="Valide e conclua as ações abertas para liberar a assinatura dos participantes."
             className="xl:col-span-2"
           />
           <div className="space-y-3">
@@ -751,19 +764,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     <StatusBadge status={action.status} type="action" />
                   </div>
                 </div>
-                {canManageActions ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {["em_andamento", "concluida", "validada"].map((nextStatus) => (
-                      <form key={nextStatus} action={transitionTechnicalActionFormAction}>
-                        <input type="hidden" name="id" value={action.id} />
-                        <input type="hidden" name="next_status" value={nextStatus} />
-                        <button className="rounded-md border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-muted">
-                          {nextStatus.replaceAll("_", " ")}
-                        </button>
-                      </form>
-                    ))}
-                  </div>
-                ) : null}
+                <ActionTransitionButtons action={action} canManage={canManageActions} canValidate={canValidateActions} />
               </article>
             ))}
           </div>

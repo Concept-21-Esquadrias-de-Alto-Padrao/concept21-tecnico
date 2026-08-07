@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createTechnicalActionAction, transitionTechnicalActionFormAction } from "@/app/actions";
+import { createTechnicalActionAction } from "@/app/actions";
+import { ActionTransitionButtons } from "@/components/action-transition-buttons";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/panel";
@@ -22,8 +23,9 @@ export default async function TechnicalActionsPage() {
   if (!canAccessModule(access, MODULE_ACCESS.actions)) redirect(firstAllowedAppRoute(access) ?? "/login");
   const snapshot = await getTechnicalOperationalData();
   const canManage = access.isMaster || access.permissions["technical.actions.manage"];
+  const canValidate = access.isMaster || access.permissions["technical.actions.reopen"];
   const openActions = snapshot.actions
-    .filter((action) => !action.deleted_at && !["concluida", "validada", "cancelada"].includes(action.status))
+    .filter((action) => !action.deleted_at && !["concluida", "cancelada"].includes(action.status))
     .sort(
       (left, right) =>
         Number(right.blocking) - Number(left.blocking) ||
@@ -63,17 +65,7 @@ export default async function TechnicalActionsPage() {
                       <StatusBadge status={action.status} type="action" />
                     </div>
                   </div>
-                  {canManage ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {["em_andamento", "concluida", "validada"].map((status) => (
-                        <form key={status} action={transitionTechnicalActionFormAction}>
-                          <input type="hidden" name="id" value={action.id} />
-                          <input type="hidden" name="next_status" value={status} />
-                          <button className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">{status.replaceAll("_", " ")}</button>
-                        </form>
-                      ))}
-                    </div>
-                  ) : null}
+                  <ActionTransitionButtons action={action} canManage={canManage} canValidate={canValidate} />
                 </article>
               );
             })}

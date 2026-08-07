@@ -80,7 +80,7 @@ export function TechnicalContractsTable({
           const risk =
             overview.technical?.risk_status === "atrasado" ||
             openCorrections.some((correction) => correction.critical) ||
-            overview.actions.some((action) => isOverdue(action.due_date) && !["concluida", "validada", "cancelada"].includes(action.status));
+            overview.actions.some((action) => isOverdue(action.due_date) && !["concluida", "cancelada"].includes(action.status));
 
           return (
             <article key={overview.contract.id} className="rounded-md border border-border bg-white p-3 text-sm">
@@ -169,7 +169,7 @@ export function TechnicalContractsTable({
               const risk =
                 overview.technical?.risk_status === "atrasado" ||
                 openCorrections.some((correction) => correction.critical) ||
-                overview.actions.some((action) => isOverdue(action.due_date) && !["concluida", "validada", "cancelada"].includes(action.status));
+                overview.actions.some((action) => isOverdue(action.due_date) && !["concluida", "cancelada"].includes(action.status));
 
               return (
                 <tr key={overview.contract.id} className="align-top">

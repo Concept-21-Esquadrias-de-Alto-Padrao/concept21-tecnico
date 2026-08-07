@@ -82,12 +82,22 @@ describe("technical workflow gates", () => {
     ).toMatchObject({ ok: false });
   });
 
-  it("allows first visit when prerequisites are complete", () => {
+  it("keeps blocking actions active until they are concluded", () => {
     expect(
       canAdvanceToVisit({
         technical: { commercial_folder_received: true },
         meetings: [{ status: "concluida" }],
         actions: [{ blocking: true, blocking_stage: "entrada_inicial", status: "validada" }],
+      }),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("allows first visit when prerequisites are complete", () => {
+    expect(
+      canAdvanceToVisit({
+        technical: { commercial_folder_received: true },
+        meetings: [{ status: "concluida" }],
+        actions: [{ blocking: true, blocking_stage: "entrada_inicial", status: "concluida" }],
       }),
     ).toMatchObject({ ok: true });
   });

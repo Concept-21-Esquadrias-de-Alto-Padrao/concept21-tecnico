@@ -81,7 +81,7 @@ export function canScheduleInitialVisit({
     (action) =>
       action.blocking &&
       (!action.blocking_stage || action.blocking_stage === "entrada_inicial") &&
-      !["concluida", "validada", "cancelada"].includes(action.status),
+      !["concluida", "cancelada"].includes(action.status),
   );
 
   if (hasBlockingInitialAction) {

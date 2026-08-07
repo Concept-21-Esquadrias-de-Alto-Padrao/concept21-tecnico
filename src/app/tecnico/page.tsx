@@ -51,7 +51,7 @@ export default async function TechnicalDashboardPage() {
         !snapshot.meetings.some((meeting) => meeting.contract_id === item.contract.id && meeting.status === "concluida"),
     ).length,
     openActions: snapshot.actions.filter(
-      (action) => !action.deleted_at && !["concluida", "validada", "cancelada"].includes(action.status),
+      (action) => !action.deleted_at && !["concluida", "cancelada"].includes(action.status),
     ).length,
     visitsToday: snapshot.visits.filter((visit) => visit.scheduled_date === today && visit.status === "agendada").length,
     upcomingVisits: snapshot.visits.filter(
@@ -73,7 +73,7 @@ export default async function TechnicalDashboardPage() {
     .map((overview) => {
       const progress = calculateReleaseProgress(overview.pieces);
       const overdueAction = overview.actions.find(
-        (action) => isOverdue(action.due_date) && !["concluida", "validada", "cancelada"].includes(action.status),
+        (action) => isOverdue(action.due_date) && !["concluida", "cancelada"].includes(action.status),
       );
       const criticalCorrection = overview.corrections.find(
         (correction) => correction.critical && !["encerrada", "cancelada"].includes(correction.status),

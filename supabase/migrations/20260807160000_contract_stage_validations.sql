@@ -222,7 +222,7 @@ begin
     where action.contract_id = target_contract_id
       and action.blocking
       and coalesce(action.blocking_stage, 'entrada_inicial') = 'entrada_inicial'
-      and action.status not in ('concluida', 'validada', 'cancelada')
+      and action.status not in ('concluida', 'cancelada')
       and action.deleted_at is null
   ) then
     raise exception 'Ação bloqueante da etapa inicial impede a visita.';
