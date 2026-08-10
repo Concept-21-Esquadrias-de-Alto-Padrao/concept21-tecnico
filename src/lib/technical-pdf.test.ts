@@ -507,6 +507,70 @@ describe("parseTechnicalContractText", () => {
     });
   });
 
+  it("extracts drawing-only proposals and profile tube rows", () => {
+    const result = parseTechnicalContractText(`
+      Proposta Nº
+      26-0710
+      BASIC FULL JARDIM GOIAS LTDA
+      10.08.2026 10:04 am
+      Cliente: BASIC FULL JARDIM GOIAS LTDA CNPJ: 66.884.250/0001-40
+      Contato: ARQ. SWAMY Telefone: 62 9 9288-7731
+      End. Obra: Avenida C, Nº: 582 - Jardim Goias E-mail: comercial@conceptal.com.br
+      Cidade: Goiania/GO CEP: 74805-070
+      Vendedor: RENATA CAPUTO Telefone:
+      Emitido por THAIS MARTINS em 10/08/2026, às 10:04
+
+      QUADRO FIXO DE VIDRO - COM DIVISAO - 4 MODULOS NA LARGURA
+      Acabamento: PINTURA CORTEN
+      Vidros: TEMPERADO DE 6 MM incolor
+      Area Esquadria: 4,90m2 Area Vidro: 5 m2
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FIX P1 1 4900 1000 QUADRO FIXO RECEPCAO
+
+      PERFIS DIVERSOS AVULSOS "TUBOS"
+      TUBO 100X50
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 0,00m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      TUB_01_A 1 1 2500 CONCEPT LINE WC FEMININO
+    `);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.contract).toMatchObject({
+      contract_number: "26-0710",
+      client_name: "BASIC FULL JARDIM GOIAS LTDA",
+      contract_date: "2026-08-10",
+      work_address: "Avenida C, Nº: 582 - Jardim Goias, Goiania/GO",
+    });
+    expect(result.contract.commercial_data).toMatchObject({
+      origem_importacao: "pdf_desenhos",
+      vendedor: "RENATA CAPUTO",
+      emitido_por: "THAIS MARTINS",
+      cep_obra: "74805-070",
+      cidade_obra: "Goiania/GO",
+    });
+    expect(result.pieces).toHaveLength(2);
+    expect(result.pieces[0]).toMatchObject({
+      code: "FIX P1",
+      sale_width_mm: 4900,
+      sale_height_mm: 1000,
+      line: "QUADRO FIXO",
+      environment: "RECEPCAO",
+    });
+    expect(result.pieces[1]).toMatchObject({
+      code: "TUB_01_A",
+      piece_type: 'PERFIS DIVERSOS AVULSOS "TUBOS" TUBO 100X50',
+      quantity: 1,
+      sale_width_mm: 1,
+      sale_height_mm: 2500,
+      line: "CONCEPT LINE",
+      environment: "WC FEMININO",
+      glass: "sem vidro",
+      color: "PINTURA CORTEN",
+    });
+  });
+
   it("emits warnings when minimum data is missing", () => {
     const result = parseTechnicalContractText("Documento sem estrutura conhecida");
     expect(result.warnings).toContain("Número do contrato não identificado.");
