@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, hasSupabaseEnv } from "@/lib/supabase/server";
 import type { PermissionLookup } from "@/lib/module-access";
+import { toUserFriendlyErrorMessage } from "@/lib/errors";
 import { getSystemMaintenanceState } from "@/lib/system-maintenance-server";
 import type { Profile, Role, UserRole } from "@/lib/types";
 
@@ -27,8 +28,7 @@ export function getHttpStatus(error: unknown) {
 }
 
 export function getErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
+  return toUserFriendlyErrorMessage(error, fallback);
 }
 
 export async function hasActiveMasterRole(

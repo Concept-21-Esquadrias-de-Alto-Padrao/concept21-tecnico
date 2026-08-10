@@ -50,6 +50,7 @@ import {
   canConfirmDepartmentDelivery,
   canReleasePiece,
 } from "@/lib/technical-rules";
+import { ensureUniqueTechnicalPieceCodes } from "@/lib/technical-piece-codes";
 import type { ActionState } from "@/components/action-form";
 import type { ParsedTechnicalContract, ParsedTechnicalPiece } from "@/lib/technical-pdf";
 import type {
@@ -501,9 +502,11 @@ async function createTechnicalContract({
 
   if (technicalError) throw technicalError;
 
-  if (pieces.length) {
+  const safePieces = ensureUniqueTechnicalPieceCodes(pieces).pieces;
+
+  if (safePieces.length) {
     const { error: piecesError } = await context.admin.from("technical_contract_pieces").insert(
-      pieces.map((piece, index) => ({
+      safePieces.map((piece, index) => ({
         company_id: context.companyId,
         contract_id: contractId,
         code: piece.code,
@@ -531,7 +534,7 @@ async function createTechnicalContract({
     entity_id: contractId,
     action: source === "pdf" ? "confirm_pdf_import" : "manual_create",
     user_id: context.authUserId,
-    after_data: { contractNumber, pieces: pieces.length },
+    after_data: { contractNumber, pieces: safePieces.length },
     notes: source === "pdf" ? "Contrato gravado após conferência humana." : "Contrato cadastrado manualmente.",
   });
 
@@ -585,6 +588,8 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
     const contract = parseJsonPayload<ParsedTechnicalContract>(parsed.data.contract_json, "Contrato");
     const pieces = parseJsonPayload<ParsedTechnicalPiece[]>(parsed.data.pieces_json, "Peças");
 
+    const preparedPieces = ensureUniqueTechnicalPieceCodes(pieces);
+
     if (!contract.contract_number) throw new Error("Informe o número do contrato antes de gravar.");
     if (!contract.client_name) throw new Error("Informe o cliente antes de gravar.");
 
@@ -600,11 +605,16 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
       description: contract.description,
       authorizedContacts: contract.authorized_contacts,
       commercialData: contract.commercial_data,
-      pieces,
+      pieces: preparedPieces.pieces,
       source: "pdf",
     });
 
     revalidateTechnical(contractId);
+    if (preparedPieces.adjustedCount > 0) {
+      return ok(
+        `Importação confirmada. ${preparedPieces.adjustedCount} código(s) repetido(s) de peça foram ajustados automaticamente.`,
+      );
+    }
     return ok("Importação confirmada e gravada.");
   } catch (error) {
     return fail(error);

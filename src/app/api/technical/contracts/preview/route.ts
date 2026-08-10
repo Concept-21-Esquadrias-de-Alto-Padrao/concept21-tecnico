@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { parseTechnicalContractPdf } from "@/lib/technical-pdf";
-import { getErrorMessage, getHttpStatus, HttpError, requirePermissionAccess } from "@/lib/server-access";
+import { toUserFriendlyErrorMessage } from "@/lib/errors";
+import { findDuplicateTechnicalPieceCodes } from "@/lib/technical-piece-codes";
+import { getHttpStatus, HttpError, requirePermissionAccess } from "@/lib/server-access";
 import { hasSupabaseEnv } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 function jsonError(error: unknown, fallback: string) {
   return NextResponse.json(
-    { error: getErrorMessage(error, fallback) },
+    { error: toUserFriendlyErrorMessage(error, fallback) },
     { status: getHttpStatus(error) },
   );
 }
@@ -50,22 +52,14 @@ export async function POST(request: Request) {
       duplicateContract = Boolean((contractData ?? []).length);
     }
 
-    if (context && parsed.pieces.length) {
-      const pieceCodes = parsed.pieces.map((piece) => piece.code);
-      const { data: piecesData, error: piecesError } = await context.admin
-        .from("technical_contract_pieces")
-        .select("code")
-        .eq("company_id", context.profile.company_id)
-        .in("code", pieceCodes);
-
-      if (piecesError && piecesError.code !== "42P01") throw new HttpError(500, piecesError.message);
-      duplicatePieceCodes = ((piecesData ?? []) as Array<{ code: string }>).map((piece) => piece.code);
-    }
+    duplicatePieceCodes = findDuplicateTechnicalPieceCodes(parsed.pieces);
 
     const warnings = [...parsed.warnings];
     if (duplicateContract) warnings.push("Contrato duplicado encontrado. A gravação será bloqueada até revisão.");
     if (duplicatePieceCodes.length) {
-      warnings.push(`${duplicatePieceCodes.length} peça(s) com código já existente no módulo técnico.`);
+      warnings.push(
+        `${duplicatePieceCodes.length} código(s) de peça aparecem repetidos neste PDF. Ao gravar, o sistema acrescentará sufixos para manter os códigos únicos.`,
+      );
     }
 
     return NextResponse.json({

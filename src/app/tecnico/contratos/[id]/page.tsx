@@ -43,7 +43,7 @@ import {
 import { ActionTransitionButtons } from "@/components/action-transition-buttons";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
-import { Panel, PanelBody, PanelHeader } from "@/components/panel";
+import { Panel, PanelBody } from "@/components/panel";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { StatCard } from "@/components/stat-card";
 import { VisitReportPdfButton } from "@/components/visit-report-pdf-button";
@@ -735,9 +735,18 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         </FlowStep>
       </div>
 
-      <Panel id="acoes">
-        <PanelHeader title="Ações" description="Ações da reunião e pendências de acompanhamento." />
-        <PanelBody className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
+      <FlowStep
+        id="acoes"
+        title="Ações"
+        description="Ações da reunião e pendências de acompanhamento."
+        status={stageStatusWithValidation(
+          activeActions.length ? `${activeActions.length} aberta(s)` : "Concluída",
+          acoesValidation,
+          activeActions.length === 0,
+        )}
+        locked={activeActions.length === 0}
+      >
+        <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
           <StageValidationPanel
             contractId={id}
             stage="acoes"
@@ -807,12 +816,25 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               </label>
             </ActionForm>
           ) : null}
-        </PanelBody>
-      </Panel>
+        </div>
+      </FlowStep>
 
-      <Panel id="visitas">
-        <PanelHeader title="Visitas" description="Agenda, realização, relatório e vínculo com peças." />
-        <PanelBody className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
+      <FlowStep
+        id="visitas"
+        title="Visitas"
+        description="Agenda, realização, relatório e vínculo com peças."
+        status={stageStatusWithValidation(
+          performedVisits.length
+            ? `${performedVisits.length} realizada(s)`
+            : visits.length
+              ? `${visits.length} agendada(s)`
+              : "Sem visita",
+          visitasValidation,
+          performedVisits.length > 0,
+        )}
+        locked={visitasValidation.complete || performedVisits.length > 0}
+      >
+        <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
           <StageValidationPanel
             contractId={id}
             stage="visitas"
@@ -918,8 +940,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               </Field>
             </ActionForm>
           ) : null}
-        </PanelBody>
-      </Panel>
+        </div>
+      </FlowStep>
 
       <FlowStep
         id="pecas"
@@ -1096,9 +1118,17 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         </div>
       </FlowStep>
 
-      <Panel id="correcoes">
-        <PanelHeader title="Correções" />
-        <PanelBody className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
+      <FlowStep
+        id="correcoes"
+        title="Correções"
+        status={stageStatusWithValidation(
+          activeCorrections.length ? `${activeCorrections.length} aberta(s)` : "Concluída",
+          correcoesValidation,
+          activeCorrections.length === 0,
+        )}
+        locked={activeCorrections.length === 0}
+      >
+        <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
           <StageValidationPanel
             contractId={id}
             stage="correcoes"
@@ -1173,12 +1203,24 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               </label>
             </ActionForm>
           ) : null}
-        </PanelBody>
-      </Panel>
+        </div>
+      </FlowStep>
 
-      <Panel id="prods">
-        <PanelHeader title="PRODs, documentos e confirmações" />
-        <PanelBody className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
+      <FlowStep
+        id="prods"
+        title="PRODs, documentos e confirmações"
+        status={stageStatusWithValidation(
+          approvedOrDeliveredProds.length
+            ? `${approvedOrDeliveredProds.length} aprovado(s)/entregue(s)`
+            : prodBatches.length
+              ? `${prodBatches.length} ativo(s)`
+              : "Sem PROD",
+          prodsValidation,
+          approvedOrDeliveredProds.length > 0,
+        )}
+        locked={prodsValidation.complete || approvedOrDeliveredProds.length > 0}
+      >
+        <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
           <StageValidationPanel
             contractId={id}
             stage="prods"
@@ -1270,12 +1312,21 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               </Field>
             </ActionForm>
           ) : null}
-        </PanelBody>
-      </Panel>
+        </div>
+      </FlowStep>
 
-      <Panel id="duvidas">
-        <PanelHeader title="Base de dúvidas" description="Bases separadas para Produção e Obras/Instalações." />
-        <PanelBody className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
+      <FlowStep
+        id="duvidas"
+        title="Base de dúvidas"
+        description="Bases separadas para Produção e Obras/Instalações."
+        status={stageStatusWithValidation(
+          openDoubts.length ? `${openDoubts.length} aberta(s)` : "Concluída",
+          duvidasValidation,
+          openDoubts.length === 0,
+        )}
+        locked={openDoubts.length === 0}
+      >
+        <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
           <StageValidationPanel
             contractId={id}
             stage="duvidas"
@@ -1319,12 +1370,16 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               </Field>
             </ActionForm>
           ) : null}
-        </PanelBody>
-      </Panel>
+        </div>
+      </FlowStep>
 
-      <Panel id="historico">
-        <PanelHeader title="Histórico e auditoria" description="Alterações relevantes, valores anteriores e novos." />
-        <PanelBody className="space-y-3">
+      <FlowStep
+        id="historico"
+        title="Histórico e auditoria"
+        description="Alterações relevantes, valores anteriores e novos."
+        status={`${snapshot.auditLogs.length} registro(s)`}
+      >
+        <div className="space-y-3">
           {snapshot.auditLogs.map((log) => (
             <article key={log.id} className="rounded-md border border-border bg-white p-3 text-sm">
               <div className="flex items-center gap-2 font-semibold text-charcoal">
@@ -1336,8 +1391,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             </article>
           ))}
           {!snapshot.auditLogs.length ? <p className="text-sm text-muted-foreground">Sem histórico carregado.</p> : null}
-        </PanelBody>
-      </Panel>
+        </div>
+      </FlowStep>
     </div>
   );
 }

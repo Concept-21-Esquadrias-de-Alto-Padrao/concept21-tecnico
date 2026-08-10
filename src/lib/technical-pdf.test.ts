@@ -224,7 +224,7 @@ describe("parseTechnicalContractText", () => {
 
     expect(result.pieces).toHaveLength(3);
     expect(result.pieces[0]).toMatchObject({
-      code: "26-0771-BZ-MUX-20X20-01",
+      code: "BZ - MUX 20X20",
       quantity: 1,
       sale_width_mm: 5078,
       sale_height_mm: 2500,
@@ -235,7 +235,7 @@ describe("parseTechnicalContractText", () => {
       piece_type: "BRISE CORRER 3 FOLHAS - MUXARABI RIPADO 20X20MM - ESPAÇAMENTO DE 20MM",
     });
     expect(result.pieces[1]).toMatchObject({
-      code: "26-0771-FIXOS-MUX-20X20-02",
+      code: "FIXOS - MUX 20X20",
       quantity: 2,
       sale_width_mm: 800,
       sale_height_mm: 2500,
@@ -243,7 +243,7 @@ describe("parseTechnicalContractText", () => {
       line: "BRISE",
     });
     expect(result.pieces[2]).toMatchObject({
-      code: "26-0771-PT-MUX-20X20-03",
+      code: "PT - MUX - 20X20",
       quantity: 1,
       sale_width_mm: 1400,
       sale_height_mm: 2500,
@@ -358,11 +358,59 @@ describe("parseTechnicalContractText", () => {
       piece_type: "QUADRO FIXO DE VIDRO - SEM DIVISÃƒO",
     });
     expect(result.pieces[2]).toMatchObject({
-      code: "26-0771-BZ-MUX-03",
+      code: "BZ - MUX",
       line: "CONCEPT LINE 50",
       environment: "GARAGEM",
       sale_width_mm: 5078,
       sale_height_mm: 2500,
+    });
+  });
+
+  it("uses SmartCEM type identifiers as piece codes and splits inline location", () => {
+    const result = parseTechnicalContractText(`
+      CONTRATO No: 26 -0710
+      QUADRO FIXO DE VIDRO - COM DIVISAO - 4 MODULOS NA LARGURA - COM JUNTA SECA - 1
+      MODULO NA ALTURA
+      Acabamento: PINTURA CORTEN
+      Vidros: TEMPERADO DE 6 MM incolor
+      Area Esquadria: 4,90m2 Area Vidro: 5 m2
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FIX P1 1 4900 1000 QUADRO FIXO RECEPCAO
+      PORTA DE CORRER DE VIDRO 2 PLANOS 4 FOLHAS - TRILHO EMBUTIDO MEIA LUA
+      Acabamento: PINTURA CORTEN
+      Vidros: TEMPERADO DE 8 MM incolor
+      Area Esquadria: 14,70m2 Area Vidro: 12,88 m2
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      P1 1 4900 3000 GOLD RECEPCAO
+      PORTA DE CORRER DE VIDRO 2 PLANOS 4 FOLHAS
+      Acabamento: PINTURA CORTEN
+      Vidros: TEMPERADO DE 8 MM incolor
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      P2 1 4500 3000 42 RECEPCAO
+    `);
+
+    expect(result.pieces).toHaveLength(3);
+    expect(result.contract.contract_number).toBe("26-0710");
+    expect(result.pieces[0]).toMatchObject({
+      code: "FIX P1",
+      line: "QUADRO FIXO",
+      environment: "RECEPCAO",
+      sale_width_mm: 4900,
+      sale_height_mm: 1000,
+    });
+    expect(result.pieces[1]).toMatchObject({
+      code: "P1",
+      line: "GOLD",
+      environment: "RECEPCAO",
+      sale_width_mm: 4900,
+      sale_height_mm: 3000,
+    });
+    expect(result.pieces[2]).toMatchObject({
+      code: "P2",
+      line: "42",
+      environment: "RECEPCAO",
+      sale_width_mm: 4500,
+      sale_height_mm: 3000,
     });
   });
 

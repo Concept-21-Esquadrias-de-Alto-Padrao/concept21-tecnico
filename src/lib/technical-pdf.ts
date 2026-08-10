@@ -291,7 +291,27 @@ function inferContractDate(lines: string[]) {
   return null;
 }
 
+function extractContractIdentifier(value: string | null | undefined) {
+  const normalized = cleanValue(value)?.replace(/\s*([./-])\s*/g, "$1");
+  const matches = Array.from(normalized?.matchAll(/([A-Z0-9][A-Z0-9./-]{3,})/gi) ?? []);
+  const match = matches.find((candidate) => /\d/.test(candidate[1]) && !/comercial/i.test(candidate[1]));
+  return match?.[1]?.trim() ?? null;
+}
+
 function inferContractNumber(lines: string[]) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const normalized = searchable(lines[index]);
+    if (normalized === "no do contrato" || normalized === "numero do contrato") {
+      const identifier = extractContractIdentifier(lines[index + 1]);
+      if (identifier) return identifier;
+    }
+
+    if (normalized.startsWith("contrato no") || normalized.startsWith("proposta no")) {
+      const identifier = extractContractIdentifier(lines[index]);
+      if (identifier && !/comercial/i.test(lines[index])) return identifier;
+    }
+  }
+
   const joined = lines.join("\n");
   const directPatterns = [
     /contrato\s+n[º°o.]?\s*:?\s*([A-Z0-9][A-Z0-9./-]{3,})/i,
@@ -618,6 +638,14 @@ function splitSmartCemLineAndLocation(value: string) {
     }
   }
 
+  const numericLineMatch = normalized.match(/^(\d{1,3})(?:\s+(.+))$/);
+  if (numericLineMatch) {
+    return {
+      line: cleanValue(numericLineMatch[1]),
+      location: cleanValue(numericLineMatch[2]),
+    };
+  }
+
   return { line: normalized, location: null };
 }
 
@@ -941,6 +969,39 @@ function generatedSmartCemCode(
   return `${contractSegment}-${pieceSegment}-${String(index + 1).padStart(2, "0")}`;
 }
 
+function looksLikeSmartCemPieceIdentifier(value: string | null | undefined) {
+  const normalized = cleanValue(value);
+  if (!normalized) return false;
+  if (normalized.length > 36) return false;
+  if (!/[a-z]/i.test(normalized)) return false;
+  if (/^(porta|portao|janela|quadro|brise|painel|pele|guarda|corrimao|fixo)\b/i.test(normalized)) {
+    return false;
+  }
+  if (/^\d+x\d+$/i.test(normalized)) return false;
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  if (tokens.length > 6) return false;
+
+  return /^[a-z0-9_./ -]+$/i.test(normalized);
+}
+
+function smartCemCodeFromRowType(rowType: string | null) {
+  const normalized = cleanValue(rowType);
+  return looksLikeSmartCemPieceIdentifier(normalized) ? normalized : null;
+}
+
+function uniqueSmartCemCode(code: string, pieces: ParsedTechnicalPiece[]) {
+  const usedCodes = new Set(pieces.map((piece) => searchable(piece.code)));
+  if (!usedCodes.has(searchable(code))) return code;
+
+  for (let suffix = 2; suffix <= 999; suffix += 1) {
+    const candidate = `${code}-${String(suffix).padStart(2, "0")}`;
+    if (!usedCodes.has(searchable(candidate))) return candidate;
+  }
+
+  return `${code}-${pieces.length + 1}`;
+}
+
 function parseSmartCemPieces(lines: string[], contractNumber: string | null) {
   const pieces: ParsedTechnicalPiece[] = [];
 
@@ -954,13 +1015,16 @@ function parseSmartCemPieces(lines: string[], contractNumber: string | null) {
     const context = contextBeforeDataLine(lines, index);
     const rowType = data.rowType ?? rowTypeBeforeDataLine(lines, index);
     const location = data.location ?? locationAfterDataLine(lines, index);
-    const code =
+    const code = uniqueSmartCemCode(
       data.code ??
-      generatedSmartCemCode(
-        contractNumber,
-        rowType ?? context.description ?? data.line,
-        pieces.length,
-      );
+        smartCemCodeFromRowType(rowType) ??
+        generatedSmartCemCode(
+          contractNumber,
+          rowType ?? context.description ?? data.line,
+          pieces.length,
+        ),
+      pieces,
+    );
 
     pieces.push({
       code,

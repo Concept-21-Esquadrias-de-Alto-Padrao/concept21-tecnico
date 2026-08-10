@@ -369,7 +369,11 @@ export function ContractImportPanel() {
             Conferir extração
           </button>
         </div>
-        {message ? <p className="mt-3 text-sm font-medium text-danger">{message}</p> : null}
+        {message ? (
+          <p role="alert" className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
+            {message}
+          </p>
+        ) : null}
       </div>
 
       {preview ? (

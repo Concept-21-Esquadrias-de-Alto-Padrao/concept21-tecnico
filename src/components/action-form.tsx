@@ -51,9 +51,12 @@ export function ActionForm({
         </button>
         {state.message ? (
           <p
+            role={state.ok ? "status" : "alert"}
             className={cn(
-              "text-sm font-medium",
-              state.ok ? "text-success" : "text-danger",
+              "rounded-md px-3 py-2 text-sm font-medium",
+              state.ok
+                ? "border border-green-200 bg-green-50 text-green-800"
+                : "border border-red-200 bg-red-50 text-red-800",
             )}
           >
             {state.message}
