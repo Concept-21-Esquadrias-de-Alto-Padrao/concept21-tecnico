@@ -252,6 +252,99 @@ describe("parseTechnicalContractText", () => {
     });
   });
 
+  it("extracts SmartCEM vertical label blocks from PDF text extraction", () => {
+    const result = parseTechnicalContractText(`
+      CONTRATO Nº: 26 -0771
+      Goiânia, 0 6 de agosto de 202 6 .
+      CONTRATANTE OBRA DATA NASCIMENTO
+      MANUEL ANDRÉ RODRIGUEZ CALA RESIDENCIAL 21 /03/1962
+      ENDEREÇO DA OBRA CEP ’
+      R UA POMEROL , QD.13 LT.07, JARDINS FRANÇA , GOIÂNIA - GO 74 . 886 -1 54
+      VENDEDOR TELEFONE
+      EDUA R DO RODRIGUES (62 ) 98118 -5701
+      NOME RESPONSABILIDADE TELEFONE - EMAIL
+      Manuel André Rodriguez Cala Construtor (62) 9 8240 -1333
+      5.2. O prazo de entrega das esquadrias é de:
+      Até 60 dias úteis, sendo este prazo estipulado somente após a validação das liberações.
+
+      Proposta Nº
+      26 -0771
+      MANUEL ANDRÉ RODRIGUEZ CALA
+      BRISE CORRER RIPADO 3 FOLHAS - MUXARABI RIPADO 20X20MM - 20MM - RIPADO NA -
+      Acabamento: PINTURA CORTEN
+      Vidros: sem vidro
+      Área Esquadria: 12,70m² Área Vidro: -
+      Tipo:
+      BZ - MUX
+      20X20
+      Qtd:
+      1
+      L:
+      5078
+      H:
+      2500
+      Linha:
+      CONCEPT LINE 50
+      Localização:
+      GARAGEM
+      PAINEL FIXO COM TUBOS MUXARABI 20X20MM COM ESPAÇAMENTO 20 SOMENTE LADO
+      EXTERNO
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Área Esquadria: 2,00m² Área Vidro: -
+      Tipo:
+      FIXOS - MUX
+      20X20_A
+      Qtd:
+      1
+      L:
+      800
+      H:
+      2500
+      Linha:
+      BRISE
+      Localização:
+      RIPASOS LATERAIS
+      Obra: 26 -0771 - MANUEL ANDRÉ RODRIGUEZ CALA
+    `);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.contract).toMatchObject({
+      contract_number: "26-0771",
+      client_name: "MANUEL ANDRÉ RODRIGUEZ CALA",
+      contract_date: "2026-08-06",
+      deadline_value: 60,
+      deadline_unit: "dias_uteis",
+      work_address: "RUA POMEROL, QD.13 LT.07, JARDINS FRANÇA, GOIÂNIA - GO",
+      work_name: "RESIDENCIAL",
+    });
+    expect(result.contract.commercial_data.cep_obra).toBe("74886-154");
+    expect(result.contract.authorized_contacts).toEqual([
+      { name: "Manuel André Rodriguez Cala", role: "Construtor", phone: "(62) 9 8240-1333" },
+    ]);
+    expect(result.pieces).toHaveLength(2);
+    expect(result.pieces[0]).toMatchObject({
+      code: "BZ - MUX 20X20",
+      quantity: 1,
+      sale_width_mm: 5078,
+      sale_height_mm: 2500,
+      line: "CONCEPT LINE 50",
+      environment: "GARAGEM",
+      glass: "sem vidro",
+      color: "PINTURA CORTEN",
+    });
+    expect(result.pieces[1]).toMatchObject({
+      code: "FIXOS - MUX 20X20_A",
+      quantity: 1,
+      sale_width_mm: 800,
+      sale_height_mm: 2500,
+      line: "BRISE",
+      environment: "RIPASOS LATERAIS",
+      glass: "sem vidro",
+      color: "PINTURA CORTEN",
+    });
+  });
+
   it("keeps SmartCEM dimensions aligned and ignores loose numeric rows", () => {
     const result = parseTechnicalContractText(`
       CONTRATO NÂº: 26-0721

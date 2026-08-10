@@ -48,7 +48,7 @@ type SmartCemPieceData = {
   line: string | null;
   location: string | null;
   rowType: string | null;
-  source: "collapsed" | "layout";
+  source: "collapsed" | "labeled" | "layout";
 };
 
 type PdfTextItem = {
@@ -103,12 +103,25 @@ const stopLabelTexts = [
   "vendedor",
 ];
 
+function repairPdfTextArtifacts(value: string) {
+  return value
+    .replace(/(\d)\s*([.,/-])\s*(\d)/g, "$1$2$3")
+    .replace(/\bR\s+UA\b/gi, "RUA")
+    .replace(/\bQ\s+D\b/gi, "QD")
+    .replace(/\bL\s+T\b/gi, "LT")
+    .replace(/\bEDUA\s+R\s+DO\b/gi, "EDUARDO")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/([;:])(?=\S)/g, "$1 ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeLines(text: string) {
   return text
     .replace(/\uFFFD/g, "")
     .replace(/\u00A0/g, " ")
     .split(/\r?\n/)
-    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .map((line) => repairPdfTextArtifacts(line.replace(/[ \t]+/g, " ").trim()))
     .filter(Boolean);
 }
 
@@ -232,11 +245,13 @@ function collectAllAfterLabel(
 
 function cleanValue(value: string | null | undefined) {
   return textOrNull(
-    value
-      ?.replace(/\s+/g, " ")
-      .replace(/\s+,/g, ",")
-      .replace(/,\s*,/g, ",")
-      .trim(),
+    repairPdfTextArtifacts(
+      value
+        ?.replace(/\s+/g, " ")
+        .replace(/\s+,/g, ",")
+        .replace(/,\s*,/g, ",")
+        .trim() ?? "",
+    ),
   );
 }
 
@@ -247,13 +262,16 @@ function escapeRegExp(value: string) {
 function parseBrazilianDate(value: string | null) {
   if (!value) return null;
 
-  const numericMatch = value.match(/(\d{2})[\/.-](\d{2})[\/.-](\d{4})/);
+  const normalized = repairPdfTextArtifacts(value)
+    .replace(/\b(\d)\s+(\d)(?=\s+de\b)/i, "$1$2")
+    .replace(/\b(\d{3})\s+(\d)\b/g, "$1$2");
+  const numericMatch = normalized.match(/(\d{2})[\/.-](\d{2})[\/.-](\d{4})/);
   if (numericMatch) {
     const [, day, month, year] = numericMatch;
     return `${year}-${month}-${day}`;
   }
 
-  const longDateMatch = value.match(/(\d{1,2})\s+de\s+([a-zçãéêíóôú]+)\s+de\s+(\d{4})/i);
+  const longDateMatch = normalized.match(/(\d{1,2})\s+de\s+([a-zçãéêíóôú]+)\s+de\s+(\d{4})/i);
   if (!longDateMatch) return null;
 
   const monthByName: Record<string, string> = {
@@ -368,10 +386,17 @@ function inferWorkAddress(lines: string[]) {
   const contractCandidates = collectAllAfterLabel(lines, ["endereço da obra", "endereco da obra"], {
     maxLines: 4,
     multiline: true,
-  }).map(stripTrailingZipCode);
-  const fromContract = contractCandidates
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => right.length - left.length)[0];
+  })
+    .map((value) => ({
+      address: stripTrailingZipCode(value),
+      hasZipCode: Boolean(extractZipCodeFromText(value)),
+    }))
+    .filter((candidate): candidate is { address: string; hasZipCode: boolean } => Boolean(candidate.address));
+  const fromContract = contractCandidates.sort(
+    (left, right) =>
+      Number(right.hasZipCode) - Number(left.hasZipCode) ||
+      right.address.length - left.address.length,
+  )[0]?.address;
   if (fromContract) return stripTrailingZipCode(fromContract);
 
   const proposalCandidates = collectAllAfterLabel(lines, ["end. obra", "end obra"], {
@@ -384,8 +409,21 @@ function inferWorkAddress(lines: string[]) {
   return fromProposal ? stripTrailingZipCode(fromProposal) : null;
 }
 
+function extractZipCodeFromText(value: string) {
+  const normalized = repairPdfTextArtifacts(value);
+  const direct = normalized.match(/\b(\d{2})\.?(\d{3})-?(\d{3})\b/);
+  if (direct) return `${direct[1]}${direct[2]}-${direct[3]}`;
+
+  const loose = value.match(/(\d\s*\d)\s*\.?\s*(\d\s*\d\s*\d)\s*-?\s*(\d\s*\d\s*\d)/);
+  if (!loose) return null;
+
+  return `${loose[1].replace(/\D/g, "")}${loose[2].replace(/\D/g, "")}-${loose[3].replace(/\D/g, "")}`;
+}
+
 function stripTrailingZipCode(value: string) {
-  return cleanValue(value.replace(/\s+\d{2}\.?\d{3}-?\d{3}\s*$/, ""));
+  return cleanValue(
+    repairPdfTextArtifacts(value).replace(/\s+\d\s*\d\s*\.?\s*\d\s*\d\s*\d\s*-?\s*\d\s*\d\s*\d\s*$/, ""),
+  );
 }
 
 function inferWorkName(lines: string[], tableData: ContractTableData, clientName: string | null) {
@@ -393,7 +431,7 @@ function inferWorkName(lines: string[], tableData: ContractTableData, clientName
     .map((line) => {
       const colonIndex = line.indexOf(":");
       if (colonIndex < 0 || searchable(line.slice(0, colonIndex)) !== "obra") return null;
-      if (/^\s*obra\s*:\s*\d{2}[-/]\d{4}\s+-/i.test(line)) return null;
+      if (/^\s*obra\s*:\s*\d{2}\s*[-/]\s*\d{4}\s+-/i.test(line)) return null;
       return cleanValue(line.slice(colonIndex + 1));
     })
     .find(Boolean);
@@ -435,10 +473,11 @@ function inferDeadline(lines: string[]) {
 }
 
 function parseAuthorizedContactLine(line: string) {
-  const phoneMatch = line.match(/(\(?\d{2}\)?\s*\d?\s*\d{4,5}[-\s]?\d{4})/);
+  const normalizedLine = repairPdfTextArtifacts(line);
+  const phoneMatch = normalizedLine.match(/(\(?\d{2}\)?\s*\d?\s*\d{4,5}\s*[-\s]?\s*\d{4})/);
   if (!phoneMatch) return null;
 
-  const beforePhone = cleanValue(line.replace(phoneMatch[0], ""));
+  const beforePhone = cleanValue(normalizedLine.replace(phoneMatch[0], ""));
   if (!beforePhone) return null;
 
   const knownRolePattern =
@@ -458,7 +497,7 @@ function parseAuthorizedContactLine(line: string) {
   return {
     name,
     role,
-    phone: phoneMatch[1],
+    phone: cleanValue(phoneMatch[1]),
   };
 }
 
@@ -531,8 +570,8 @@ function extractWorkZipCode(lines: string[]) {
     if (!searchable(lines[index]).includes("endereco da obra")) continue;
 
     const windowText = lines.slice(index, index + 3).join(" ");
-    const match = windowText.match(/(\d{2}\.?\d{3}-?\d{3})/);
-    if (match?.[1]) return match[1].replace(".", "");
+    const zipCode = extractZipCodeFromText(windowText);
+    if (zipCode) return zipCode;
   }
 
   return null;
@@ -785,6 +824,83 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
   };
 }
 
+function isStandaloneSmartCemLabel(line: string, label: string) {
+  return searchable(line) === searchable(label);
+}
+
+function isAnyStandaloneSmartCemLabel(line: string) {
+  return ["tipo", "qtd", "l", "h", "linha", "localizacao"].includes(searchable(line));
+}
+
+function collectUntilSmartCemLabel(lines: string[], startIndex: number, label: string, maxLines: number) {
+  const values: string[] = [];
+  let cursor = startIndex;
+
+  while (cursor < lines.length && !isStandaloneSmartCemLabel(lines[cursor], label)) {
+    if (isAnyStandaloneSmartCemLabel(lines[cursor]) || isPageOrDocumentMarker(lines[cursor])) return null;
+    values.push(lines[cursor]);
+    cursor += 1;
+    if (values.length > maxLines) return null;
+  }
+
+  if (!values.length || cursor >= lines.length) return null;
+  return { values, cursor };
+}
+
+function readSmartCemScalarAfterLabel(lines: string[], startIndex: number, label: string) {
+  if (!isStandaloneSmartCemLabel(lines[startIndex], label)) return null;
+  const value = lines[startIndex + 1];
+  if (!value || isAnyStandaloneSmartCemLabel(value) || isPageOrDocumentMarker(value)) return null;
+  return { value, cursor: startIndex + 2 };
+}
+
+function parseSmartCemLabeledBlock(
+  lines: string[],
+  index: number,
+): { data: SmartCemPieceData; endIndex: number } | null {
+  if (!isStandaloneSmartCemLabel(lines[index], "tipo")) return null;
+
+  const typeValue = collectUntilSmartCemLabel(lines, index + 1, "qtd", 4);
+  if (!typeValue) return null;
+
+  const quantityValue = readSmartCemScalarAfterLabel(lines, typeValue.cursor, "qtd");
+  if (!quantityValue) return null;
+
+  const widthValue = readSmartCemScalarAfterLabel(lines, quantityValue.cursor, "l");
+  if (!widthValue) return null;
+
+  const heightValue = readSmartCemScalarAfterLabel(lines, widthValue.cursor, "h");
+  if (!heightValue) return null;
+
+  const lineValue = readSmartCemScalarAfterLabel(lines, heightValue.cursor, "linha");
+  if (!lineValue) return null;
+
+  const locationValue = readSmartCemScalarAfterLabel(lines, lineValue.cursor, "localizacao");
+  const quantity = parseNumber(quantityValue.value, 1);
+  const width = parseDimensionSegment(widthValue.value);
+  const height = parseDimensionSegment(heightValue.value);
+  const rawType = cleanValue(typeValue.values.join(" "));
+  const splitLine = splitSmartCemLineAndLocation(
+    [lineValue.value, locationValue?.value].filter(Boolean).join(" "),
+  );
+
+  if (!rawType || !width || !height || !splitLine.line) return null;
+
+  return {
+    data: {
+      code: null,
+      quantity: Math.max(1, Math.trunc(quantity)),
+      width,
+      height,
+      line: splitLine.line,
+      location: splitLine.location ?? cleanValue(locationValue?.value),
+      rowType: rawType,
+      source: "labeled",
+    },
+    endIndex: (locationValue?.cursor ?? lineValue.cursor) - 1,
+  };
+}
+
 function isLocationLabel(line: string) {
   return searchable(line).startsWith("localiza");
 }
@@ -828,7 +944,7 @@ function isPieceContextMetadataLine(line: string) {
 
 function isSmartCemRowTypeFragment(line: string) {
   const normalized = searchable(line);
-  return /^\d+x\d+$/.test(normalized) || /\bmux\b/.test(normalized);
+  return /^\d+x\d+(?:\s+[a-z0-9]+)?$/.test(normalized) || /\bmux\b/.test(normalized);
 }
 
 function isSmartCemHeader(line: string) {
@@ -1002,42 +1118,73 @@ function uniqueSmartCemCode(code: string, pieces: ParsedTechnicalPiece[]) {
   return `${code}-${pieces.length + 1}`;
 }
 
+function rowTypeWithTrailingFragment(rowType: string | null, lines: string[], index: number) {
+  const cleanRowType = cleanValue(rowType);
+  const nextLine = lines[index + 1];
+  if (!cleanRowType || !nextLine || !isSmartCemRowTypeFragment(nextLine)) return cleanRowType;
+
+  const cleanFragment = cleanValue(nextLine);
+  if (!cleanFragment || searchable(cleanRowType).includes(searchable(cleanFragment))) return cleanRowType;
+  return cleanValue(`${cleanRowType} ${cleanFragment}`);
+}
+
+function appendSmartCemPiece(
+  lines: string[],
+  index: number,
+  data: SmartCemPieceData,
+  contractNumber: string | null,
+  pieces: ParsedTechnicalPiece[],
+) {
+  const context = contextBeforeDataLine(lines, index);
+  const rowType = rowTypeWithTrailingFragment(
+    data.rowType ?? rowTypeBeforeDataLine(lines, index),
+    lines,
+    index,
+  );
+  const location = data.location ?? locationAfterDataLine(lines, index);
+  const code = uniqueSmartCemCode(
+    data.code ??
+      smartCemCodeFromRowType(rowType) ??
+      generatedSmartCemCode(
+        contractNumber,
+        rowType ?? context.description ?? data.line,
+        pieces.length,
+      ),
+    pieces,
+  );
+
+  pieces.push({
+    code,
+    piece_type: context.description,
+    quantity: data.quantity,
+    sale_width_mm: data.width,
+    sale_height_mm: data.height,
+    environment: location,
+    description: context.description,
+    glass: context.glass,
+    color: context.color,
+    line: data.line,
+  });
+}
+
 function parseSmartCemPieces(lines: string[], contractNumber: string | null) {
   const pieces: ParsedTechnicalPiece[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {
+    const labeledBlock = parseSmartCemLabeledBlock(lines, index);
+    if (labeledBlock) {
+      appendSmartCemPiece(lines, index, labeledBlock.data, contractNumber, pieces);
+      index = labeledBlock.endIndex;
+      continue;
+    }
+
     const data = parseSmartCemDataLine(lines[index]);
     if (!data) continue;
     if (!data.code && !hasSmartCemHeaderBefore(lines, index, data.source === "layout" ? 8 : 4)) {
       continue;
     }
 
-    const context = contextBeforeDataLine(lines, index);
-    const rowType = data.rowType ?? rowTypeBeforeDataLine(lines, index);
-    const location = data.location ?? locationAfterDataLine(lines, index);
-    const code = uniqueSmartCemCode(
-      data.code ??
-        smartCemCodeFromRowType(rowType) ??
-        generatedSmartCemCode(
-          contractNumber,
-          rowType ?? context.description ?? data.line,
-          pieces.length,
-        ),
-      pieces,
-    );
-
-    pieces.push({
-      code,
-      piece_type: context.description,
-      quantity: data.quantity,
-      sale_width_mm: data.width,
-      sale_height_mm: data.height,
-      environment: location,
-      description: context.description,
-      glass: context.glass,
-      color: context.color,
-      line: data.line,
-    });
+    appendSmartCemPiece(lines, index, data, contractNumber, pieces);
   }
 
   return pieces;
