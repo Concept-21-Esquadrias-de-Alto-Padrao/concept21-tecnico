@@ -47,6 +47,7 @@ import { Panel, PanelBody } from "@/components/panel";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { StatCard } from "@/components/stat-card";
 import { VisitReportPdfButton } from "@/components/visit-report-pdf-button";
+import { formatAuditLogEntry } from "@/lib/audit-log-format";
 import {
   appNavigationPermissionKeys,
   canAccessModule,
@@ -1380,16 +1381,20 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         status={`${snapshot.auditLogs.length} registro(s)`}
       >
         <div className="space-y-3">
-          {snapshot.auditLogs.map((log) => (
-            <article key={log.id} className="rounded-md border border-border bg-white p-3 text-sm">
-              <div className="flex items-center gap-2 font-semibold text-charcoal">
-                <History className="size-4 text-accent" />
-                {log.entity} · {log.action}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(log.created_at)}</p>
-              {log.notes ? <p className="mt-2 text-muted-foreground">{log.notes}</p> : null}
-            </article>
-          ))}
+          {snapshot.auditLogs.map((log) => {
+            const auditEntry = formatAuditLogEntry(log, snapshot.profiles);
+
+            return (
+              <article key={log.id} className="rounded-md border border-border bg-white p-3 text-sm">
+                <div className="flex items-start gap-2 font-semibold text-charcoal">
+                  <History className="mt-0.5 size-4 flex-none text-accent" />
+                  <span>{auditEntry.title}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(log.created_at)}</p>
+                {auditEntry.details ? <p className="mt-2 text-muted-foreground">{auditEntry.details}</p> : null}
+              </article>
+            );
+          })}
           {!snapshot.auditLogs.length ? <p className="text-sm text-muted-foreground">Sem histórico carregado.</p> : null}
         </div>
       </FlowStep>
