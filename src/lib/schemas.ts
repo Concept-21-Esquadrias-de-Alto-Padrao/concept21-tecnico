@@ -56,6 +56,7 @@ export const manualContractSchema = z.object({
 export const confirmedImportSchema = z.object({
   contract_json: z.string().min(2),
   pieces_json: z.string().min(2),
+  reprocess_existing: checkboxBoolean.default(false),
 });
 
 export const receiveFolderSchema = z.object({

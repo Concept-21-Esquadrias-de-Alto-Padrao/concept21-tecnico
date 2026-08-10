@@ -37,6 +37,8 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const parsed = await parseTechnicalContractPdf(buffer);
     let duplicateContract = false;
+    let existingContractId: string | null = null;
+    let existingPieceCodes: string[] = [];
     let duplicatePieceCodes: string[] = [];
 
     if (context && parsed.contract.contract_number) {
@@ -49,13 +51,30 @@ export async function POST(request: Request) {
         .limit(1);
 
       if (contractError) throw new HttpError(500, contractError.message);
-      duplicateContract = Boolean((contractData ?? []).length);
+      existingContractId = ((contractData ?? [])[0] as { id?: string } | undefined)?.id ?? null;
+      duplicateContract = Boolean(existingContractId);
+
+      if (existingContractId) {
+        const { data: piecesData, error: piecesError } = await context.admin
+          .from("technical_contract_pieces")
+          .select("code")
+          .eq("company_id", context.profile.company_id)
+          .eq("contract_id", existingContractId)
+          .is("deleted_at", null);
+
+        if (piecesError) throw new HttpError(500, piecesError.message);
+        existingPieceCodes = ((piecesData ?? []) as Array<{ code: string }>).map((piece) => piece.code);
+      }
     }
 
     duplicatePieceCodes = findDuplicateTechnicalPieceCodes(parsed.pieces);
 
     const warnings = [...parsed.warnings];
-    if (duplicateContract) warnings.push("Contrato duplicado encontrado. A gravação será bloqueada até revisão.");
+    if (duplicateContract) {
+      warnings.push(
+        "Contrato já cadastrado. Para rodar este PDF novamente, marque a opção de reprocessamento; peças já cadastradas serão ignoradas.",
+      );
+    }
     if (duplicatePieceCodes.length) {
       warnings.push(
         `${duplicatePieceCodes.length} código(s) de peça aparecem repetidos neste PDF. Ao gravar, o sistema acrescentará sufixos para manter os códigos únicos.`,
@@ -66,6 +85,8 @@ export async function POST(request: Request) {
       fileName: file.name,
       ...parsed,
       duplicateContract,
+      existingContractId,
+      existingPieceCodes,
       duplicatePieceCodes,
       warnings,
     });

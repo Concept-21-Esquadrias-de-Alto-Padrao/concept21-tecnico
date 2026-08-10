@@ -421,6 +421,87 @@ async function assertContractNotDuplicated(context: ActionContext, contractNumbe
   }
 }
 
+async function findExistingActiveContract(context: ActionContext, contractNumber: string) {
+  const { data, error } = await context.admin
+    .from("production_contracts")
+    .select("id")
+    .eq("company_id", context.companyId)
+    .eq("contract_number", contractNumber)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? String((data as { id: string }).id) : null;
+}
+
+function technicalPieceCodeKey(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("pt-BR");
+}
+
+async function insertTechnicalPiecesFromImport({
+  context,
+  contractId,
+  pieces,
+  source,
+  skipExisting,
+}: {
+  context: ActionContext;
+  contractId: string;
+  pieces: ParsedTechnicalPiece[];
+  source: "manual" | "pdf";
+  skipExisting: boolean;
+}) {
+  const safePieces = ensureUniqueTechnicalPieceCodes(pieces).pieces;
+  if (!safePieces.length) return { insertedCount: 0, skippedDuplicateCodes: [] as string[] };
+
+  const { data: existingPieces, error: existingPiecesError } = await context.admin
+    .from("technical_contract_pieces")
+    .select("code, sort_order")
+    .eq("company_id", context.companyId)
+    .eq("contract_id", contractId)
+    .is("deleted_at", null);
+
+  if (existingPiecesError) throw existingPiecesError;
+
+  const existingRows = (existingPieces ?? []) as Array<{ code: string; sort_order: number | null }>;
+  const existingCodes = new Set(existingRows.map((piece) => technicalPieceCodeKey(piece.code)));
+  const skippedDuplicateCodes: string[] = [];
+  const maxSortOrder = Math.max(0, ...existingRows.map((piece) => Number(piece.sort_order ?? 0)));
+  const piecesToInsert = safePieces
+    .filter((piece) => {
+      const exists = existingCodes.has(technicalPieceCodeKey(piece.code));
+      if (exists && skipExisting) skippedDuplicateCodes.push(piece.code);
+      return !exists || !skipExisting;
+    })
+    .map((piece, index) => ({
+      company_id: context.companyId,
+      contract_id: contractId,
+      code: piece.code,
+      piece_type: piece.piece_type,
+      quantity: piece.quantity,
+      sale_width_mm: piece.sale_width_mm,
+      sale_height_mm: piece.sale_height_mm,
+      environment: piece.environment,
+      description: piece.description,
+      glass: piece.glass,
+      color: piece.color,
+      line: piece.line,
+      status: "aguardando_avaliacao",
+      source,
+      sort_order: maxSortOrder + index + 1,
+      created_by: context.authUserId,
+    }));
+
+  if (!piecesToInsert.length) return { insertedCount: 0, skippedDuplicateCodes };
+
+  const { error: piecesError } = await context.admin
+    .from("technical_contract_pieces")
+    .insert(piecesToInsert);
+
+  if (piecesError) throw piecesError;
+  return { insertedCount: piecesToInsert.length, skippedDuplicateCodes };
+}
+
 async function createTechnicalContract({
   context,
   contractNumber,
@@ -502,31 +583,13 @@ async function createTechnicalContract({
 
   if (technicalError) throw technicalError;
 
-  const safePieces = ensureUniqueTechnicalPieceCodes(pieces).pieces;
-
-  if (safePieces.length) {
-    const { error: piecesError } = await context.admin.from("technical_contract_pieces").insert(
-      safePieces.map((piece, index) => ({
-        company_id: context.companyId,
-        contract_id: contractId,
-        code: piece.code,
-        piece_type: piece.piece_type,
-        quantity: piece.quantity,
-        sale_width_mm: piece.sale_width_mm,
-        sale_height_mm: piece.sale_height_mm,
-        environment: piece.environment,
-        description: piece.description,
-        glass: piece.glass,
-        color: piece.color,
-        line: piece.line,
-        status: "aguardando_avaliacao",
-        source,
-        sort_order: index + 1,
-      })),
-    );
-
-    if (piecesError) throw piecesError;
-  }
+  const pieceImportResult = await insertTechnicalPiecesFromImport({
+    context,
+    contractId,
+    pieces,
+    source,
+    skipExisting: false,
+  });
 
   const { error: auditError } = await context.admin.from("audit_logs").insert({
     company_id: context.companyId,
@@ -534,13 +597,119 @@ async function createTechnicalContract({
     entity_id: contractId,
     action: source === "pdf" ? "confirm_pdf_import" : "manual_create",
     user_id: context.authUserId,
-    after_data: { contractNumber, pieces: safePieces.length },
+    after_data: { contractNumber, pieces: pieceImportResult.insertedCount },
     notes: source === "pdf" ? "Contrato gravado após conferência humana." : "Contrato cadastrado manualmente.",
   });
 
   if (auditError) throw auditError;
 
   return contractId;
+}
+
+async function reprocessExistingTechnicalContractFromPdf({
+  context,
+  contractId,
+  contract,
+  pieces,
+}: {
+  context: ActionContext;
+  contractId: string;
+  contract: ParsedTechnicalContract;
+  pieces: ParsedTechnicalPiece[];
+}) {
+  if (!contract.contract_number) throw new Error("Informe o número do contrato antes de gravar.");
+  if (!contract.client_name) throw new Error("Informe o cliente antes de gravar.");
+
+  const now = new Date().toISOString();
+  const clientId = await findOrCreateClient(context, contract.client_name);
+  const { error: contractError } = await context.admin
+    .from("production_contracts")
+    .update({
+      client_id: clientId,
+      work_name: contract.work_name ?? contract.contract_number,
+      full_address: contract.work_address ?? "Endereço a conferir",
+      notes: contract.description,
+      updated_at: now,
+    })
+    .eq("company_id", context.companyId)
+    .eq("id", contractId);
+
+  if (contractError) throw contractError;
+
+  const { data: existingTechnical, error: existingTechnicalError } = await context.admin
+    .from("technical_contracts")
+    .select("commercial_data")
+    .eq("company_id", context.companyId)
+    .eq("contract_id", contractId)
+    .maybeSingle();
+
+  if (existingTechnicalError) throw existingTechnicalError;
+
+  const existingCommercialData =
+    ((existingTechnical as { commercial_data?: Record<string, unknown> | null } | null)?.commercial_data ?? {});
+  const commercialData = {
+    ...existingCommercialData,
+    ...contract.commercial_data,
+    origem_cadastro: "pdf",
+    ultima_reimportacao_pdf_em: now,
+  };
+
+  if (existingTechnical) {
+    const { error: technicalError } = await context.admin
+      .from("technical_contracts")
+      .update({
+        contract_date: contract.contract_date,
+        contractual_deadline_value: contract.deadline_value,
+        contractual_deadline_unit: contract.deadline_unit,
+        commercial_data: commercialData,
+        authorized_contacts: contract.authorized_contacts,
+        technical_notes: contract.description,
+      })
+      .eq("company_id", context.companyId)
+      .eq("contract_id", contractId);
+
+    if (technicalError) throw technicalError;
+  } else {
+    const { error: technicalError } = await context.admin.from("technical_contracts").insert({
+      company_id: context.companyId,
+      contract_id: contractId,
+      contract_date: contract.contract_date,
+      contractual_deadline_value: contract.deadline_value,
+      contractual_deadline_unit: contract.deadline_unit,
+      technical_status: "aguardando_pasta",
+      commercial_folder_received: false,
+      commercial_data: commercialData,
+      authorized_contacts: contract.authorized_contacts,
+      technical_notes: contract.description,
+    });
+
+    if (technicalError) throw technicalError;
+  }
+
+  const pieceImportResult = await insertTechnicalPiecesFromImport({
+    context,
+    contractId,
+    pieces,
+    source: "pdf",
+    skipExisting: true,
+  });
+
+  const { error: auditError } = await context.admin.from("audit_logs").insert({
+    company_id: context.companyId,
+    entity: "technical_contract_import",
+    entity_id: contractId,
+    action: "reprocess_pdf_import",
+    user_id: context.authUserId,
+    after_data: {
+      contractNumber: contract.contract_number,
+      insertedPieces: pieceImportResult.insertedCount,
+      skippedDuplicatePieceCodes: pieceImportResult.skippedDuplicateCodes,
+    },
+    notes: `PDF reprocessado. ${pieceImportResult.insertedCount} peça(s) nova(s) importada(s).`,
+  });
+
+  if (auditError) throw auditError;
+  return { contractId, ...pieceImportResult };
 }
 
 export async function createManualContractAction(_: ActionState, formData: FormData) {
@@ -592,6 +761,28 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
 
     if (!contract.contract_number) throw new Error("Informe o número do contrato antes de gravar.");
     if (!contract.client_name) throw new Error("Informe o cliente antes de gravar.");
+    if (!preparedPieces.pieces.length) {
+      throw new Error("A prévia não possui peças para gravar. Confira se o PDF contém o relatório de peças.");
+    }
+
+    const existingContractId = await findExistingActiveContract(context, contract.contract_number);
+    if (existingContractId && parsed.data.reprocess_existing) {
+      const result = await reprocessExistingTechnicalContractFromPdf({
+        context,
+        contractId: existingContractId,
+        contract,
+        pieces: preparedPieces.pieces,
+      });
+
+      revalidateTechnical(result.contractId);
+      return ok(
+        `PDF reprocessado. ${result.insertedCount} peça(s) nova(s) importada(s).${
+          result.skippedDuplicateCodes.length
+            ? ` ${result.skippedDuplicateCodes.length} peça(s) já existente(s) foram ignorada(s).`
+            : ""
+        }`,
+      );
+    }
 
     const contractId = await createTechnicalContract({
       context,

@@ -9,6 +9,7 @@ import {
   MapPin,
   Palette,
   Plus,
+  RefreshCw,
   Ruler,
   Trash2,
 } from "lucide-react";
@@ -23,6 +24,8 @@ type PreviewPayload = {
   contract: ParsedTechnicalContract;
   pieces: ParsedTechnicalPiece[];
   duplicateContract: boolean;
+  existingContractId: string | null;
+  existingPieceCodes: string[];
   duplicatePieceCodes: string[];
   warnings: string[];
 };
@@ -44,6 +47,10 @@ function emptyPiece(index: number): ParsedTechnicalPiece {
 
 function numberOrNull(value: string) {
   return value ? Number(value) : null;
+}
+
+function normalizedPieceCodeKey(value: string | null | undefined) {
+  return (value ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase("pt-BR");
 }
 
 function pieceQuantityTotal(pieces: ParsedTechnicalPiece[]) {
@@ -115,11 +122,13 @@ function PieceCard({
   onRemove,
   onUpdate,
   piece,
+  alreadyRegistered,
 }: {
   index: number;
   onRemove: () => void;
   onUpdate: (patch: Partial<ParsedTechnicalPiece>) => void;
   piece: ParsedTechnicalPiece;
+  alreadyRegistered?: boolean;
 }) {
   const dimensions =
     piece.sale_width_mm && piece.sale_height_mm
@@ -141,6 +150,11 @@ function PieceCard({
             {piece.line ? (
               <span className="rounded-md bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-800 ring-1 ring-orange-200">
                 {piece.line}
+              </span>
+            ) : null}
+            {alreadyRegistered ? (
+              <span className="rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                Já cadastrada
               </span>
             ) : null}
           </div>
@@ -247,12 +261,14 @@ function PieceCard({
 export function ContractImportPanel() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewPayload | null>(null);
+  const [reprocessExisting, setReprocessExisting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
   async function handlePreview() {
     setMessage("");
     setPreview(null);
+    setReprocessExisting(false);
 
     if (!file) {
       setMessage("Selecione um PDF para importar.");
@@ -274,7 +290,9 @@ export function ContractImportPanel() {
         throw new Error(payload.error ?? "Falha ao ler PDF.");
       }
 
-      setPreview(payload as PreviewPayload);
+      const nextPreview = payload as PreviewPayload;
+      setPreview(nextPreview);
+      setReprocessExisting(Boolean(nextPreview.duplicateContract));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Falha ao ler PDF.");
     } finally {
@@ -345,6 +363,14 @@ export function ContractImportPanel() {
   const areaTotal = preview
     ? preview.pieces.reduce((total, piece) => total + (pieceArea(piece) ?? 0), 0)
     : 0;
+  const existingPieceCodeSet = useMemo(
+    () => new Set((preview?.existingPieceCodes ?? []).map(normalizedPieceCodeKey)),
+    [preview?.existingPieceCodes],
+  );
+  const previewExistingDuplicateCount = preview
+    ? preview.pieces.filter((piece) => existingPieceCodeSet.has(normalizedPieceCodeKey(piece.code))).length
+    : 0;
+  const previewNewPieceCount = preview ? preview.pieces.length - previewExistingDuplicateCount : 0;
 
   return (
     <div className="space-y-4">
@@ -407,6 +433,34 @@ export function ContractImportPanel() {
                     <p key={warning}>{warning}</p>
                   ))}
                 </div>
+              </div>
+            </div>
+          ) : null}
+
+          {preview.duplicateContract ? (
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex gap-2">
+                  <RefreshCw className="mt-0.5 size-4 flex-none text-blue-700" />
+                  <div>
+                    <p className="font-semibold">Reprocessar contrato existente</p>
+                    <p className="mt-1 text-blue-900">
+                      Este número de contrato já está cadastrado. Ao confirmar, o sistema importa apenas peças novas e ignora códigos já existentes.
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-blue-800">
+                      {previewNewPieceCount} peça(s) nova(s) · {previewExistingDuplicateCount} já cadastrada(s)
+                    </p>
+                  </div>
+                </div>
+                <label className="inline-flex min-h-10 items-center gap-2 rounded-md border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-950">
+                  <input
+                    type="checkbox"
+                    checked={reprocessExisting}
+                    onChange={(event) => setReprocessExisting(event.target.checked)}
+                    className="size-4"
+                  />
+                  Reprocessar
+                </label>
               </div>
             </div>
           ) : null}
@@ -506,6 +560,7 @@ export function ContractImportPanel() {
                   key={`${piece.code}-${index}`}
                   index={index}
                   piece={piece}
+                  alreadyRegistered={existingPieceCodeSet.has(normalizedPieceCodeKey(piece.code))}
                   onRemove={() => removePiece(index)}
                   onUpdate={(patch) => updatePiece(index, patch)}
                 />
@@ -524,9 +579,22 @@ export function ContractImportPanel() {
             </div>
           </section>
 
-          <ActionForm action={confirmContractImportAction} submitLabel="Confirmar e gravar contrato">
+          <ActionForm
+            action={confirmContractImportAction}
+            submitLabel={
+              preview.duplicateContract && reprocessExisting
+                ? "Confirmar reprocessamento"
+                : "Confirmar e gravar contrato"
+            }
+            confirmMessage={
+              preview.duplicateContract && reprocessExisting
+                ? "Confirmar o reprocessamento deste PDF? As peças já cadastradas serão ignoradas e somente peças novas serão importadas."
+                : undefined
+            }
+          >
             <input type="hidden" name="contract_json" value={hiddenPayloads?.contract ?? ""} />
             <input type="hidden" name="pieces_json" value={hiddenPayloads?.pieces ?? "[]"} />
+            <input type="hidden" name="reprocess_existing" value={reprocessExisting ? "true" : "false"} />
           </ActionForm>
         </div>
       ) : null}
