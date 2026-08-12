@@ -21,6 +21,8 @@ import {
   prodBatchTransitionSchema,
   receiveFolderSchema,
   reopenContractStageSchema,
+  releaseBatchSchema,
+  releaseBatchSignatureSchema,
   releasePieceSchema,
   splitPieceSchema,
   stageSignatureSchema,
@@ -60,6 +62,8 @@ import type {
   TechnicalCorrection,
   TechnicalPiece,
   TechnicalProdBatch,
+  TechnicalRelease,
+  TechnicalReleaseParticipant,
 } from "@/lib/types";
 import { toUserFriendlyErrorMessage } from "@/lib/errors";
 
@@ -178,6 +182,19 @@ function idsFromForm(formData: FormData, key: string) {
     .map(String)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function optionalNumberFromForm(formData: FormData, key: string) {
+  const value = String(formData.get(key) ?? "").trim();
+  if (!value) return null;
+  const parsed = Number(value.replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function nullableTextFromForm(formData: FormData, key: string, fallback: string | null = null) {
+  if (!formData.has(key)) return fallback;
+  const value = String(formData.get(key) ?? "").trim();
+  return value || null;
 }
 
 function parseJsonPayload<T>(value: string, label: string): T {
@@ -376,6 +393,86 @@ async function assertStageCanBeSigned(
       .limit(1);
     if (error) throw error;
     if ((data ?? []).length) throw new Error("Responda ou encerre as dúvidas abertas antes da ciência.");
+  }
+}
+
+function isReleaseSigned(
+  release: Pick<TechnicalRelease, "validation_required" | "status">,
+  participants: Array<Pick<TechnicalReleaseParticipant, "signed_at">>,
+) {
+  if (!release.validation_required) return true;
+  if (release.status === "validado") return true;
+  return participants.length > 0 && participants.every((participant) => Boolean(participant.signed_at));
+}
+
+async function assertPiecesBelongToSignedReleaseBatches(
+  context: ActionContext,
+  contractId: string,
+  pieceIds: string[],
+) {
+  const { data: releasePieces, error: releasePiecesError } = await context.admin
+    .from("technical_release_pieces")
+    .select("release_id, piece_id, created_at")
+    .in("piece_id", pieceIds)
+    .order("created_at", { ascending: false });
+
+  if (releasePiecesError) {
+    if (isMissingRelationError(releasePiecesError)) {
+      throw new Error("As peças selecionadas ainda não pertencem a um lote de liberação assinado.");
+    }
+    throw releasePiecesError;
+  }
+
+  const latestReleaseByPiece = new Map<string, string>();
+  for (const link of (releasePieces ?? []) as Array<{ release_id: string; piece_id: string }>) {
+    if (!latestReleaseByPiece.has(link.piece_id)) {
+      latestReleaseByPiece.set(link.piece_id, link.release_id);
+    }
+  }
+
+  if (pieceIds.some((pieceId) => !latestReleaseByPiece.has(pieceId))) {
+    throw new Error("Uma ou mais peças selecionadas ainda não pertencem a um lote de liberação.");
+  }
+
+  const releaseIds = Array.from(new Set(latestReleaseByPiece.values()));
+  const { data: releases, error: releasesError } = await context.admin
+    .from("technical_releases")
+    .select("*")
+    .eq("company_id", context.companyId)
+    .eq("contract_id", contractId)
+    .in("id", releaseIds);
+
+  if (releasesError) throw releasesError;
+
+  const releasesById = new Map(((releases ?? []) as TechnicalRelease[]).map((release) => [release.id, release]));
+  const { data: participants, error: participantsError } = await context.admin
+    .from("technical_release_participants")
+    .select("*")
+    .in("release_id", releaseIds);
+
+  if (participantsError) {
+    if (isMissingRelationError(participantsError)) {
+      throw new Error("As assinaturas dos lotes de liberação ainda não estão disponíveis.");
+    }
+    throw participantsError;
+  }
+
+  const participantsByReleaseId = new Map<string, TechnicalReleaseParticipant[]>();
+  for (const participant of (participants ?? []) as TechnicalReleaseParticipant[]) {
+    const current = participantsByReleaseId.get(participant.release_id) ?? [];
+    current.push(participant);
+    participantsByReleaseId.set(participant.release_id, current);
+  }
+
+  for (const pieceId of pieceIds) {
+    const releaseId = latestReleaseByPiece.get(pieceId);
+    const release = releaseId ? releasesById.get(releaseId) : null;
+    if (!release || release.status === "cancelado") {
+      throw new Error("Uma ou mais peças selecionadas pertencem a um lote de liberação inválido.");
+    }
+    if (!isReleaseSigned(release, participantsByReleaseId.get(release.id) ?? [])) {
+      throw new Error("Uma ou mais peças selecionadas aguardam assinatura do lote de liberação.");
+    }
   }
 }
 
@@ -1660,6 +1757,334 @@ export async function updatePieceRegistrationAction(_: ActionState, formData: Fo
   }
 }
 
+export async function createReleaseBatchAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.pieces.release");
+    const parsed = releaseBatchSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+    const pieceIds = Array.from(new Set(idsFromForm(formData, "piece_ids")));
+    if (!pieceIds.length) throw new Error("Selecione ao menos uma peça para o lote de liberação.");
+
+    await assertStageValidationSatisfied(context, parsed.data.contract_id, "visitas");
+
+    const { data: pieces, error: piecesError } = await context.admin
+      .from("technical_contract_pieces")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("contract_id", parsed.data.contract_id)
+      .is("deleted_at", null)
+      .in("id", pieceIds);
+
+    if (piecesError) throw piecesError;
+    if ((pieces ?? []).length !== pieceIds.length) {
+      throw new Error("Uma ou mais peças selecionadas não foram encontradas.");
+    }
+
+    const typedPieces = (pieces ?? []) as TechnicalPiece[];
+    const alreadyReleased = typedPieces.find((piece) =>
+      ["liberada", "em_prod", "entregue"].includes(piece.status),
+    );
+    if (alreadyReleased) throw new Error(`${alreadyReleased.code}: esta peça já está liberada.`);
+
+    const { data: corrections, error: correctionsError } = await context.admin
+      .from("technical_corrections")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("contract_id", parsed.data.contract_id)
+      .in("piece_id", pieceIds);
+
+    if (correctionsError) throw correctionsError;
+    const typedCorrections = (corrections ?? []) as TechnicalCorrection[];
+
+    const measuredByPieceId = new Map<string, { width: number | null; height: number | null }>();
+    const environmentByPieceId = new Map<string, string | null>();
+    for (const piece of typedPieces) {
+      const width = optionalNumberFromForm(formData, `measured_width_mm_${piece.id}`) ?? piece.measured_width_mm;
+      const height = optionalNumberFromForm(formData, `measured_height_mm_${piece.id}`) ?? piece.measured_height_mm;
+      const environment = nullableTextFromForm(formData, `environment_${piece.id}`, piece.environment);
+      measuredByPieceId.set(piece.id, { width, height });
+      environmentByPieceId.set(piece.id, environment);
+
+      const allowed = canReleasePiece({
+        piece: {
+          ...piece,
+          measured_width_mm: width,
+          measured_height_mm: height,
+        },
+        corrections: typedCorrections.filter((correction) => correction.piece_id === piece.id),
+      });
+      if (!allowed.ok) throw new Error(`${piece.code}: ${allowed.reason}`);
+    }
+
+    const environmentChanges = typedPieces
+      .map((piece) => {
+        const after = environmentByPieceId.get(piece.id) ?? null;
+        const before = piece.environment ?? null;
+        if (before === after) return null;
+        return {
+          piece_id: piece.id,
+          code: piece.code,
+          before,
+          after,
+        };
+      })
+      .filter(Boolean);
+
+    const { data: validation, error: validationError } = await context.admin
+      .from("technical_stage_validations")
+      .select("validation_required")
+      .eq("company_id", context.companyId)
+      .eq("contract_id", parsed.data.contract_id)
+      .eq("stage", "pecas_medicoes_liberacoes")
+      .maybeSingle();
+
+    if (validationError && !isMissingRelationError(validationError)) throw validationError;
+
+    const validationRequired = Boolean((validation as { validation_required?: boolean } | null)?.validation_required);
+    const { data: stageParticipants, error: stageParticipantsError } = validationRequired
+      ? await context.admin
+          .from("technical_stage_validation_participants")
+          .select("profile_id")
+          .eq("company_id", context.companyId)
+          .eq("contract_id", parsed.data.contract_id)
+          .eq("stage", "pecas_medicoes_liberacoes")
+      : { data: [], error: null };
+
+    if (stageParticipantsError && !isMissingRelationError(stageParticipantsError)) {
+      throw stageParticipantsError;
+    }
+
+    const participantProfileIds = Array.from(
+      new Set(((stageParticipants ?? []) as Array<{ profile_id: string }>).map((participant) => participant.profile_id)),
+    );
+    if (validationRequired && !participantProfileIds.length) {
+      throw new Error("Configure os participantes da validação de peças antes de criar o lote.");
+    }
+
+    const now = new Date().toISOString();
+    const releaseDate = now.slice(0, 10);
+    const dueDate =
+      parsed.data.default_due_date ??
+      addDeadlineDays({
+        startDate: releaseDate,
+        days: 10,
+        unit: "dias_uteis",
+      });
+
+    const { count, error: countError } = await context.admin
+      .from("technical_releases")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", context.companyId)
+      .eq("contract_id", parsed.data.contract_id);
+
+    if (countError) throw countError;
+
+    const batchNumber = parsed.data.batch_number ?? `Lote ${(count ?? 0) + 1}`;
+    const { data: release, error: releaseError } = await context.admin
+      .from("technical_releases")
+      .insert({
+        company_id: context.companyId,
+        contract_id: parsed.data.contract_id,
+        batch_number: batchNumber,
+        release_date: releaseDate,
+        default_due_date: dueDate,
+        validation_required: validationRequired,
+        status: validationRequired ? "aguardando_assinatura" : "validado",
+        validated_at: validationRequired ? null : now,
+        notes: parsed.data.notes,
+        released_by_profile_id: context.profileId,
+      })
+      .select("id")
+      .single();
+
+    if (releaseError) throw releaseError;
+    const releaseId = String((release as { id: string }).id);
+
+    const { error: releasePiecesError } = await context.admin.from("technical_release_pieces").insert(
+      pieceIds.map((pieceId) => ({
+        release_id: releaseId,
+        piece_id: pieceId,
+        due_date: dueDate,
+      })),
+    );
+
+    if (releasePiecesError) throw releasePiecesError;
+
+    if (participantProfileIds.length) {
+      const { data: insertedParticipants, error: participantsInsertError } = await context.admin
+        .from("technical_release_participants")
+        .insert(
+          participantProfileIds.map((profileId) => ({
+            company_id: context.companyId,
+            release_id: releaseId,
+            profile_id: profileId,
+          })),
+        )
+        .select("id, profile_id");
+
+      if (participantsInsertError) throw participantsInsertError;
+
+      const notifications = ((insertedParticipants ?? []) as Array<{ id: string; profile_id: string }>).map(
+        (participant) => ({
+          company_id: context.companyId,
+          recipient_profile_id: participant.profile_id,
+          title: "Lote de liberação aguardando assinatura",
+          body: `${batchNumber} possui ${pieceIds.length} peça(s) aguardando ciência.`,
+          category: "technical_release_signature",
+          entity: "technical_release_participants",
+          entity_id: participant.id,
+          action_url: `/tecnico/contratos/${parsed.data.contract_id}#pecas`,
+        }),
+      );
+
+      if (notifications.length) {
+        const { error: notificationError } = await context.admin.from("platform_notifications").insert(notifications);
+        if (notificationError) throw notificationError;
+      }
+    }
+
+    for (const piece of typedPieces) {
+      const measured = measuredByPieceId.get(piece.id);
+      const { error: pieceUpdateError } = await context.admin
+        .from("technical_contract_pieces")
+        .update({
+          environment: environmentByPieceId.get(piece.id) ?? null,
+          measured_width_mm: measured?.width ?? piece.measured_width_mm,
+          measured_height_mm: measured?.height ?? piece.measured_height_mm,
+          status: "liberada",
+          released_at: now,
+          release_due_date: dueDate,
+          exceptional_due_date: parsed.data.default_due_date,
+        })
+        .eq("company_id", context.companyId)
+        .eq("id", piece.id);
+
+      if (pieceUpdateError) throw pieceUpdateError;
+    }
+
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "technical_releases",
+      entity_id: releaseId,
+      action: "release_batch_create",
+      user_id: context.authUserId,
+      after_data: {
+        contract_id: parsed.data.contract_id,
+        batch_number: batchNumber,
+        piece_ids: pieceIds,
+        environment_updates: environmentChanges,
+        validation_required: validationRequired,
+      },
+      notes: `${batchNumber}: lote de liberação criado com ${pieceIds.length} peça(s).`,
+    });
+
+    if (auditError) throw auditError;
+    revalidateTechnical(parsed.data.contract_id);
+    return ok(`${batchNumber} criado com ${pieceIds.length} peça(s).`);
+  } catch (error) {
+    return fail(error, "Não foi possível criar o lote de liberação.");
+  }
+}
+
+export async function signReleaseBatchAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext(
+      "technical.contracts.view",
+      "Você precisa ter acesso ao contrato para assinar o lote.",
+    );
+    const parsed = releaseBatchSignatureSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+    const { data: release, error: releaseError } = await context.admin
+      .from("technical_releases")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("id", parsed.data.release_id)
+      .maybeSingle();
+
+    if (releaseError) throw releaseError;
+    if (!release) throw new Error("Lote de liberação não encontrado.");
+
+    const typedRelease = release as TechnicalRelease;
+    if (!typedRelease.validation_required) return ok("Este lote não exige assinatura.");
+    if (typedRelease.status === "cancelado") throw new Error("Lote cancelado não pode ser assinado.");
+
+    const { data: participant, error: participantError } = await context.admin
+      .from("technical_release_participants")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("release_id", typedRelease.id)
+      .eq("profile_id", context.profileId)
+      .maybeSingle();
+
+    if (participantError) throw participantError;
+    if (!participant) throw new Error("Seu usuário não está vinculado como participante deste lote.");
+
+    const typedParticipant = participant as TechnicalReleaseParticipant;
+    if (typedParticipant.signed_at) return ok("Este lote já estava assinado por você.");
+
+    const signedAt = new Date().toISOString();
+    const { error: signError } = await context.admin
+      .from("technical_release_participants")
+      .update({
+        signed_at: signedAt,
+        signed_by_auth_user_id: context.authUserId,
+      })
+      .eq("company_id", context.companyId)
+      .eq("id", typedParticipant.id);
+
+    if (signError) throw signError;
+
+    const { data: participants, error: participantsError } = await context.admin
+      .from("technical_release_participants")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("release_id", typedRelease.id);
+
+    if (participantsError) throw participantsError;
+
+    const releaseParticipants = (participants ?? []) as TechnicalReleaseParticipant[];
+    if (releaseParticipants.length && releaseParticipants.every((participant) => Boolean(participant.signed_at))) {
+      const { error: releaseUpdateError } = await context.admin
+        .from("technical_releases")
+        .update({ status: "validado", validated_at: signedAt })
+        .eq("company_id", context.companyId)
+        .eq("id", typedRelease.id);
+
+      if (releaseUpdateError) throw releaseUpdateError;
+    }
+
+    await context.admin
+      .from("platform_notifications")
+      .update({ read_at: signedAt })
+      .eq("company_id", context.companyId)
+      .eq("entity", "technical_release_participants")
+      .eq("entity_id", typedParticipant.id);
+
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "technical_release_participants",
+      entity_id: typedParticipant.id,
+      action: "release_batch_signature",
+      user_id: context.authUserId,
+      after_data: {
+        release_id: typedRelease.id,
+        contract_id: typedRelease.contract_id,
+        signed_at: signedAt,
+        profile_id: context.profileId,
+      },
+      notes: `${typedRelease.batch_number ?? "Lote de liberação"} assinado digitalmente.`,
+    });
+
+    if (auditError) throw auditError;
+    revalidateTechnical(typedRelease.contract_id);
+    return ok("Lote assinado digitalmente.");
+  } catch (error) {
+    return fail(error, "Não foi possível assinar o lote de liberação.");
+  }
+}
+
 export async function releasePieceAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.pieces.release");
@@ -1862,7 +2287,9 @@ export async function createProdBatchAction(_: ActionState, formData: FormData) 
     const parsed = prodBatchSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-    const pieceIds = idsFromForm(formData, "piece_ids");
+    const pieceIds = Array.from(new Set(idsFromForm(formData, "piece_ids")));
+    if (!pieceIds.length) throw new Error("Selecione ao menos uma peça para montar o PROD.");
+
     const { data: pieces, error: piecesError } = await context.admin
       .from("technical_contract_pieces")
       .select("*")
@@ -1873,7 +2300,7 @@ export async function createProdBatchAction(_: ActionState, formData: FormData) 
 
     if ((pieces ?? []).length !== pieceIds.length) throw new Error("Uma ou mais peças selecionadas não foram encontradas.");
 
-    await assertStageValidationSatisfied(context, parsed.data.contract_id, "pecas_medicoes_liberacoes");
+    await assertPiecesBelongToSignedReleaseBatches(context, parsed.data.contract_id, pieceIds);
 
     const typedPieces = (pieces ?? []) as TechnicalPiece[];
     const { data: corrections, error: correctionsError } = await context.admin

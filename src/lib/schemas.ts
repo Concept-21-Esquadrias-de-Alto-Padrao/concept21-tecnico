@@ -189,6 +189,17 @@ export const releasePieceSchema = z.object({
   exceptional_due_date: optionalDate,
 });
 
+export const releaseBatchSchema = z.object({
+  contract_id: z.string().uuid(),
+  batch_number: optionalText,
+  default_due_date: optionalDate,
+  notes: optionalText,
+});
+
+export const releaseBatchSignatureSchema = z.object({
+  release_id: z.string().uuid(),
+});
+
 export const correctionSchema = z.object({
   contract_id: z.string().uuid(),
   piece_id: optionalText,

@@ -13,6 +13,8 @@ const entityLabels: Record<string, string> = {
   technical_contract_import: "importação de contrato",
   technical_contract_pieces: "cadastro de peça",
   technical_contracts: "contrato técnico",
+  technical_release_participants: "assinatura de lote de liberação",
+  technical_releases: "lote de liberação",
   technical_stage_validation_participants: "assinatura de etapa",
   technical_stage_validations: "validação de etapa",
 };
@@ -103,6 +105,30 @@ function workDataDetails(log: TechnicalAuditLog) {
   return changes.length ? changes.join(" · ") : null;
 }
 
+function releaseBatchDetails(log: TechnicalAuditLog) {
+  const batchNumber = valueAsString(log.after_data?.batch_number);
+  const pieceIds = Array.isArray(log.after_data?.piece_ids) ? log.after_data.piece_ids.length : null;
+  const environmentUpdates = Array.isArray(log.after_data?.environment_updates)
+    ? log.after_data.environment_updates
+        .map((item) => {
+          const update = item as { code?: unknown; before?: unknown; after?: unknown };
+          const code = valueAsString(update.code);
+          const before = valueAsString(update.before) ?? "sem ambiente";
+          const after = valueAsString(update.after) ?? "sem ambiente";
+          return code ? `${code}: ${before} -> ${after}` : null;
+        })
+        .filter(Boolean)
+    : [];
+  const details = [
+    batchNumber ? `Lote: ${batchNumber}` : null,
+    pieceIds !== null ? `${pieceIds} peça(s)` : null,
+    environmentUpdates.length ? `Ambiente ajustado: ${environmentUpdates.join("; ")}` : null,
+    valueAsString(log.notes),
+  ].filter(Boolean);
+
+  return details.length ? details.join(" · ") : null;
+}
+
 export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfile[]): AuditSummary {
   const actorName = profileDisplayName(profiles, log.user_id);
   const actionKey = `${log.entity}:${log.action}`;
@@ -152,6 +178,16 @@ export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfi
       return {
         title: actedBy(actorName, `atualizou o cadastro da peça ${valueAsString(log.after_data?.code) ?? ""}`.trim()),
         details: pieceRegistrationDetails(log),
+      };
+    case "technical_releases:release_batch_create":
+      return {
+        title: actedBy(actorName, "criou um lote de liberação de medidas"),
+        details: releaseBatchDetails(log),
+      };
+    case "technical_release_participants:release_batch_signature":
+      return {
+        title: actedBy(actorName, "assinou digitalmente um lote de liberação"),
+        details: defaultDetails(log),
       };
     case "production_contracts:work_data_update":
       return {

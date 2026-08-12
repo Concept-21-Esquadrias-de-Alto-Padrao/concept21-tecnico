@@ -357,6 +357,43 @@ export type TechnicalVisitPiece = {
   result: string | null;
 };
 
+export type TechnicalRelease = {
+  id: string;
+  company_id: string;
+  contract_id: string;
+  visit_id: string | null;
+  batch_number: string | null;
+  release_date: string;
+  default_due_date: string | null;
+  validation_required: boolean;
+  status: "aguardando_assinatura" | "validado" | "cancelado";
+  validated_at: string | null;
+  notes: string | null;
+  released_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TechnicalReleasePiece = {
+  id: string;
+  release_id: string;
+  piece_id: string;
+  due_date: string | null;
+  exception_reason: string | null;
+  created_at: string;
+};
+
+export type TechnicalReleaseParticipant = {
+  id: string;
+  company_id: string;
+  release_id: string;
+  profile_id: string;
+  signed_at: string | null;
+  signed_by_auth_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TechnicalCorrection = {
   id: string;
   company_id: string;
@@ -525,6 +562,9 @@ export type TechnicalSnapshot = {
   actions: TechnicalAction[];
   visits: TechnicalVisit[];
   visitPieces: TechnicalVisitPiece[];
+  releases: TechnicalRelease[];
+  releasePieces: TechnicalReleasePiece[];
+  releaseParticipants: TechnicalReleaseParticipant[];
   corrections: TechnicalCorrection[];
   prodBatches: TechnicalProdBatch[];
   prodBatchPieces: TechnicalProdBatchPiece[];

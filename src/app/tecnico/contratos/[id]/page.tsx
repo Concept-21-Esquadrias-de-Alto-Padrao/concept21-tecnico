@@ -24,15 +24,16 @@ import {
   createDoubtAction,
   createMeetingAction,
   createProdBatchAction,
+  createReleaseBatchAction,
   createTechnicalActionAction,
   createVisitAction,
   deliverDepartmentDocumentAction,
   generateVisitReportFormAction,
   receiveCommercialFolderAction,
   recordVisitResultAction,
-  releasePieceAction,
   reopenContractStageAction,
   saveStageValidationAction,
+  signReleaseBatchAction,
   signStageValidationAction,
   splitPieceAction,
   updateContractWorkDataAction,
@@ -64,6 +65,9 @@ import type {
   ProductionContract,
   TechnicalContractStageKey,
   TechnicalPiece,
+  TechnicalRelease,
+  TechnicalReleaseParticipant,
+  TechnicalReleasePiece,
   TechnicalStageValidation,
   TechnicalStageValidationParticipant,
 } from "@/lib/types";
@@ -126,6 +130,29 @@ function stageStatusWithValidation(baseStatus: string, validation: StageValidati
   return stageComplete ? "Aguardando ciência" : baseStatus;
 }
 
+function isReleaseBatchSigned(
+  release: Pick<TechnicalRelease, "validation_required" | "status">,
+  participants: Array<Pick<TechnicalReleaseParticipant, "signed_at">>,
+) {
+  if (release.status === "cancelado") return false;
+  if (!release.validation_required) return true;
+  if (release.status === "validado") return true;
+  return participants.length > 0 && participants.every((participant) => Boolean(participant.signed_at));
+}
+
+function releaseBatchStatusLabel(
+  release: Pick<TechnicalRelease, "validation_required" | "status">,
+  participants: Array<Pick<TechnicalReleaseParticipant, "signed_at">>,
+) {
+  if (release.status === "cancelado") return "Cancelado";
+  if (isReleaseBatchSigned(release, participants)) return "Validado";
+  const signedCount = participants.filter((participant) => participant.signed_at).length;
+  return `${participants.length - signedCount} assinatura(s) pendente(s)`;
+}
+
+const releaseBatchSignConfirmMessage =
+  "Tem certeza que deseja confirmar este lote? Após a confirmação, sua assinatura ficará registrada e as peças do lote seguirão para a próxima etapa quando todos os participantes assinarem.";
+
 function StageValidationPanel({
   contractId,
   stage,
@@ -135,6 +162,7 @@ function StageValidationPanel({
   canManage,
   stageComplete,
   completeMessage,
+  signatureMode = "stage",
   className,
 }: {
   contractId: string;
@@ -145,14 +173,18 @@ function StageValidationPanel({
   canManage: boolean;
   stageComplete: boolean;
   completeMessage: string;
+  signatureMode?: "stage" | "release_batch_config";
   className?: string;
 }) {
+  const isReleaseBatchConfig = signatureMode === "release_batch_config";
   const participantIds = validation.participants.map((participant) => participant.profile_id);
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
   const signedCount = validation.participants.filter((participant) => participant.signed_at).length;
   const pendingCount = validation.participants.length - signedCount;
   const currentSigned = Boolean(validation.currentParticipant?.signed_at);
-  const currentCanSign = Boolean(validation.required && stageComplete && validation.currentParticipant && !currentSigned);
+  const currentCanSign = Boolean(
+    !isReleaseBatchConfig && validation.required && stageComplete && validation.currentParticipant && !currentSigned,
+  );
 
   return (
     <div className={cn("rounded-md border border-border bg-white p-3", className)}>
@@ -163,9 +195,13 @@ function StageValidationPanel({
             Validação da etapa
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {validation.required
-              ? `${signedCount}/${validation.participants.length} participante(s) assinaram ${title}.`
-              : "A etapa não exige assinatura dos participantes."}
+            {isReleaseBatchConfig
+              ? validation.required
+                ? `${validation.participants.length} participante(s) serão copiados para cada lote criado.`
+                : "Os lotes não exigirão assinatura dos participantes."
+              : validation.required
+                ? `${signedCount}/${validation.participants.length} participante(s) assinaram ${title}.`
+                : "A etapa não exige assinatura dos participantes."}
           </p>
         </div>
         {validation.required ? (
@@ -177,7 +213,11 @@ function StageValidationPanel({
                 : "bg-amber-50 text-amber-800 ring-amber-200",
             )}
           >
-            {validation.complete ? "Validada" : `${pendingCount} pendente(s)`}
+            {isReleaseBatchConfig
+              ? `${validation.participants.length} participante(s)`
+              : validation.complete
+                ? "Validada"
+                : `${pendingCount} pendente(s)`}
           </span>
         ) : null}
       </div>
@@ -215,7 +255,7 @@ function StageValidationPanel({
         </ActionForm>
       ) : null}
 
-      {validation.required ? (
+      {validation.required && !isReleaseBatchConfig ? (
         <div className="mt-3 grid gap-2">
           {validation.participants.map((participant) => {
             const profile = profiles.find((item) => item.id === participant.profile_id);
@@ -243,7 +283,7 @@ function StageValidationPanel({
         </div>
       ) : null}
 
-      {validation.required && !stageComplete ? (
+      {validation.required && !stageComplete && !isReleaseBatchConfig ? (
         <p className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
           {completeMessage}
         </p>
@@ -414,17 +454,15 @@ function PieceRegistrationForm({ piece }: { piece: TechnicalPiece }) {
 function PieceActionForms({
   piece,
   canMeasure,
-  canRelease,
   canManageProds,
   className,
 }: {
   piece: TechnicalPiece;
   canMeasure: boolean;
-  canRelease: boolean;
   canManageProds: boolean;
   className?: string;
 }) {
-  if (!canMeasure && !canRelease && !canManageProds) return null;
+  if (!canMeasure && !canManageProds) return null;
 
   return (
     <div className={className ?? "grid gap-3 md:grid-cols-2 xl:grid-cols-4"}>
@@ -435,15 +473,6 @@ function PieceActionForms({
             <input name="measured_width_mm" type="number" className={inputClass} placeholder="Largura" defaultValue={piece.measured_width_mm ?? ""} />
             <input name="measured_height_mm" type="number" className={inputClass} placeholder="Altura" defaultValue={piece.measured_height_mm ?? ""} />
           </div>
-        </ActionForm>
-      ) : null}
-      {canRelease ? (
-        <ActionForm action={releasePieceAction} submitLabel="Liberar" className="rounded-md bg-muted/40 p-3">
-          <input type="hidden" name="id" value={piece.id} />
-          <input type="hidden" name="visit_id" value={piece.release_visit_id ?? ""} />
-          <Field label="Previsão excepcional">
-            <input name="exceptional_due_date" type="date" className={inputClass} />
-          </Field>
         </ActionForm>
       ) : null}
       {canManageProds ? (
@@ -465,6 +494,243 @@ function PieceActionForms({
           <input name="suffix" className={inputClass} placeholder="A" />
         </ActionForm>
       ) : null}
+    </div>
+  );
+}
+
+function ReleaseBatchForm({ contractId, pieces }: { contractId: string; pieces: TechnicalPiece[] }) {
+  if (!pieces.length) {
+    return (
+      <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-800">
+        Não há peças pendentes para novo lote de liberação.
+      </div>
+    );
+  }
+
+  return (
+    <ActionForm
+      action={createReleaseBatchAction}
+      submitLabel="Criar lote de liberação"
+      className="rounded-md border border-border bg-white p-3"
+      confirmMessage="Confirma a criação deste lote? Somente as peças selecionadas serão liberadas para assinatura e avanço do fluxo."
+    >
+      <input type="hidden" name="contract_id" value={contractId} />
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Field label="Identificação do lote">
+          <input name="batch_number" className={inputClass} placeholder="Ex.: Lote 1" />
+        </Field>
+        <Field label="Prazo da liberação">
+          <input name="default_due_date" type="date" className={inputClass} />
+        </Field>
+        <Field label="Observações">
+          <textarea name="notes" className={textareaClass} />
+        </Field>
+      </div>
+
+      <div className="space-y-2">
+        <div>
+          <p className="text-sm font-semibold text-charcoal">Peças deste lote</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Marque somente as peças que estão sendo liberadas agora. As demais permanecem aguardando novo lote.
+          </p>
+        </div>
+        <div className="grid gap-2">
+          {pieces.map((piece) => (
+            <div key={piece.id} className="rounded-md border border-border bg-muted/20 p-3">
+              <label className="flex cursor-pointer items-start gap-3 text-sm">
+                <input name="piece_ids" type="checkbox" value={piece.id} className="mt-1 size-4 accent-orange-600" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-charcoal">{piece.code}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {piece.environment ?? "Sem ambiente"} · {piece.piece_type ?? "Sem tipo"}
+                  </span>
+                </span>
+                <StatusBadge status={piece.status} type="piece" />
+              </label>
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <label className="space-y-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground">Ambiente</span>
+                  <input
+                    name={`environment_${piece.id}`}
+                    className={inputClass}
+                    defaultValue={piece.environment ?? ""}
+                    placeholder="Ambiente correto"
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground">Largura medida</span>
+                  <input
+                    name={`measured_width_mm_${piece.id}`}
+                    type="number"
+                    className={inputClass}
+                    defaultValue={piece.measured_width_mm ?? ""}
+                    placeholder={piece.sale_width_mm ? String(piece.sale_width_mm) : "Largura"}
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground">Altura medida</span>
+                  <input
+                    name={`measured_height_mm_${piece.id}`}
+                    type="number"
+                    className={inputClass}
+                    defaultValue={piece.measured_height_mm ?? ""}
+                    placeholder={piece.sale_height_mm ? String(piece.sale_height_mm) : "Altura"}
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </ActionForm>
+  );
+}
+
+function ReleaseBatchList({
+  releases,
+  releasePiecesByReleaseId,
+  pieces,
+  participantsByReleaseId,
+  profiles,
+  currentProfileId,
+}: {
+  releases: TechnicalRelease[];
+  releasePiecesByReleaseId: Map<string, TechnicalReleasePiece[]>;
+  pieces: TechnicalPiece[];
+  participantsByReleaseId: Map<string, TechnicalReleaseParticipant[]>;
+  profiles: Profile[];
+  currentProfileId: string;
+}) {
+  if (!releases.length) {
+    return (
+      <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+        Nenhum lote de liberação criado ainda.
+      </div>
+    );
+  }
+
+  const piecesById = new Map(pieces.map((piece) => [piece.id, piece]));
+
+  return (
+    <div className="space-y-2">
+      {releases.map((release) => {
+        const participants = participantsByReleaseId.get(release.id) ?? [];
+        const links = releasePiecesByReleaseId.get(release.id) ?? [];
+        const batchPieces = links
+          .map((link) => piecesById.get(link.piece_id))
+          .filter((piece): piece is TechnicalPiece => Boolean(piece));
+        const signed = isReleaseBatchSigned(release, participants);
+        const currentParticipant = participants.find((participant) => participant.profile_id === currentProfileId);
+        const currentCanSign = Boolean(
+          release.validation_required &&
+            release.status !== "cancelado" &&
+            currentParticipant &&
+            !currentParticipant.signed_at,
+        );
+
+        return (
+          <details key={release.id} className="group rounded-md border border-border bg-white">
+            <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-3 py-3 marker:hidden">
+              <div className="min-w-0">
+                <p className="font-semibold text-charcoal">{release.batch_number ?? "Lote de liberação"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {batchPieces.length || links.length} peça(s) · Liberado em {formatDate(release.release_date)}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span
+                  className={cn(
+                    "rounded-md px-2 py-1 text-xs font-semibold ring-1",
+                    signed
+                      ? "bg-green-50 text-green-800 ring-green-200"
+                      : release.status === "cancelado"
+                        ? "bg-red-50 text-red-800 ring-red-200"
+                        : "bg-amber-50 text-amber-800 ring-amber-200",
+                  )}
+                >
+                  {releaseBatchStatusLabel(release, participants)}
+                </span>
+                <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
+              </div>
+            </summary>
+            <div className="space-y-3 border-t border-border p-3 text-sm">
+              <dl className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-md bg-muted/40 p-2">
+                  <dt className="text-xs font-semibold uppercase text-muted-foreground">Prazo</dt>
+                  <dd className="mt-1 font-semibold text-charcoal">{formatDate(release.default_due_date)}</dd>
+                </div>
+                <div className="rounded-md bg-muted/40 p-2">
+                  <dt className="text-xs font-semibold uppercase text-muted-foreground">Assinatura</dt>
+                  <dd className="mt-1 font-semibold text-charcoal">
+                    {release.validation_required ? "Necessária" : "Não necessária"}
+                  </dd>
+                </div>
+                <div className="rounded-md bg-muted/40 p-2">
+                  <dt className="text-xs font-semibold uppercase text-muted-foreground">Validado em</dt>
+                  <dd className="mt-1 font-semibold text-charcoal">{formatDateTime(release.validated_at)}</dd>
+                </div>
+              </dl>
+
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Peças do lote</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {batchPieces.map((piece) => (
+                    <span key={piece.id} className="rounded-md border border-border bg-muted/30 px-2 py-1 text-xs font-semibold text-charcoal">
+                      {piece.code} · {piece.environment ?? "Sem ambiente"} · {piece.measured_width_mm ?? piece.sale_width_mm ?? "-"} x {piece.measured_height_mm ?? piece.sale_height_mm ?? "-"}
+                    </span>
+                  ))}
+                  {!batchPieces.length ? (
+                    <span className="text-xs text-muted-foreground">Peças não encontradas no cadastro ativo.</span>
+                  ) : null}
+                </div>
+              </div>
+
+              {release.notes ? <p className="rounded-md bg-muted/30 px-3 py-2 text-muted-foreground">{release.notes}</p> : null}
+
+              {release.validation_required ? (
+                <div className="grid gap-2">
+                  {participants.map((participant) => {
+                    const profile = profiles.find((item) => item.id === participant.profile_id);
+                    const name = profile?.name ?? "Usuário removido";
+                    return (
+                      <div
+                        key={participant.id}
+                        className={cn(
+                          "flex flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2 text-sm",
+                          participant.signed_at ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800",
+                        )}
+                      >
+                        <span className="inline-flex items-center gap-2 font-medium">
+                          {participant.signed_at ? <UserCheck className="size-4" /> : <PenLine className="size-4" />}
+                          {participant.signed_at
+                            ? `Assinado digitalmente por ${name}`
+                            : `Aguardando assinatura de ${name}`}
+                        </span>
+                        {participant.signed_at ? <span className="text-xs">{formatDateTime(participant.signed_at)}</span> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                  Lote validado automaticamente porque a configuração atual não exige assinatura.
+                </div>
+              )}
+
+              {currentCanSign ? (
+                <ActionForm
+                  action={signReleaseBatchAction}
+                  submitLabel="Assinar lote"
+                  confirmMessage={releaseBatchSignConfirmMessage}
+                  className="rounded-md border border-green-200 bg-green-50 p-3"
+                >
+                  <input type="hidden" name="release_id" value={release.id} />
+                </ActionForm>
+              ) : null}
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }
@@ -530,7 +796,59 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const approvedOrDeliveredProds = prodBatches.filter((prod) =>
     ["aprovado", "entregue_suprimentos", "entregue_producao", "concluido"].includes(prod.status),
   );
-  const allPiecesReleased = pieces.length > 0 && releaseProgress.balance === 0;
+  const releases = snapshot.releases.filter((release) => release.contract_id === id);
+  const releaseIds = new Set(releases.map((release) => release.id));
+  const releasePieces = snapshot.releasePieces.filter((link) => releaseIds.has(link.release_id));
+  const releaseParticipants = snapshot.releaseParticipants.filter((participant) =>
+    releaseIds.has(participant.release_id),
+  );
+  const releaseParticipantsByReleaseId = new Map<string, TechnicalReleaseParticipant[]>();
+  for (const participant of releaseParticipants) {
+    const current = releaseParticipantsByReleaseId.get(participant.release_id) ?? [];
+    current.push(participant);
+    releaseParticipantsByReleaseId.set(participant.release_id, current);
+  }
+  const releasePiecesByReleaseId = new Map<string, TechnicalReleasePiece[]>();
+  for (const link of releasePieces) {
+    const current = releasePiecesByReleaseId.get(link.release_id) ?? [];
+    current.push(link);
+    releasePiecesByReleaseId.set(link.release_id, current);
+  }
+  const latestReleasePieceByPieceId = new Map<string, TechnicalReleasePiece>();
+  for (const link of [...releasePieces].sort((left, right) => right.created_at.localeCompare(left.created_at))) {
+    if (!latestReleasePieceByPieceId.has(link.piece_id)) {
+      latestReleasePieceByPieceId.set(link.piece_id, link);
+    }
+  }
+  const signedReleaseIds = new Set(
+    releases
+      .filter((release) => isReleaseBatchSigned(release, releaseParticipantsByReleaseId.get(release.id) ?? []))
+      .map((release) => release.id),
+  );
+  const signedReleasePieceIds = new Set(
+    [...latestReleasePieceByPieceId.values()]
+      .filter((link) => signedReleaseIds.has(link.release_id))
+      .map((link) => link.piece_id),
+  );
+  const releaseCandidates = pieces.filter(
+    (piece) => !["liberada", "em_prod", "entregue", "cancelada"].includes(piece.status),
+  );
+  const piecesReadyForProd = pieces.filter(
+    (piece) =>
+      piece.status === "liberada" &&
+      piece.cem_registered &&
+      piece.cem_checked &&
+      !piece.active_prod_batch_id &&
+      signedReleasePieceIds.has(piece.id),
+  );
+  const pendingReleaseSignatureCount = releases.filter(
+    (release) => !isReleaseBatchSigned(release, releaseParticipantsByReleaseId.get(release.id) ?? []),
+  ).length;
+  const pecasStageStatus = releases.length
+    ? pendingReleaseSignatureCount
+      ? `${pendingReleaseSignatureCount} lote(s) pendente(s)`
+      : `${releaseProgress.released}/${releaseProgress.total} liberada(s)`
+    : `${pieces.length} peça(s)`;
   const stageValidationFor = (stage: TechnicalContractStageKey) =>
     buildStageValidationView({
       stage,
@@ -549,7 +867,6 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const entradaReadyForNext = hasCommercialFolder && entradaValidation.complete;
   const reuniaoReadyForNext = hasCompletedMeeting && reuniaoValidation.complete && acoesValidation.complete;
   const visitasReadyForNext = visitasValidation.complete;
-  const pecasReadyForNext = pecasValidation.complete;
   const canRegisterCommercialEntry = canReceiveFolder && currentStatus === "aguardando_pasta" && !hasCommercialFolder;
   const canRegisterMeeting =
     canManageMeetings &&
@@ -558,7 +875,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
     !hasCompletedMeeting;
   const canRegisterVisit = canManageVisits && entradaReadyForNext && reuniaoReadyForNext;
   const canOperatePieces = reuniaoReadyForNext && visitasReadyForNext;
-  const canCreateProdBatch = canManageProds && pecasReadyForNext;
+  const canCreateProdBatch = canManageProds && piecesReadyForProd.length > 0;
 
   const tabLinks = [
     ["#visao-geral", "Visão geral"],
@@ -1070,7 +1387,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         id="pecas"
         title="Peças, medições e liberações"
         description="Peças recolhidas por padrão, com ajustes e ações dentro de cada item."
-        status={stageStatusWithValidation(`${pieces.length} peça(s)`, pecasValidation, allPiecesReleased)}
+        status={pecasStageStatus}
       >
         <div className="space-y-3">
           <StageValidationPanel
@@ -1080,18 +1397,39 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             profiles={snapshot.profiles}
             validation={pecasValidation}
             canManage={canReopenStages}
-            stageComplete={allPiecesReleased}
-            completeMessage="Libere todas as peças ativas para liberar a assinatura dos participantes."
+            stageComplete={false}
+            completeMessage=""
+            signatureMode="release_batch_config"
           />
           {!visitasValidation.complete ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               A etapa de visitas aguarda ciência de todos os participantes antes das ações de peça.
             </div>
           ) : null}
+          {canRelease && canOperatePieces ? (
+            <ReleaseBatchForm contractId={id} pieces={releaseCandidates} />
+          ) : null}
+          <ReleaseBatchList
+            releases={releases}
+            releasePiecesByReleaseId={releasePiecesByReleaseId}
+            pieces={pieces}
+            participantsByReleaseId={releaseParticipantsByReleaseId}
+            profiles={snapshot.profiles}
+            currentProfileId={authContext.profile.id}
+          />
           <div className="space-y-3">
-            {pieces.map((piece) => (
+            {pieces.map((piece) => {
+              const latestReleaseLink = latestReleasePieceByPieceId.get(piece.id);
+              const latestRelease = latestReleaseLink
+                ? releases.find((release) => release.id === latestReleaseLink.release_id)
+                : null;
+              const latestReleaseSigned = latestRelease
+                ? isReleaseBatchSigned(latestRelease, releaseParticipantsByReleaseId.get(latestRelease.id) ?? [])
+                : false;
+
+              return (
               <details key={piece.id} className="group rounded-md border border-border bg-white">
-                <summary className="grid cursor-pointer list-none gap-3 px-3 py-3 marker:hidden sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
+                <summary className="grid cursor-pointer list-none gap-3 px-3 py-3 marker:hidden sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-center">
                   <div className="min-w-0">
                     <p className="font-semibold text-charcoal">{piece.code}</p>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -1102,6 +1440,18 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     <span className="font-semibold text-charcoal">{piece.sale_width_mm ?? "-"} x {piece.sale_height_mm ?? "-"}</span>
                     <span className="ml-1">venda</span>
                   </div>
+                  {latestRelease ? (
+                    <span
+                      className={cn(
+                        "rounded-md px-2 py-1 text-xs font-semibold ring-1",
+                        latestReleaseSigned
+                          ? "bg-green-50 text-green-800 ring-green-200"
+                          : "bg-amber-50 text-amber-800 ring-amber-200",
+                      )}
+                    >
+                      {latestReleaseSigned ? "Lote validado" : "Lote aguardando assinatura"}
+                    </span>
+                  ) : null}
                   <StatusBadge status={piece.status} type="piece" />
                   <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
                 </summary>
@@ -1144,12 +1494,12 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                   <PieceActionForms
                     piece={piece}
                     canMeasure={canMeasure && canOperatePieces}
-                    canRelease={canRelease && canOperatePieces}
                     canManageProds={canManageProds && canOperatePieces}
                   />
                 </div>
               </details>
-            ))}
+              );
+            })}
           </div>
 
           <div className="hidden">
@@ -1193,7 +1543,6 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 <PieceActionForms
                   piece={piece}
                   canMeasure={canMeasure && canOperatePieces}
-                  canRelease={canRelease && canOperatePieces}
                   canManageProds={canManageProds && canOperatePieces}
                   className="mt-3 grid gap-2"
                 />
@@ -1229,7 +1578,6 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                       <PieceActionForms
                         piece={piece}
                         canMeasure={canMeasure && canOperatePieces}
-                        canRelease={canRelease && canOperatePieces}
                         canManageProds={canManageProds && canOperatePieces}
                       />
                     </td>
@@ -1410,9 +1758,11 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               );
             })}
           </div>
-          {canManageProds && !pecasValidation.complete ? (
+          {canManageProds && !canCreateProdBatch ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              A etapa de peças aguarda ciência de todos os participantes antes de montar PROD.
+              {pendingReleaseSignatureCount
+                ? "Há lote(s) de liberação aguardando assinatura antes de montar PROD."
+                : "Nenhuma peça está pronta para PROD. A peça precisa estar em lote validado e com cadastro/conferência no CEM."}
             </div>
           ) : null}
           {canCreateProdBatch ? (
@@ -1426,11 +1776,9 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               </Field>
               <Field label="Peças liberadas e conferidas no CEM">
                 <select name="piece_ids" multiple className="min-h-48 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-charcoal outline-none focus:border-accent">
-                  {pieces
-                    .filter((piece) => piece.status === "liberada" && piece.cem_registered && piece.cem_checked && !piece.active_prod_batch_id)
-                    .map((piece) => (
-                      <option key={piece.id} value={piece.id}>{piece.code} · {piece.environment ?? "Sem ambiente"}</option>
-                    ))}
+                  {piecesReadyForProd.map((piece) => (
+                    <option key={piece.id} value={piece.id}>{piece.code} · {piece.environment ?? "Sem ambiente"}</option>
+                  ))}
                 </select>
               </Field>
             </ActionForm>

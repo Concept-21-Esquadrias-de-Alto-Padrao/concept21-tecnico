@@ -17,6 +17,9 @@ import type {
   TechnicalProdBatch,
   TechnicalProdBatchPiece,
   TechnicalProdDocument,
+  TechnicalRelease,
+  TechnicalReleaseParticipant,
+  TechnicalReleasePiece,
   TechnicalStageValidation,
   TechnicalStageValidationParticipant,
   TechnicalSnapshot,
@@ -54,6 +57,9 @@ function emptySnapshot(): TechnicalSnapshot {
     actions: [],
     visits: [],
     visitPieces: [],
+    releases: [],
+    releasePieces: [],
+    releaseParticipants: [],
     corrections: [],
     prodBatches: [],
     prodBatchPieces: [],
@@ -218,6 +224,35 @@ async function loadTechnicalSnapshot(
       },
     });
     addSnapshotQuery(queries, include, {
+      key: "releases",
+      optionalMissing: true,
+      load: () => {
+        const query = supabase.from("technical_releases").select("*");
+        return filters.contractId
+          ? query.eq("contract_id", filters.contractId).order("created_at", { ascending: false })
+          : query.order("created_at", { ascending: false });
+      },
+      apply: (target, data) => {
+        target.releases = data as TechnicalRelease[];
+      },
+    });
+    addSnapshotQuery(queries, include, {
+      key: "releasePieces",
+      optionalMissing: true,
+      load: () => supabase.from("technical_release_pieces").select("*").order("created_at", { ascending: false }),
+      apply: (target, data) => {
+        target.releasePieces = data as TechnicalReleasePiece[];
+      },
+    });
+    addSnapshotQuery(queries, include, {
+      key: "releaseParticipants",
+      optionalMissing: true,
+      load: () => supabase.from("technical_release_participants").select("*").order("created_at"),
+      apply: (target, data) => {
+        target.releaseParticipants = data as TechnicalReleaseParticipant[];
+      },
+    });
+    addSnapshotQuery(queries, include, {
       key: "corrections",
       optionalMissing: true,
       load: () => {
@@ -360,6 +395,9 @@ export async function getTechnicalContractDetailData(contractId: string) {
       "actions",
       "visits",
       "visitPieces",
+      "releases",
+      "releasePieces",
+      "releaseParticipants",
       "corrections",
       "prodBatches",
       "prodBatchPieces",
@@ -374,7 +412,24 @@ export async function getTechnicalContractDetailData(contractId: string) {
 
 export async function getTechnicalOperationalData() {
   return loadTechnicalSnapshot(
-    includeKeys(["clients", "profiles", "contracts", "technicalContracts", "pieces", "actions", "visits", "corrections", "prodBatches", "prodBatchPieces", "prodDocuments", "deliveries", "doubts"]),
+    includeKeys([
+      "clients",
+      "profiles",
+      "contracts",
+      "technicalContracts",
+      "pieces",
+      "actions",
+      "visits",
+      "releases",
+      "releasePieces",
+      "releaseParticipants",
+      "corrections",
+      "prodBatches",
+      "prodBatchPieces",
+      "prodDocuments",
+      "deliveries",
+      "doubts",
+    ]),
   );
 }
 
