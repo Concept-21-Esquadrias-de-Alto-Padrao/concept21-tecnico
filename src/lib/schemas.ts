@@ -72,6 +72,24 @@ export const reopenContractStageSchema = z.object({
   reason: z.string().trim().min(5, "Informe o motivo da reabertura."),
 });
 
+export const workDataCorrectionSchema = z.object({
+  id: z.string().uuid(),
+  work_name: z.string().trim().min(1, "Informe a obra."),
+  full_address: z.string().trim().min(1, "Informe o endereço da obra."),
+  city: z.string().trim().min(1, "Informe a cidade."),
+  state: z
+    .string()
+    .trim()
+    .min(2, "Informe a UF.")
+    .max(2, "Informe a UF com 2 letras.")
+    .transform((value) => value.toUpperCase()),
+  zip_code: optionalText,
+  site_contact: optionalText,
+  site_contact_phone: optionalText,
+  notes: optionalText,
+  adjustment_reason: z.string().trim().min(5, "Informe o motivo do ajuste."),
+});
+
 export const meetingSchema = z.object({
   contract_id: z.string().uuid(),
   meeting_date: z.string().min(1, "Informe a data."),

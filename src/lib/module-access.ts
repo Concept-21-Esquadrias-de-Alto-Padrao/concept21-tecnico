@@ -16,6 +16,7 @@ export const TECHNICAL_PERMISSIONS = [
   "technical.contracts.import_pdf",
   "technical.contracts.manual_create",
   "technical.contracts.edit",
+  "technical.contracts.correct_work_data",
   "technical.contracts.delete_request",
   "technical.financial.view",
   "technical.folder.receive",

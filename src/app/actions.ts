@@ -27,6 +27,7 @@ import {
   stageValidationSchema,
   visitResultSchema,
   visitSchema,
+  workDataCorrectionSchema,
 } from "@/lib/schemas";
 import {
   HttpError,
@@ -54,6 +55,7 @@ import { ensureUniqueTechnicalPieceCodes } from "@/lib/technical-piece-codes";
 import type { ActionState } from "@/components/action-form";
 import type { ParsedTechnicalContract, ParsedTechnicalPiece } from "@/lib/technical-pdf";
 import type {
+  ProductionContract,
   TechnicalContractStageKey,
   TechnicalCorrection,
   TechnicalPiece,
@@ -1011,6 +1013,69 @@ export async function reopenContractStageAction(_: ActionState, formData: FormDa
     return ok(`${stageLabel} reaberta.`);
   } catch (error) {
     return fail(error);
+  }
+}
+
+function productionContractWorkData(contract: ProductionContract) {
+  return {
+    work_name: contract.work_name,
+    full_address: contract.full_address,
+    city: contract.city,
+    state: contract.state,
+    zip_code: contract.zip_code,
+    site_contact: contract.site_contact,
+    site_contact_phone: contract.site_contact_phone,
+    notes: contract.notes,
+  };
+}
+
+export async function updateContractWorkDataAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext(
+      "technical.contracts.correct_work_data",
+      "Somente usuários autorizados podem corrigir os dados da obra.",
+    );
+    const parsed = workDataCorrectionSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+    const { adjustment_reason: adjustmentReason, id, ...updatePayload } = parsed.data;
+    const { data: current, error: currentError } = await context.admin
+      .from("production_contracts")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (currentError) throw currentError;
+    if (!current) throw new Error("Contrato não encontrado.");
+
+    const source = current as ProductionContract;
+    const beforeData = productionContractWorkData(source);
+
+    const { error } = await context.admin
+      .from("production_contracts")
+      .update(updatePayload)
+      .eq("company_id", context.companyId)
+      .eq("id", id);
+
+    if (error) throw error;
+
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "production_contracts",
+      entity_id: id,
+      action: "work_data_update",
+      user_id: context.authUserId,
+      before_data: beforeData,
+      after_data: updatePayload,
+      notes: `Correção autorizada dos dados da obra. Motivo: ${adjustmentReason}`,
+    });
+
+    if (auditError) throw auditError;
+    revalidateTechnical(id);
+    return ok("Dados da obra atualizados.");
+  } catch (error) {
+    return fail(error, "Não foi possível corrigir os dados da obra.");
   }
 }
 

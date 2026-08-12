@@ -93,7 +93,9 @@ const stopLabelTexts = [
   "endereço para emissão",
   "endereco para emissao",
   "responsável financeiro",
+  "responsável",
   "responsavel financeiro",
+  "responsavel",
   "nome responsabilidade telefone",
   "proposta nº",
   "proposta no",
@@ -106,6 +108,7 @@ const stopLabelTexts = [
 function repairPdfTextArtifacts(value: string) {
   return value
     .replace(/(\d)\s*([.,/-])\s*(\d)/g, "$1$2$3")
+    .replace(/\bI\s+bicui\b/gi, "Ibicui")
     .replace(/\bR\s+UA\b/gi, "RUA")
     .replace(/\bQ\s+D\b/gi, "QD")
     .replace(/\bL\s+T\b/gi, "LT")
@@ -165,7 +168,7 @@ function isLabelLine(line: string, labels: string[]) {
     const rest = normalizedLine.startsWith(normalizedLabel)
       ? normalizedLine.slice(normalizedLabel.length).trim()
       : "";
-    return Boolean(rest) && /^(cep|telefone|email|e mail|cpf|rg|data nascimento)$/.test(rest);
+    return Boolean(rest) && /^(cep|telefone|email|e mail|cpf|rg|data nascimento)(?:\b|$)/.test(rest);
   });
 }
 
@@ -267,12 +270,14 @@ function trimAtInlineFieldLabels(value: string | null | undefined, labelPatterns
 }
 
 function cleanClientNameValue(value: string | null | undefined) {
-  return trimAtInlineFieldLabels(value, ["CNPJ", "CPF", "RG", "Telefone", "E-?mail", "Email"]);
+  const withoutInlineFields = trimAtInlineFieldLabels(value, ["CNPJ", "CPF", "RG", "Telefone", "E-?mail", "Email"]);
+  return cleanValue(withoutInlineFields?.replace(/\s+-?\s*\d{1,2}\s*[-/]\s*\d{3,5}\s*$/i, ""));
 }
 
 function cleanWorkAddressValue(value: string | null | undefined) {
   const withoutInlineFields = trimAtInlineFieldLabels(value, ["E-?mail", "Email", "Telefone", "Vendedor"]);
-  return withoutInlineFields ? stripTrailingZipCode(withoutInlineFields) : null;
+  const withoutZipCode = withoutInlineFields ? stripTrailingZipCode(withoutInlineFields) : null;
+  return cleanValue(withoutZipCode?.replace(/[.,;]\s*$/g, ""));
 }
 
 function parseBrazilianDate(value: string | null) {
@@ -326,7 +331,9 @@ function inferContractDate(lines: string[]) {
 }
 
 function extractContractIdentifier(value: string | null | undefined) {
-  const normalized = cleanValue(value)?.replace(/\s*([./-])\s*/g, "$1");
+  const normalized = cleanValue(value)
+    ?.replace(/\b(\d)\s+(?=\d\s*[-/.])/g, "$1")
+    .replace(/\s*([./-])\s*/g, "$1");
   const matches = Array.from(normalized?.matchAll(/([A-Z0-9][A-Z0-9./-]{3,})/gi) ?? []);
   const match = matches.find((candidate) => /\d/.test(candidate[1]) && !/comercial/i.test(candidate[1]));
   return match?.[1]?.trim() ?? null;
@@ -660,12 +667,27 @@ function parseLegacyPieceLine(line: string): ParsedTechnicalPiece | null {
   };
 }
 
-function parseDimensionSegment(value: string, { allowSmall = false }: { allowSmall?: boolean } = {}) {
+const DEFAULT_SMARTCEM_DIMENSION_MM = 10000;
+const WIDE_SMARTCEM_DIMENSION_MM = 50000;
+
+function parseDimensionSegment(
+  value: string,
+  {
+    allowSmall = false,
+    max = DEFAULT_SMARTCEM_DIMENSION_MM,
+  }: { allowSmall?: boolean; max?: number } = {},
+) {
   if (!/^\d+$/.test(value)) return null;
   if (value.length > 1 && value.startsWith("0")) return null;
 
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < (allowSmall ? 1 : 200) || parsed > 10000) return null;
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < (allowSmall ? 1 : 200) ||
+    parsed > max
+  ) {
+    return null;
+  }
   return parsed;
 }
 
@@ -757,6 +779,51 @@ function splitSmartCemLineAndQuantity(value: string) {
   return null;
 }
 
+function parseSmartCemLayoutTokenLine(line: string): SmartCemPieceData | null {
+  const tokens = line.split(/\s+/).filter(Boolean);
+  if (tokens.length < 5) return null;
+
+  for (let quantityIndex = 1; quantityIndex <= tokens.length - 4; quantityIndex += 1) {
+    const quantityValue = tokens[quantityIndex];
+    const widthValue = tokens[quantityIndex + 1];
+    const heightValue = tokens[quantityIndex + 2];
+    const lineAndLocation = cleanValue(tokens.slice(quantityIndex + 3).join(" "));
+    const rowType = cleanValue(tokens.slice(0, quantityIndex).join(" "));
+
+    if (!rowType || !lineAndLocation || !looksLikeSmartCemPieceIdentifier(rowType)) continue;
+    if (!/^\d{1,3}$/.test(quantityValue)) continue;
+    if (!/^\d{1,5}$/.test(widthValue) || !/^\d{1,5}$/.test(heightValue)) continue;
+
+    const quantity = Number(quantityValue);
+    if (!Number.isFinite(quantity) || quantity < 1 || quantity > 999) continue;
+
+    const allowProfileDimension = isProfileSmartCemIdentifier(rowType);
+    const width = parseDimensionSegment(widthValue, {
+      allowSmall: allowProfileDimension,
+      max: WIDE_SMARTCEM_DIMENSION_MM,
+    });
+    const height = parseDimensionSegment(heightValue, {
+      allowSmall: allowProfileDimension,
+      max: WIDE_SMARTCEM_DIMENSION_MM,
+    });
+    const splitLine = splitSmartCemLineAndLocation(lineAndLocation);
+    if (!width || !height || !splitLine.line) continue;
+
+    return {
+      code: null,
+      quantity,
+      width,
+      height,
+      line: splitLine.line,
+      location: splitLine.location,
+      rowType,
+      source: "layout",
+    };
+  }
+
+  return null;
+}
+
 function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
   const normalized = line.replace(/\s+/g, " ").trim();
   const collapsedBase = normalized.match(/^([A-Z]{1,4}\d{2})(.*)$/i);
@@ -829,8 +896,14 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
   if (spacedMatch) {
     const [, code, quantity, width, height, lineAndLocation] = spacedMatch;
     const allowProfileDimension = isProfileSmartCemIdentifier(code);
-    const parsedWidth = parseDimensionSegment(width, { allowSmall: allowProfileDimension });
-    const parsedHeight = parseDimensionSegment(height, { allowSmall: allowProfileDimension });
+    const parsedWidth = parseDimensionSegment(width, {
+      allowSmall: allowProfileDimension,
+      max: WIDE_SMARTCEM_DIMENSION_MM,
+    });
+    const parsedHeight = parseDimensionSegment(height, {
+      allowSmall: allowProfileDimension,
+      max: WIDE_SMARTCEM_DIMENSION_MM,
+    });
     const splitLine = splitSmartCemLineAndLocation(lineAndLocation);
     if (!parsedWidth || !parsedHeight || !splitLine.line) return null;
 
@@ -846,13 +919,22 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
     };
   }
 
+  const tokenLayout = parseSmartCemLayoutTokenLine(normalized);
+  if (tokenLayout) return tokenLayout;
+
   const layoutMatch = normalized.match(/^(.+?)\s+(\d{1,3})\s+(\d{1,5})\s+(\d{1,5})\s+(.+)$/i);
   if (!layoutMatch) return null;
 
   const [, rowType, quantity, width, height, lineAndLocation] = layoutMatch;
   const allowProfileDimension = isProfileSmartCemIdentifier(rowType);
-  const parsedWidth = parseDimensionSegment(width, { allowSmall: allowProfileDimension });
-  const parsedHeight = parseDimensionSegment(height, { allowSmall: allowProfileDimension });
+  const parsedWidth = parseDimensionSegment(width, {
+    allowSmall: allowProfileDimension,
+    max: WIDE_SMARTCEM_DIMENSION_MM,
+  });
+  const parsedHeight = parseDimensionSegment(height, {
+    allowSmall: allowProfileDimension,
+    max: WIDE_SMARTCEM_DIMENSION_MM,
+  });
   const splitLine = splitSmartCemLineAndLocation(lineAndLocation);
   const cleanRowType = cleanValue(rowType);
   if (!cleanRowType || !parsedWidth || !parsedHeight || !splitLine.line) return null;
@@ -924,8 +1006,14 @@ function parseSmartCemLabeledBlock(
   const rawType = cleanValue(typeValue.values.join(" "));
   const allowProfileDimension = isProfileSmartCemIdentifier(rawType);
   const quantity = parseNumber(quantityValue.value, 1);
-  const width = parseDimensionSegment(widthValue.value, { allowSmall: allowProfileDimension });
-  const height = parseDimensionSegment(heightValue.value, { allowSmall: allowProfileDimension });
+  const width = parseDimensionSegment(widthValue.value, {
+    allowSmall: allowProfileDimension,
+    max: WIDE_SMARTCEM_DIMENSION_MM,
+  });
+  const height = parseDimensionSegment(heightValue.value, {
+    allowSmall: allowProfileDimension,
+    max: WIDE_SMARTCEM_DIMENSION_MM,
+  });
   const splitLine = splitSmartCemLineAndLocation(
     [lineValue.value, locationValue?.value].filter(Boolean).join(" "),
   );
@@ -1141,7 +1229,7 @@ function looksLikeSmartCemPieceIdentifier(value: string | null | undefined) {
   if (!normalized) return false;
   if (normalized.length > 36) return false;
   if (!/[a-z]/i.test(normalized)) return false;
-  if (/^(porta|portao|janela|quadro|brise|painel|pele|guarda|corrimao|fixo)\b/i.test(normalized)) {
+  if (/^(porta|portao|janela|quadro|brise|painel|pele|guarda|corrimao)\b/i.test(normalized)) {
     return false;
   }
   if (/^\d+x\d+$/i.test(normalized)) return false;

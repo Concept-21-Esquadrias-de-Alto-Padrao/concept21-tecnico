@@ -55,4 +55,27 @@ describe("formatAuditLogEntry", () => {
 
     expect(entry.title).toBe("O sistema atualizou os dados técnicos do contrato.");
   });
+
+  it("formats work data corrections as a readable user action", () => {
+    const entry = formatAuditLogEntry(
+      auditLog({
+        entity: "production_contracts",
+        action: "work_data_update",
+        before_data: {
+          work_name: "Obra antiga",
+          full_address: "Rua errada",
+        },
+        after_data: {
+          work_name: "Obra corrigida",
+          full_address: "Rua certa",
+        },
+        notes: "Correção autorizada dos dados da obra. Motivo: leitura do PDF.",
+      }),
+      profiles,
+    );
+
+    expect(entry.title).toBe("O usuário Thaís Martins corrigiu os dados da obra do contrato.");
+    expect(entry.details).toContain("Obra: Obra antiga -> Obra corrigida");
+    expect(entry.details).toContain("Endereço: Rua errada -> Rua certa");
+  });
 });

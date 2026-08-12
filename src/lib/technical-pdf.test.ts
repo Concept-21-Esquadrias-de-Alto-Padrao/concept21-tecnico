@@ -507,6 +507,136 @@ describe("parseTechnicalContractText", () => {
     });
   });
 
+  it("extracts SmartCEM rows with spaced identifiers, hyphenated identifiers, and wide spans", () => {
+    const result = parseTechnicalContractText(`
+      Proposta No
+      25-0080
+      LEONCIO OLIVEIRA SOARES
+
+      PORTA DE CORRER DE VIDRO 5 PLANOS 10 FOLHAS - TRILHO EMBUTIDO MEIA LUA
+      Acabamento: PINTURA PRETO FOSCO ACETINADO
+      Vidros: TEMPERADO DE 8 MM incolor
+      Area Esquadria: 35,62m2 Area Vidro: 32,4 m2
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      P14-01 1 13700 2600 GOLD VARANDA GOURMET
+
+      PAINEL FIXO COM LAMBRIL VERTICAL RIPADO 30X15MM
+      Acabamento: MADEIRA (COR A DEFINIR)
+      Sem Vidros
+      Area Esquadria: 13,80m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      RIP 1 1 2500 5520 BRISE FACHADA
+
+      PAINEL FIXO COM LAMBRIL VERTICAL RIPADO 30X15MM
+      Acabamento: MADEIRA (COR A DEFINIR)
+      Sem Vidros
+      Area Esquadria: 27,85m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      RIP 2 1 4720 5900 BRISE FACHADA
+    `);
+
+    expect(result.pieces).toHaveLength(3);
+    expect(result.pieces[0]).toMatchObject({
+      code: "P14-01",
+      quantity: 1,
+      sale_width_mm: 13700,
+      sale_height_mm: 2600,
+      line: "GOLD",
+      environment: "VARANDA GOURMET",
+      glass: "TEMPERADO DE 8 MM incolor",
+      color: "PINTURA PRETO FOSCO ACETINADO",
+      piece_type: "PORTA DE CORRER DE VIDRO 5 PLANOS 10 FOLHAS - TRILHO EMBUTIDO MEIA LUA",
+    });
+    expect(result.pieces[1]).toMatchObject({
+      code: "RIP 1",
+      quantity: 1,
+      sale_width_mm: 2500,
+      sale_height_mm: 5520,
+      line: "BRISE",
+      environment: "FACHADA",
+      glass: "sem vidro",
+      color: "MADEIRA (COR A DEFINIR)",
+    });
+    expect(result.pieces[2]).toMatchObject({
+      code: "RIP 2",
+      quantity: 1,
+      sale_width_mm: 4720,
+      sale_height_mm: 5900,
+      line: "BRISE",
+      environment: "FACHADA",
+      piece_type: "PAINEL FIXO COM LAMBRIL VERTICAL RIPADO 30X15MM",
+    });
+  });
+
+  it("normalizes spaced contract numbers, trims address leakage, and extracts fixed panel codes", () => {
+    const result = parseTechnicalContractText(`
+      NOME DO CLIENTE:
+      Beoos Administradora e Empreendimentos LTDA -26 -0715
+      No DO CONTRATO
+      2 6 -0715
+      ENDERECO DA OBRA CEP
+      RUA IBICUI QD T6 LT 04 RESIDENCIAL ALPHAVILLE ARAGUAIA GOIANIA, GO. 74883080
+      RESPONSAVEL TELEFONE - E-MAIL
+      CRISTIANE (62)98111-9984
+
+      Proposta No
+      26-0715
+      BEOOS ADMINISTRADORA E EMPREENDIMENTOS LTDA
+      PAINEL FIXO COM LAMBRIL MUXARABI SOMENTE LADO EXTERNO
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 19,39m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FIXO 1 1 4910 3950 BRISE FACHADA
+      PAINEL FIXO COM LAMBRIL MUXARABI SOMENTE LADO EXTERNO
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 2,05m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FIXO 2 1 520 3950 BRISE FACHADA LATERAL
+      PAINEL FIXO COM LAMBRIL MUXARABI SOMENTE LADO EXTERNO
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 1,75m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FIXO 3 1 2160 810 BRISE FACHADA LATERAL
+      PORTA PIVOTANTE DE LAMBRIL 150MM - MARCO 100X38MM COM VISTA DE 38MM
+      Acabamento: PINTURA CORTEN
+      Vidros: sem vidro
+      Area Esquadria: 3,70m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      P1 1 1070 3460 CONCEPT LINE HALL DE ENTRADA
+    `);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.contract).toMatchObject({
+      contract_number: "26-0715",
+      client_name: "Beoos Administradora e Empreendimentos LTDA",
+      work_address: "RUA IBICUI QD T6 LT 04 RESIDENCIAL ALPHAVILLE ARAGUAIA GOIANIA, GO",
+    });
+    expect(result.contract.work_address).not.toContain("CRISTIANE");
+    expect(result.contract.work_address).not.toContain("98111");
+    expect(result.pieces).toHaveLength(4);
+    expect(result.pieces.find((piece) => piece.code === "FIXO 1")).toMatchObject({
+      sale_width_mm: 4910,
+      sale_height_mm: 3950,
+      line: "BRISE",
+      environment: "FACHADA",
+    });
+    expect(result.pieces.find((piece) => piece.code === "FIXO 2")).toMatchObject({
+      sale_width_mm: 520,
+      sale_height_mm: 3950,
+      line: "BRISE",
+      environment: "FACHADA LATERAL",
+    });
+    expect(result.pieces.find((piece) => piece.code === "FIXO 3")).toMatchObject({
+      sale_width_mm: 2160,
+      sale_height_mm: 810,
+      line: "BRISE",
+      environment: "FACHADA LATERAL",
+    });
+  });
+
   it("extracts drawing-only proposals and profile tube rows", () => {
     const result = parseTechnicalContractText(`
       Proposta Nº

@@ -35,6 +35,7 @@ import {
   saveStageValidationAction,
   signStageValidationAction,
   splitPieceAction,
+  updateContractWorkDataAction,
   updatePieceCemAction,
   updatePieceMeasurementAction,
   updatePieceRegistrationAction,
@@ -60,6 +61,7 @@ import { getTechnicalContractDetailData } from "@/lib/technical-data";
 import { calculateReleaseProgress, isOverdue, isStageValidationSatisfied } from "@/lib/technical-rules";
 import type {
   Profile,
+  ProductionContract,
   TechnicalContractStageKey,
   TechnicalPiece,
   TechnicalStageValidation,
@@ -316,11 +318,66 @@ function ReopenStageForm({
   submitLabel: string;
 }) {
   return (
-    <ActionForm action={reopenContractStageAction} submitLabel={submitLabel} className="rounded-md border border-amber-200 bg-amber-50 p-3">
+    <ActionForm
+      action={reopenContractStageAction}
+      submitLabel={submitLabel}
+      className="rounded-md border border-amber-200 bg-amber-50 p-3"
+    >
       <input type="hidden" name="contract_id" value={contractId} />
       <input type="hidden" name="stage" value={stage} />
       <Field label="Motivo da reabertura">
         <textarea name="reason" className={textareaClass} required />
+      </Field>
+    </ActionForm>
+  );
+}
+
+function WorkDataCorrectionForm({ contract }: { contract: ProductionContract }) {
+  return (
+    <ActionForm
+      action={updateContractWorkDataAction}
+      submitLabel="Salvar correção"
+      className="rounded-md border border-border bg-white p-3"
+      confirmMessage="Confirma a correção dos dados da obra? A alteração será registrada no histórico e auditoria do contrato."
+    >
+      <input type="hidden" name="id" value={contract.id} />
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Field label="Obra">
+          <input name="work_name" className={inputClass} defaultValue={contract.work_name} required />
+        </Field>
+        <Field label="Endereço da obra">
+          <input name="full_address" className={inputClass} defaultValue={contract.full_address} required />
+        </Field>
+        <Field label="Cidade">
+          <input name="city" className={inputClass} defaultValue={contract.city} required />
+        </Field>
+        <Field label="UF">
+          <input name="state" className={inputClass} defaultValue={contract.state} maxLength={2} required />
+        </Field>
+        <Field label="CEP">
+          <input name="zip_code" className={inputClass} defaultValue={contract.zip_code ?? ""} />
+        </Field>
+        <Field label="Contato da obra">
+          <input name="site_contact" className={inputClass} defaultValue={contract.site_contact ?? ""} />
+        </Field>
+        <Field label="Telefone do contato">
+          <input
+            name="site_contact_phone"
+            className={inputClass}
+            defaultValue={contract.site_contact_phone ?? ""}
+          />
+        </Field>
+      </div>
+      <Field label="Observações">
+        <textarea name="notes" className={textareaClass} defaultValue={contract.notes ?? ""} />
+      </Field>
+      <Field label="Motivo da correção">
+        <textarea
+          name="adjustment_reason"
+          className={textareaClass}
+          placeholder="Ex.: corrigir endereço lido incorretamente no PDF."
+          required
+        />
       </Field>
     </ActionForm>
   );
@@ -458,6 +515,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const canGenerateReports = access.isMaster || access.permissions["technical.reports.generate"];
   const canManageDoubts = access.isMaster || access.permissions["technical.doubts.manage"];
   const canReopenStages = access.isMaster || access.permissions["technical.contracts.edit"];
+  const canCorrectWorkData = access.isMaster || access.permissions["technical.contracts.correct_work_data"];
   const canEditPieceRegistration = access.isMaster || access.permissions["technical.pieces.edit_released"];
   const currentStatus = technical?.technical_status ?? "aguardando_pasta";
   const hasCommercialFolder = Boolean(technical?.commercial_folder_received);
@@ -504,6 +562,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
 
   const tabLinks = [
     ["#visao-geral", "Visão geral"],
+    ["#dados-obra", "Dados da obra"],
     ["#entrada", "Entrada comercial"],
     ["#reuniao", "Reunião e ata"],
     ["#visitas", "Visitas"],
@@ -598,6 +657,69 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         <StatCard label="Correções abertas" value={corrections.filter((item) => !["encerrada", "cancelada"].includes(item.status)).length} icon={AlertTriangle} tone="danger" />
         <StatCard label="PRODs ativos" value={prodBatches.filter((item) => !["concluido", "cancelado"].includes(item.status)).length} icon={Factory} />
       </section>
+
+      <FlowStep
+        id="dados-obra"
+        title="Dados da obra"
+        description="Correção controlada dos dados lidos ou importados para a obra."
+        status={canCorrectWorkData ? "Correção autorizada" : "Somente leitura"}
+        locked={!canCorrectWorkData}
+      >
+        <div className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
+          <div className="rounded-md border border-border bg-white p-3 text-sm">
+            <h3 className="font-semibold text-charcoal">Dados atuais</h3>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">Contrato</dt>
+                <dd className="mt-1 text-charcoal">{contract.contract_number}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">Cliente</dt>
+                <dd className="mt-1 text-charcoal">{client?.name ?? "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">Obra</dt>
+                <dd className="mt-1 text-charcoal">{contract.work_name}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">Endereço</dt>
+                <dd className="mt-1 text-charcoal">{contract.full_address}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">Cidade/UF</dt>
+                <dd className="mt-1 text-charcoal">
+                  {contract.city} - {contract.state}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">CEP</dt>
+                <dd className="mt-1 text-charcoal">{contract.zip_code ?? "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">Contato</dt>
+                <dd className="mt-1 text-charcoal">{contract.site_contact ?? "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">Telefone</dt>
+                <dd className="mt-1 text-charcoal">{contract.site_contact_phone ?? "-"}</dd>
+              </div>
+            </dl>
+            {contract.notes ? (
+              <p className="mt-3 border-t border-border pt-3 text-muted-foreground">
+                <span className="font-semibold text-charcoal">Observações:</span> {contract.notes}
+              </p>
+            ) : null}
+          </div>
+
+          {canCorrectWorkData ? (
+            <WorkDataCorrectionForm contract={contract} />
+          ) : (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              A correção dos dados da obra é restrita aos perfis autorizados pelo Administrador.
+            </div>
+          )}
+        </div>
+      </FlowStep>
 
       <div className="space-y-4">
         <FlowStep

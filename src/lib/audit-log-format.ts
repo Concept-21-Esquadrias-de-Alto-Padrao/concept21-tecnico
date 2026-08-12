@@ -8,6 +8,7 @@ type AuditSummary = {
 };
 
 const entityLabels: Record<string, string> = {
+  production_contracts: "dados da obra",
   profiles: "cadastro de usuário",
   technical_contract_import: "importação de contrato",
   technical_contract_pieces: "cadastro de peça",
@@ -84,6 +85,24 @@ function pieceRegistrationDetails(log: TechnicalAuditLog) {
   return changes.length ? changes.join(" · ") : null;
 }
 
+function workDataDetails(log: TechnicalAuditLog) {
+  const beforeWorkName = valueAsString(log.before_data?.work_name);
+  const afterWorkName = valueAsString(log.after_data?.work_name);
+  const beforeAddress = valueAsString(log.before_data?.full_address);
+  const afterAddress = valueAsString(log.after_data?.full_address);
+  const changes = [
+    beforeWorkName && afterWorkName && beforeWorkName !== afterWorkName
+      ? `Obra: ${beforeWorkName} -> ${afterWorkName}`
+      : null,
+    beforeAddress && afterAddress && beforeAddress !== afterAddress
+      ? `Endereço: ${beforeAddress} -> ${afterAddress}`
+      : null,
+    valueAsString(log.notes),
+  ].filter(Boolean);
+
+  return changes.length ? changes.join(" · ") : null;
+}
+
 export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfile[]): AuditSummary {
   const actorName = profileDisplayName(profiles, log.user_id);
   const actionKey = `${log.entity}:${log.action}`;
@@ -133,6 +152,11 @@ export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfi
       return {
         title: actedBy(actorName, `atualizou o cadastro da peça ${valueAsString(log.after_data?.code) ?? ""}`.trim()),
         details: pieceRegistrationDetails(log),
+      };
+    case "production_contracts:work_data_update":
+      return {
+        title: actedBy(actorName, "corrigiu os dados da obra do contrato"),
+        details: workDataDetails(log),
       };
     case "profiles:profile_update":
       return {
