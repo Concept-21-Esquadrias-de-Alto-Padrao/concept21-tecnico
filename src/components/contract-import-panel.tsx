@@ -16,6 +16,7 @@ import {
 import { useMemo, useState } from "react";
 import { confirmContractImportAction } from "@/app/actions";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
+import { normalizeContractNumberKey } from "@/lib/contract-number";
 import type { ParsedTechnicalContract, ParsedTechnicalPiece } from "@/lib/technical-pdf";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ type PreviewPayload = {
   pieces: ParsedTechnicalPiece[];
   duplicateContract: boolean;
   existingContractId: string | null;
+  existingContractNumber: string | null;
   existingPieceCodes: string[];
   duplicatePieceCodes: string[];
   warnings: string[];
@@ -371,6 +373,13 @@ export function ContractImportPanel() {
     ? preview.pieces.filter((piece) => existingPieceCodeSet.has(normalizedPieceCodeKey(piece.code))).length
     : 0;
   const previewNewPieceCount = preview ? preview.pieces.length - previewExistingDuplicateCount : 0;
+  const compatibleContractNumber =
+    preview?.existingContractNumber &&
+    preview.contract.contract_number &&
+    normalizeContractNumberKey(preview.existingContractNumber) === normalizeContractNumberKey(preview.contract.contract_number) &&
+    preview.existingContractNumber.trim() !== preview.contract.contract_number.trim()
+      ? preview.existingContractNumber
+      : null;
 
   return (
     <div className="space-y-4">
@@ -445,7 +454,9 @@ export function ContractImportPanel() {
                   <div>
                     <p className="font-semibold">Reprocessar contrato existente</p>
                     <p className="mt-1 text-blue-900">
-                      Este número de contrato já está cadastrado. Ao confirmar, o sistema importa apenas peças novas e ignora códigos já existentes.
+                      {compatibleContractNumber
+                        ? `Encontramos um cadastro compatível salvo como ${compatibleContractNumber}. Ao confirmar, o sistema complementa esse contrato e corrige o número quando possível.`
+                        : "Este número de contrato já está cadastrado. Ao confirmar, o sistema importa apenas peças novas e ignora códigos já existentes."}
                     </p>
                     <p className="mt-1 text-xs font-semibold text-blue-800">
                       {previewNewPieceCount} peça(s) nova(s) · {previewExistingDuplicateCount} já cadastrada(s)

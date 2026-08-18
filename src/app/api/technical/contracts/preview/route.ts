@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { findBestContractNumberMatch } from "@/lib/contract-number";
 import { parseTechnicalContractPdf } from "@/lib/technical-pdf";
 import { toUserFriendlyErrorMessage } from "@/lib/errors";
 import { findDuplicateTechnicalPieceCodes } from "@/lib/technical-piece-codes";
@@ -38,20 +39,24 @@ export async function POST(request: Request) {
     const parsed = await parseTechnicalContractPdf(buffer);
     let duplicateContract = false;
     let existingContractId: string | null = null;
+    let existingContractNumber: string | null = null;
     let existingPieceCodes: string[] = [];
     let duplicatePieceCodes: string[] = [];
 
     if (context && parsed.contract.contract_number) {
       const { data: contractData, error: contractError } = await context.admin
         .from("production_contracts")
-        .select("id")
+        .select("id, contract_number")
         .eq("company_id", context.profile.company_id)
-        .eq("contract_number", parsed.contract.contract_number)
-        .eq("active", true)
-        .limit(1);
+        .eq("active", true);
 
       if (contractError) throw new HttpError(500, contractError.message);
-      existingContractId = ((contractData ?? [])[0] as { id?: string } | undefined)?.id ?? null;
+      const existingContract = findBestContractNumberMatch(
+        (contractData ?? []) as Array<{ id: string; contract_number: string | null }>,
+        parsed.contract.contract_number,
+      );
+      existingContractId = existingContract?.id ?? null;
+      existingContractNumber = existingContract?.contract_number ?? null;
       duplicateContract = Boolean(existingContractId);
 
       if (existingContractId) {
@@ -71,8 +76,12 @@ export async function POST(request: Request) {
 
     const warnings = [...parsed.warnings];
     if (duplicateContract) {
+      const registeredNumber =
+        existingContractNumber && existingContractNumber !== parsed.contract.contract_number
+          ? ` cadastrado como ${existingContractNumber}`
+          : "";
       warnings.push(
-        "Contrato já cadastrado. Para rodar este PDF novamente, marque a opção de reprocessamento; peças já cadastradas serão ignoradas.",
+        `Contrato já${registeredNumber} encontrado. Para rodar este PDF novamente, marque a opção de reprocessamento; peças já cadastradas serão ignoradas.`,
       );
     }
     if (duplicatePieceCodes.length) {
@@ -86,6 +95,7 @@ export async function POST(request: Request) {
       ...parsed,
       duplicateContract,
       existingContractId,
+      existingContractNumber,
       existingPieceCodes,
       duplicatePieceCodes,
       warnings,

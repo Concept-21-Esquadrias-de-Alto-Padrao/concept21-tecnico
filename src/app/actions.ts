@@ -53,6 +53,7 @@ import {
   canConfirmDepartmentDelivery,
   canReleasePiece,
 } from "@/lib/technical-rules";
+import { findBestContractNumberMatch } from "@/lib/contract-number";
 import { ensureUniqueTechnicalPieceCodes } from "@/lib/technical-piece-codes";
 import type { ActionState } from "@/components/action-form";
 import type { ParsedTechnicalContract, ParsedTechnicalPiece } from "@/lib/technical-pdf";
@@ -506,17 +507,11 @@ async function findOrCreateClient(context: ActionContext, clientName: string) {
 }
 
 async function assertContractNotDuplicated(context: ActionContext, contractNumber: string) {
-  const { data, error } = await context.admin
-    .from("production_contracts")
-    .select("id")
-    .eq("company_id", context.companyId)
-    .eq("contract_number", contractNumber)
-    .eq("active", true)
-    .limit(1);
-
-  if (error) throw error;
-  if ((data ?? []).length) {
-    throw new Error("Já existe contrato ativo com este número. Revise a duplicidade antes de gravar.");
+  const compatibleContractId = await findCompatibleExistingActiveContract(context, contractNumber);
+  if (compatibleContractId) {
+    throw new Error(
+      "Já existe contrato ativo com este número ou com número equivalente. Use o reprocessamento para complementar o cadastro existente.",
+    );
   }
 }
 
@@ -531,6 +526,25 @@ async function findExistingActiveContract(context: ActionContext, contractNumber
 
   if (error) throw error;
   return data ? String((data as { id: string }).id) : null;
+}
+
+async function findCompatibleExistingActiveContract(context: ActionContext, contractNumber: string) {
+  const exactContractId = await findExistingActiveContract(context, contractNumber);
+  if (exactContractId) return exactContractId;
+
+  const { data, error } = await context.admin
+    .from("production_contracts")
+    .select("id, contract_number")
+    .eq("company_id", context.companyId)
+    .eq("active", true);
+
+  if (error) throw error;
+
+  const match = findBestContractNumberMatch(
+    (data ?? []) as Array<{ id: string; contract_number: string | null }>,
+    contractNumber,
+  );
+  return match ? String(match.id) : null;
 }
 
 function technicalPieceCodeKey(value: string) {
@@ -724,6 +738,7 @@ async function reprocessExistingTechnicalContractFromPdf({
   const { error: contractError } = await context.admin
     .from("production_contracts")
     .update({
+      contract_number: contract.contract_number,
       client_id: clientId,
       work_name: contract.work_name ?? contract.contract_number,
       full_address: contract.work_address ?? "Endereço a conferir",
@@ -864,7 +879,7 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
       throw new Error("A prévia não possui peças para gravar. Confira se o PDF contém o relatório de peças.");
     }
 
-    const existingContractId = await findExistingActiveContract(context, contract.contract_number);
+    const existingContractId = await findCompatibleExistingActiveContract(context, contract.contract_number);
     if (existingContractId && parsed.data.reprocess_existing) {
       const result = await reprocessExistingTechnicalContractFromPdf({
         context,
@@ -880,6 +895,12 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
             ? ` ${result.skippedDuplicateCodes.length} peça(s) já existente(s) foram ignorada(s).`
             : ""
         }`,
+      );
+    }
+
+    if (existingContractId) {
+      throw new Error(
+        "Contrato já cadastrado ou compatível com um cadastro existente. Marque a opção de reprocessamento para complementar o contrato, sem duplicar.",
       );
     }
 
@@ -1135,7 +1156,7 @@ export async function updateContractWorkDataAction(_: ActionState, formData: For
     const parsed = workDataCorrectionSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-    const { adjustment_reason: adjustmentReason, id, ...updatePayload } = parsed.data;
+    const { adjustment_reason: adjustmentReason, client_name: clientName, id, ...updatePayload } = parsed.data;
     const { data: current, error: currentError } = await context.admin
       .from("production_contracts")
       .select("*")
@@ -1147,11 +1168,28 @@ export async function updateContractWorkDataAction(_: ActionState, formData: For
     if (!current) throw new Error("Contrato não encontrado.");
 
     const source = current as ProductionContract;
-    const beforeData = productionContractWorkData(source);
+    const { data: currentClient, error: currentClientError } = await context.admin
+      .from("clients")
+      .select("name")
+      .eq("company_id", context.companyId)
+      .eq("id", source.client_id)
+      .maybeSingle();
+
+    if (currentClientError) throw currentClientError;
+
+    const clientId = await findOrCreateClient(context, clientName);
+    const contractUpdatePayload = {
+      ...updatePayload,
+      client_id: clientId,
+    };
+    const beforeData = {
+      client_name: ((currentClient as { name?: string } | null)?.name ?? null),
+      ...productionContractWorkData(source),
+    };
 
     const { error } = await context.admin
       .from("production_contracts")
-      .update(updatePayload)
+      .update(contractUpdatePayload)
       .eq("company_id", context.companyId)
       .eq("id", id);
 
@@ -1164,7 +1202,10 @@ export async function updateContractWorkDataAction(_: ActionState, formData: For
       action: "work_data_update",
       user_id: context.authUserId,
       before_data: beforeData,
-      after_data: updatePayload,
+      after_data: {
+        client_name: clientName,
+        ...contractUpdatePayload,
+      },
       notes: `Correção autorizada dos dados da obra. Motivo: ${adjustmentReason}`,
     });
 

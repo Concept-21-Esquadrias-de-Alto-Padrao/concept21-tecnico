@@ -675,15 +675,17 @@ function parseDimensionSegment(
   {
     allowSmall = false,
     max = DEFAULT_SMARTCEM_DIMENSION_MM,
-  }: { allowSmall?: boolean; max?: number } = {},
+    min,
+  }: { allowSmall?: boolean; max?: number; min?: number } = {},
 ) {
   if (!/^\d+$/.test(value)) return null;
   if (value.length > 1 && value.startsWith("0")) return null;
 
   const parsed = Number(value);
+  const minimum = min ?? (allowSmall ? 1 : 200);
   if (
     !Number.isFinite(parsed) ||
-    parsed < (allowSmall ? 1 : 200) ||
+    parsed < minimum ||
     parsed > max
   ) {
     return null;
@@ -709,6 +711,17 @@ function parseJoinedDimensions(value: string) {
 function isProfileSmartCemIdentifier(value: string | null | undefined) {
   const normalized = searchable(value ?? "");
   return /^tub(?:\b|\d)/.test(normalized) || /^tubo\b/.test(normalized) || /^perfi(?:l|s)\b/.test(normalized);
+}
+
+function smartCemDimensionOptions(value: string | null | undefined) {
+  if (isProfileSmartCemIdentifier(value)) return { allowSmall: true, min: 1 };
+
+  const normalized = searchable(value ?? "");
+  if (/^(fixo|fechamento)(?:\b|\d)/.test(normalized)) {
+    return { allowSmall: true, min: 20 };
+  }
+
+  return { allowSmall: false, min: 200 };
 }
 
 const smartCemLineNames = [
@@ -797,13 +810,13 @@ function parseSmartCemLayoutTokenLine(line: string): SmartCemPieceData | null {
     const quantity = Number(quantityValue);
     if (!Number.isFinite(quantity) || quantity < 1 || quantity > 999) continue;
 
-    const allowProfileDimension = isProfileSmartCemIdentifier(rowType);
+    const dimensionOptions = smartCemDimensionOptions(rowType);
     const width = parseDimensionSegment(widthValue, {
-      allowSmall: allowProfileDimension,
+      ...dimensionOptions,
       max: WIDE_SMARTCEM_DIMENSION_MM,
     });
     const height = parseDimensionSegment(heightValue, {
-      allowSmall: allowProfileDimension,
+      ...dimensionOptions,
       max: WIDE_SMARTCEM_DIMENSION_MM,
     });
     const splitLine = splitSmartCemLineAndLocation(lineAndLocation);
@@ -895,13 +908,13 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
   );
   if (spacedMatch) {
     const [, code, quantity, width, height, lineAndLocation] = spacedMatch;
-    const allowProfileDimension = isProfileSmartCemIdentifier(code);
+    const dimensionOptions = smartCemDimensionOptions(code);
     const parsedWidth = parseDimensionSegment(width, {
-      allowSmall: allowProfileDimension,
+      ...dimensionOptions,
       max: WIDE_SMARTCEM_DIMENSION_MM,
     });
     const parsedHeight = parseDimensionSegment(height, {
-      allowSmall: allowProfileDimension,
+      ...dimensionOptions,
       max: WIDE_SMARTCEM_DIMENSION_MM,
     });
     const splitLine = splitSmartCemLineAndLocation(lineAndLocation);
@@ -926,13 +939,13 @@ function parseSmartCemDataLine(line: string): SmartCemPieceData | null {
   if (!layoutMatch) return null;
 
   const [, rowType, quantity, width, height, lineAndLocation] = layoutMatch;
-  const allowProfileDimension = isProfileSmartCemIdentifier(rowType);
+  const dimensionOptions = smartCemDimensionOptions(rowType);
   const parsedWidth = parseDimensionSegment(width, {
-    allowSmall: allowProfileDimension,
+    ...dimensionOptions,
     max: WIDE_SMARTCEM_DIMENSION_MM,
   });
   const parsedHeight = parseDimensionSegment(height, {
-    allowSmall: allowProfileDimension,
+    ...dimensionOptions,
     max: WIDE_SMARTCEM_DIMENSION_MM,
   });
   const splitLine = splitSmartCemLineAndLocation(lineAndLocation);
@@ -1004,14 +1017,14 @@ function parseSmartCemLabeledBlock(
 
   const locationValue = readSmartCemScalarAfterLabel(lines, lineValue.cursor, "localizacao");
   const rawType = cleanValue(typeValue.values.join(" "));
-  const allowProfileDimension = isProfileSmartCemIdentifier(rawType);
+  const dimensionOptions = smartCemDimensionOptions(rawType);
   const quantity = parseNumber(quantityValue.value, 1);
   const width = parseDimensionSegment(widthValue.value, {
-    allowSmall: allowProfileDimension,
+    ...dimensionOptions,
     max: WIDE_SMARTCEM_DIMENSION_MM,
   });
   const height = parseDimensionSegment(heightValue.value, {
-    allowSmall: allowProfileDimension,
+    ...dimensionOptions,
     max: WIDE_SMARTCEM_DIMENSION_MM,
   });
   const splitLine = splitSmartCemLineAndLocation(

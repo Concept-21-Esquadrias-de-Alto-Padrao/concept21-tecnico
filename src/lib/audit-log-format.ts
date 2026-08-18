@@ -88,11 +88,16 @@ function pieceRegistrationDetails(log: TechnicalAuditLog) {
 }
 
 function workDataDetails(log: TechnicalAuditLog) {
+  const beforeClientName = valueAsString(log.before_data?.client_name);
+  const afterClientName = valueAsString(log.after_data?.client_name);
   const beforeWorkName = valueAsString(log.before_data?.work_name);
   const afterWorkName = valueAsString(log.after_data?.work_name);
   const beforeAddress = valueAsString(log.before_data?.full_address);
   const afterAddress = valueAsString(log.after_data?.full_address);
   const changes = [
+    beforeClientName && afterClientName && beforeClientName !== afterClientName
+      ? `Cliente: ${beforeClientName} -> ${afterClientName}`
+      : null,
     beforeWorkName && afterWorkName && beforeWorkName !== afterWorkName
       ? `Obra: ${beforeWorkName} -> ${afterWorkName}`
       : null,

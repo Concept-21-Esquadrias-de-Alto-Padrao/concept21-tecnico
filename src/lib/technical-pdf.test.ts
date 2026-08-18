@@ -701,6 +701,103 @@ describe("parseTechnicalContractText", () => {
     });
   });
 
+  it("extracts narrow SmartCEM fixed panel rows", () => {
+    const result = parseTechnicalContractText(`
+      Proposta No
+      26-0764
+      PAINEL FIXO COM LAMBRIL VERTICAL RIPADO 30X15MM
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 0,25m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FIXO 01 1 1600 158 BRISE BANDEIRA PEI
+
+      PAINEL FIXO COM LAMBRIL VERTICAL RIPADO 30X15MM
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 0,50m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FIXO 04 1 180 2800 BRISE GARAGEM
+    `);
+
+    expect(result.pieces).toHaveLength(2);
+    expect(result.pieces.find((piece) => piece.code === "FIXO 01")).toMatchObject({
+      sale_width_mm: 1600,
+      sale_height_mm: 158,
+      line: "BRISE",
+      environment: "BANDEIRA PEI",
+    });
+    expect(result.pieces.find((piece) => piece.code === "FIXO 04")).toMatchObject({
+      sale_width_mm: 180,
+      sale_height_mm: 2800,
+      line: "BRISE",
+      environment: "GARAGEM",
+    });
+  });
+
+  it("extracts narrow repeated SmartCEM closure rows", () => {
+    const result = parseTechnicalContractText(`
+      Proposta No
+      26-0558
+      PAINEL FIXO COM TUBOS RIPADO HORIZONTAL 50X12MM COM ESPACAMENTO 15 SOMENTE LADO EXTERNO
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 0,50m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FECHAMENTO 01 1 250 2000 BRISE FIXO
+
+      PAINEL FIXO COM TUBOS RIPADO HORIZONTAL 50X12MM COM ESPACAMENTO 15 SOMENTE LADO EXTERNO
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 0,18m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FECHAMENTO 02 1 90 2000 BRISE FIXO
+    `);
+
+    expect(result.pieces).toHaveLength(2);
+    expect(result.pieces.find((piece) => piece.code === "FECHAMENTO 01")).toMatchObject({
+      sale_width_mm: 250,
+      sale_height_mm: 2000,
+      line: "BRISE",
+      environment: "FIXO",
+    });
+    expect(result.pieces.find((piece) => piece.code === "FECHAMENTO 02")).toMatchObject({
+      sale_width_mm: 90,
+      sale_height_mm: 2000,
+      line: "BRISE",
+      environment: "FIXO",
+    });
+  });
+
+  it("keeps repeated SmartCEM closure rows when text extraction omits the sequence", () => {
+    const result = parseTechnicalContractText(`
+      Proposta No
+      26-0558
+      PAINEL FIXO COM TUBOS RIPADO HORIZONTAL 50X12MM COM ESPACAMENTO 15 SOMENTE LADO EXTERNO
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 0,50m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FECHAMENTO 1 250 2000 BRISE FIXO
+
+      PAINEL FIXO COM TUBOS RIPADO HORIZONTAL 50X12MM COM ESPACAMENTO 15 SOMENTE LADO EXTERNO
+      Acabamento: PINTURA CORTEN
+      Sem Vidros
+      Area Esquadria: 0,18m2 Area Vidro: -
+      Tipo: Qtd: L: H: Linha: Localizacao:
+      FECHAMENTO 1 90 2000 BRISE FIXO
+    `);
+
+    expect(result.pieces).toHaveLength(2);
+    expect(result.pieces.map((piece) => piece.code)).toEqual(["FECHAMENTO", "FECHAMENTO-02"]);
+    expect(result.pieces[1]).toMatchObject({
+      sale_width_mm: 90,
+      sale_height_mm: 2000,
+      line: "BRISE",
+      environment: "FIXO",
+    });
+  });
+
   it("emits warnings when minimum data is missing", () => {
     const result = parseTechnicalContractText("Documento sem estrutura conhecida");
     expect(result.warnings).toContain("Número do contrato não identificado.");

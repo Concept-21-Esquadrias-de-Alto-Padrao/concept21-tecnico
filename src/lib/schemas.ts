@@ -74,6 +74,7 @@ export const reopenContractStageSchema = z.object({
 
 export const workDataCorrectionSchema = z.object({
   id: z.string().uuid(),
+  client_name: z.string().trim().min(1, "Informe o cliente."),
   work_name: z.string().trim().min(1, "Informe a obra."),
   full_address: z.string().trim().min(1, "Informe o endereço da obra."),
   city: z.string().trim().min(1, "Informe a cidade."),

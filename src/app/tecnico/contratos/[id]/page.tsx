@@ -61,6 +61,7 @@ import { getCurrentPermissionFlags, requireAuthenticatedProfile } from "@/lib/se
 import { getTechnicalContractDetailData } from "@/lib/technical-data";
 import { calculateReleaseProgress, isOverdue, isStageValidationSatisfied } from "@/lib/technical-rules";
 import type {
+  Client,
   Profile,
   ProductionContract,
   TechnicalContractStageKey,
@@ -372,7 +373,13 @@ function ReopenStageForm({
   );
 }
 
-function WorkDataCorrectionForm({ contract }: { contract: ProductionContract }) {
+function WorkDataCorrectionForm({
+  client,
+  contract,
+}: {
+  client: Client | null;
+  contract: ProductionContract;
+}) {
   return (
     <ActionForm
       action={updateContractWorkDataAction}
@@ -382,6 +389,9 @@ function WorkDataCorrectionForm({ contract }: { contract: ProductionContract }) 
     >
       <input type="hidden" name="id" value={contract.id} />
       <div className="grid gap-3 lg:grid-cols-2">
+        <Field label="Cliente">
+          <input name="client_name" className={inputClass} defaultValue={client?.name ?? ""} required />
+        </Field>
         <Field label="Obra">
           <input name="work_name" className={inputClass} defaultValue={contract.work_name} required />
         </Field>
@@ -1029,7 +1039,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           </div>
 
           {canCorrectWorkData ? (
-            <WorkDataCorrectionForm contract={contract} />
+            <WorkDataCorrectionForm client={client} contract={contract} />
           ) : (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               A correção dos dados da obra é restrita aos perfis autorizados pelo Administrador.

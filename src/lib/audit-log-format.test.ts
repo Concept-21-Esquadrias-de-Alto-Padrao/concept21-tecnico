@@ -62,10 +62,12 @@ describe("formatAuditLogEntry", () => {
         entity: "production_contracts",
         action: "work_data_update",
         before_data: {
+          client_name: "Esmeral da Ouro Verde Agropecuária LTDA.",
           work_name: "Obra antiga",
           full_address: "Rua errada",
         },
         after_data: {
+          client_name: "Esmeralda Ouro Verde Agropecuária LTDA.",
           work_name: "Obra corrigida",
           full_address: "Rua certa",
         },
@@ -75,6 +77,9 @@ describe("formatAuditLogEntry", () => {
     );
 
     expect(entry.title).toBe("O usuário Thaís Martins corrigiu os dados da obra do contrato.");
+    expect(entry.details).toContain(
+      "Cliente: Esmeral da Ouro Verde Agropecuária LTDA. -> Esmeralda Ouro Verde Agropecuária LTDA.",
+    );
     expect(entry.details).toContain("Obra: Obra antiga -> Obra corrigida");
     expect(entry.details).toContain("Endereço: Rua errada -> Rua certa");
   });
