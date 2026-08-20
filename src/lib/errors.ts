@@ -2,8 +2,13 @@ type ErrorLike = {
   code?: unknown;
   details?: unknown;
   hint?: unknown;
+  issues?: unknown;
   message?: unknown;
   name?: unknown;
+};
+
+type IssueLike = {
+  message?: unknown;
 };
 
 function errorParts(error: unknown) {
@@ -27,6 +32,14 @@ function rawMessage(error: unknown) {
   return "";
 }
 
+function firstIssueMessage(error: unknown) {
+  if (!error || typeof error !== "object" || !("issues" in error)) return "";
+  const issues = (error as ErrorLike).issues;
+  if (!Array.isArray(issues)) return "";
+  const firstIssue = issues[0] as IssueLike | undefined;
+  return typeof firstIssue?.message === "string" ? firstIssue.message : "";
+}
+
 function isTechnicalMessage(message: string) {
   const normalized = message.toLowerCase();
   return [
@@ -36,6 +49,9 @@ function isTechnicalMessage(message: string) {
     "constraint",
     "null value in column",
     "invalid input syntax",
+    "invalid input:",
+    "expected nonoptional",
+    "received undefined",
     "schema cache",
     "postgrest",
     "jwt",
@@ -46,6 +62,11 @@ function isTechnicalMessage(message: string) {
 export function toUserFriendlyErrorMessage(error: unknown, fallback = "Não foi possível concluir a operação.") {
   const technicalText = errorParts(error).join(" ");
   const normalized = technicalText.toLowerCase();
+  const issueMessage = firstIssueMessage(error);
+
+  if (issueMessage) {
+    return isTechnicalMessage(issueMessage) ? fallback : issueMessage;
+  }
 
   if (normalized.includes("technical_pieces_code_active_idx")) {
     return "Existem peças com o mesmo código neste contrato. Revise os códigos repetidos na lista de peças e tente gravar novamente.";

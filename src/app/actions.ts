@@ -84,6 +84,10 @@ function fail(error: unknown, fallback = "Não foi possível concluir a operaç�
   return { ok: false, message: toUserFriendlyErrorMessage(error, fallback) };
 }
 
+function invalidForm(error: unknown): ActionState {
+  return fail(error, "Revise os campos obrigatórios e tente novamente.");
+}
+
 async function getActionContext(permissionKey: string, message?: string): Promise<ActionContext> {
   const context = await requirePermissionAccess(permissionKey, message);
   const isMaster = await hasActiveMasterRole(context.admin, context.profile);
@@ -833,7 +837,7 @@ export async function createManualContractAction(_: ActionState, formData: FormD
       "Você não possui permissão para cadastrar contratos manualmente.",
     );
     const parsed = manualContractSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const contractId = await createTechnicalContract({
       context,
@@ -866,7 +870,7 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
       "Você não possui permissão para importar contratos por PDF.",
     );
     const parsed = confirmedImportSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const contract = parseJsonPayload<ParsedTechnicalContract>(parsed.data.contract_json, "Contrato");
     const pieces = parseJsonPayload<ParsedTechnicalPiece[]>(parsed.data.pieces_json, "Peças");
@@ -936,7 +940,7 @@ export async function receiveCommercialFolderAction(_: ActionState, formData: Fo
   try {
     const context = await getActionContext("technical.folder.receive");
     const parsed = receiveFolderSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: current, error: currentError } = await context.admin
       .from("technical_contracts")
@@ -979,7 +983,7 @@ export async function createMeetingAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.meetings.manage");
     const parsed = meetingSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: technical, error: technicalError } = await context.admin
       .from("technical_contracts")
@@ -1067,7 +1071,7 @@ export async function reopenContractStageAction(_: ActionState, formData: FormDa
       "Somente Gestor Técnico ou Administrador pode reabrir etapas.",
     );
     const parsed = reopenContractStageSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: current, error: currentError } = await context.admin
       .from("technical_contracts")
@@ -1154,7 +1158,7 @@ export async function updateContractWorkDataAction(_: ActionState, formData: For
       "Somente usuários autorizados podem corrigir os dados da obra.",
     );
     const parsed = workDataCorrectionSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { adjustment_reason: adjustmentReason, client_name: clientName, id, ...updatePayload } = parsed.data;
     const { data: current, error: currentError } = await context.admin
@@ -1224,7 +1228,7 @@ export async function saveStageValidationAction(_: ActionState, formData: FormDa
       "Somente Gestor Técnico ou Administrador pode configurar validações de etapa.",
     );
     const parsed = stageValidationSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const participantIds = Array.from(new Set(idsFromForm(formData, "participant_profile_ids")));
     if (parsed.data.validation_required && !participantIds.length) {
@@ -1347,7 +1351,7 @@ export async function signStageValidationAction(_: ActionState, formData: FormDa
       "Você precisa ter acesso ao contrato para assinar a etapa.",
     );
     const parsed = stageSignatureSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: validation, error: validationError } = await context.admin
       .from("technical_stage_validations")
@@ -1424,7 +1428,7 @@ export async function createTechnicalActionAction(_: ActionState, formData: Form
   try {
     const context = await getActionContext("technical.actions.manage");
     const parsed = actionSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { error } = await context.admin.from("technical_actions").insert({
       company_id: context.companyId,
@@ -1445,7 +1449,7 @@ export async function transitionTechnicalActionAction(first: ActionState | FormD
     const formData = actionFormData(first, second);
     const context = await getActionContext("technical.actions.manage");
     const parsed = actionTransitionSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     if (["aberta", "validada"].includes(parsed.data.next_status)) {
       const canReopen = await hasContextPermission(context, "technical.actions.reopen");
@@ -1508,7 +1512,7 @@ export async function createVisitAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.visits.manage");
     const parsed = visitSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: gate, error: gateError } = await context.admin.rpc("technical_validate_visit_ready", {
       target_contract_id: parsed.data.contract_id,
@@ -1566,7 +1570,7 @@ export async function recordVisitResultAction(_: ActionState, formData: FormData
   try {
     const context = await getActionContext("technical.visits.manage");
     const parsed = visitResultSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: visit, error: visitError } = await context.admin
       .from("technical_visits")
@@ -1656,7 +1660,7 @@ export async function cancelVisitAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.visits.cancel");
     const parsed = cancelVisitSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: visit, error: visitError } = await context.admin
       .from("technical_visits")
@@ -1685,7 +1689,7 @@ export async function updatePieceMeasurementAction(_: ActionState, formData: For
   try {
     const context = await getActionContext("technical.measurements.manage");
     const parsed = pieceMeasurementSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: piece, error: pieceError } = await context.admin
       .from("technical_contract_pieces")
@@ -1729,7 +1733,7 @@ export async function updatePieceRegistrationAction(_: ActionState, formData: Fo
       "Somente Gestor Técnico ou Administrador pode ajustar o cadastro da peça.",
     );
     const parsed = pieceRegistrationSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: piece, error: pieceError } = await context.admin
       .from("technical_contract_pieces")
@@ -1802,7 +1806,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
   try {
     const context = await getActionContext("technical.pieces.release");
     const parsed = releaseBatchSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const pieceIds = Array.from(new Set(idsFromForm(formData, "piece_ids")));
     if (!pieceIds.length) throw new Error("Selecione ao menos uma peça para o lote de liberação.");
@@ -2035,7 +2039,7 @@ export async function signReleaseBatchAction(_: ActionState, formData: FormData)
       "Você precisa ter acesso ao contrato para assinar o lote.",
     );
     const parsed = releaseBatchSignatureSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: release, error: releaseError } = await context.admin
       .from("technical_releases")
@@ -2130,7 +2134,7 @@ export async function releasePieceAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.pieces.release");
     const parsed = releasePieceSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: piece, error: pieceError } = await context.admin
       .from("technical_contract_pieces")
@@ -2190,7 +2194,7 @@ export async function updatePieceCemAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.prods.manage");
     const parsed = pieceCemSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: piece, error: pieceError } = await context.admin
       .from("technical_contract_pieces")
@@ -2219,7 +2223,7 @@ export async function splitPieceAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.measurements.manage");
     const parsed = splitPieceSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: piece, error: pieceError } = await context.admin
       .from("technical_contract_pieces")
@@ -2268,7 +2272,7 @@ export async function createCorrectionAction(_: ActionState, formData: FormData)
   try {
     const context = await getActionContext("technical.corrections.manage");
     const parsed = correctionSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { error } = await context.admin.from("technical_corrections").insert({
       company_id: context.companyId,
@@ -2326,7 +2330,7 @@ export async function createProdBatchAction(_: ActionState, formData: FormData) 
   try {
     const context = await getActionContext("technical.prods.manage");
     const parsed = prodBatchSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const pieceIds = Array.from(new Set(idsFromForm(formData, "piece_ids")));
     if (!pieceIds.length) throw new Error("Selecione ao menos uma peça para montar o PROD.");
@@ -2404,7 +2408,7 @@ export async function checkProdBatchAction(first: ActionState | FormData, second
     const formData = actionFormData(first, second);
     const context = await getActionContext("technical.prods.check");
     const parsed = prodBatchTransitionSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: prod, error: prodError } = await context.admin
       .from("technical_prod_batches")
@@ -2438,7 +2442,7 @@ export async function approveProdBatchAction(first: ActionState | FormData, seco
     const formData = actionFormData(first, second);
     const context = await getActionContext("technical.prods.approve");
     const parsed = prodBatchTransitionSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: prod, error: prodError } = await context.admin
       .from("technical_prod_batches")
@@ -2487,7 +2491,7 @@ export async function deliverDepartmentDocumentAction(_: ActionState, formData: 
   try {
     const context = await getActionContext("technical.prods.manage");
     const parsed = deliverySchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const deliveryGate = canConfirmDepartmentDelivery({
       department: parsed.data.department,
@@ -2582,7 +2586,7 @@ export async function createDoubtAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.doubts.manage");
     const parsed = doubtSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { error } = await context.admin.from("technical_doubts").insert({
       company_id: context.companyId,
@@ -2603,7 +2607,7 @@ export async function answerDoubtAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.doubts.manage");
     const parsed = answerDoubtSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { data: doubt, error: doubtError } = await context.admin
       .from("technical_doubts")
@@ -2638,7 +2642,7 @@ export async function requestProtectedDeletionAction(_: ActionState, formData: F
   try {
     const context = await getActionContext("technical.contracts.delete_request");
     const parsed = deletionRequestSchema.safeParse(formDataToObject(formData));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    if (!parsed.success) return invalidForm(parsed.error);
 
     const { error } = await context.admin.from("technical_deletion_requests").insert({
       company_id: context.companyId,

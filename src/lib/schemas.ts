@@ -36,6 +36,7 @@ const optionalNumber = z
 
 const checkboxBoolean = z
   .union([z.literal("on"), z.literal("true"), z.literal("false"), z.null(), z.undefined()])
+  .optional()
   .transform((value) => value === "on" || value === "true");
 
 export const manualContractSchema = z.object({

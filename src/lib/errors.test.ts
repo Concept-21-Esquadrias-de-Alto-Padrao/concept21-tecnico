@@ -17,4 +17,15 @@ describe("toUserFriendlyErrorMessage", () => {
       "Informe o cliente antes de gravar.",
     );
   });
+
+  it("hides technical schema messages from users", () => {
+    expect(
+      toUserFriendlyErrorMessage(
+        {
+          issues: [{ message: "Invalid input: expected nonoptional, received undefined" }],
+        },
+        "Revise os campos obrigatórios e tente novamente.",
+      ),
+    ).toBe("Revise os campos obrigatórios e tente novamente.");
+  });
 });
