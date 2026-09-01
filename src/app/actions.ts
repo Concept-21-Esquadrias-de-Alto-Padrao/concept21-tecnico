@@ -10,6 +10,7 @@ import {
   correctionSchema,
   deletionRequestSchema,
   deliverySchema,
+  directContractDeletionSchema,
   doubtSchema,
   formDataToObject,
   manualContractSchema,
@@ -2658,6 +2659,100 @@ export async function requestProtectedDeletionAction(_: ActionState, formData: F
     return ok("Solicitação de exclusão enviada ao Administrador.");
   } catch (error) {
     return fail(error);
+  }
+}
+
+export async function deleteTechnicalContractAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getMasterActionContext();
+    const parsed = directContractDeletionSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const { data: contract, error: contractError } = await context.admin
+      .from("production_contracts")
+      .select("id, contract_number, client_id, work_name, full_address, active, status")
+      .eq("company_id", context.companyId)
+      .eq("id", parsed.data.contract_id)
+      .maybeSingle();
+
+    if (contractError) throw contractError;
+    if (!contract) throw new Error("Contrato não encontrado.");
+
+    const typedContract = contract as Pick<
+      ProductionContract,
+      "id" | "contract_number" | "client_id" | "work_name" | "full_address" | "active" | "status"
+    >;
+
+    if (parsed.data.confirmation !== typedContract.contract_number) {
+      throw new Error("Digite exatamente o número do contrato para confirmar a exclusão.");
+    }
+
+    if (!typedContract.active) {
+      throw new Error("Este contrato já está excluído.");
+    }
+
+    const deletedAt = new Date().toISOString();
+    const softDeleteTables = [
+      "technical_contract_pieces",
+      "technical_actions",
+      "technical_corrections",
+      "technical_prod_batches",
+    ];
+
+    const softDeleteResults = await Promise.all(
+      softDeleteTables.map((table) =>
+        context.admin
+          .from(table)
+          .update({ deleted_at: deletedAt })
+          .eq("company_id", context.companyId)
+          .eq("contract_id", parsed.data.contract_id)
+          .is("deleted_at", null),
+      ),
+    );
+    const softDeleteError = softDeleteResults.find((result) => result.error)?.error;
+    if (softDeleteError) throw softDeleteError;
+
+    const { error: technicalError } = await context.admin
+      .from("technical_contracts")
+      .update({ deleted_at: deletedAt })
+      .eq("company_id", context.companyId)
+      .eq("contract_id", parsed.data.contract_id);
+    if (technicalError) throw technicalError;
+
+    const { error: contractUpdateError } = await context.admin
+      .from("production_contracts")
+      .update({ active: false, status: "excluido" })
+      .eq("company_id", context.companyId)
+      .eq("id", parsed.data.contract_id);
+    if (contractUpdateError) throw contractUpdateError;
+
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "technical_contracts",
+      entity_id: parsed.data.contract_id,
+      action: "admin_delete",
+      user_id: context.authUserId,
+      before_data: {
+        contract_number: typedContract.contract_number,
+        client_id: typedContract.client_id,
+        work_name: typedContract.work_name,
+        full_address: typedContract.full_address,
+        status: typedContract.status,
+        active: typedContract.active,
+      },
+      after_data: {
+        active: false,
+        deleted_at: deletedAt,
+        reason: parsed.data.reason,
+      },
+      notes: `Contrato técnico excluído pelo Administrador. Motivo: ${parsed.data.reason}`,
+    });
+    if (auditError) throw auditError;
+
+    revalidateTechnical(parsed.data.contract_id);
+    return ok("Contrato excluído. Você será redirecionado para a lista de contratos.");
+  } catch (error) {
+    return fail(error, "Não foi possível excluir o contrato.");
   }
 }
 

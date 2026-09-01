@@ -44,6 +44,7 @@ import {
 } from "@/app/actions";
 import { ActionTransitionButtons } from "@/components/action-transition-buttons";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
+import { DeleteTechnicalContractForm } from "@/components/delete-technical-contract-form";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody } from "@/components/panel";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
@@ -758,9 +759,11 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const authContext = await requireAuthenticatedProfile();
   const snapshot = await getTechnicalContractDetailData(id);
   const contract = snapshot.contracts.find((item) => item.id === id);
-  if (!contract) notFound();
+  if (!contract || !contract.active) notFound();
 
   const technical = snapshot.technicalContracts.find((item) => item.contract_id === id) ?? null;
+  if (technical?.deleted_at) notFound();
+
   const client = snapshot.clients.find((item) => item.id === contract.client_id) ?? null;
   const pieces = snapshot.pieces.filter((piece) => piece.contract_id === id && !piece.deleted_at);
   const actions = snapshot.actions.filter((action) => action.contract_id === id && !action.deleted_at);
@@ -793,6 +796,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const canReopenStages = access.isMaster || access.permissions["technical.contracts.edit"];
   const canCorrectWorkData = access.isMaster || access.permissions["technical.contracts.correct_work_data"];
   const canEditPieceRegistration = access.isMaster || access.permissions["technical.pieces.edit_released"];
+  const canDeleteContract = access.isMaster;
   const currentStatus = technical?.technical_status ?? "aguardando_pasta";
   const hasCommercialFolder = Boolean(technical?.commercial_folder_received);
   const completedMeetings = snapshot.meetings.filter((meeting) => meeting.status === "concluida");
@@ -887,7 +891,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const canOperatePieces = reuniaoReadyForNext && visitasReadyForNext;
   const canCreateProdBatch = canManageProds && piecesReadyForProd.length > 0;
 
-  const tabLinks = [
+  const tabLinks: Array<readonly [string, string]> = [
     ["#visao-geral", "Visão geral"],
     ["#dados-obra", "Dados da obra"],
     ["#entrada", "Entrada comercial"],
@@ -898,7 +902,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
     ["#prods", "PRODs"],
     ["#duvidas", "Dúvidas"],
     ["#historico", "Histórico"],
-  ] as const;
+  ];
+  if (canDeleteContract) tabLinks.push(["#administracao", "Administração"]);
 
   return (
     <div className="space-y-6">
@@ -1878,6 +1883,17 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           {!snapshot.auditLogs.length ? <p className="text-sm text-muted-foreground">Sem histórico carregado.</p> : null}
         </div>
       </FlowStep>
+
+      {canDeleteContract ? (
+        <FlowStep
+          id="administracao"
+          title="Administração"
+          description="Ações exclusivas do Administrador para correções excepcionais."
+          status="Administrador"
+        >
+          <DeleteTechnicalContractForm contractId={id} contractNumber={contract.contract_number} />
+        </FlowStep>
+      ) : null}
     </div>
   );
 }

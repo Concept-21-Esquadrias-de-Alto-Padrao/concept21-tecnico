@@ -169,6 +169,11 @@ export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfi
         title: actedBy(actorName, `reabriu a etapa ${stageName(log.after_data?.stage)}`),
         details: defaultDetails(log),
       };
+    case "technical_contracts:admin_delete":
+      return {
+        title: actedBy(actorName, "excluiu o contrato técnico"),
+        details: defaultDetails(log),
+      };
     case "technical_stage_validations:configure_stage_validation":
       return {
         title: actedBy(actorName, `atualizou a validação da etapa ${stageName(log.after_data?.stage)}`),

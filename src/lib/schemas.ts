@@ -254,3 +254,9 @@ export const deletionRequestSchema = z.object({
   entity_id: z.string().uuid(),
   reason: z.string().trim().min(1, "Informe a justificativa."),
 });
+
+export const directContractDeletionSchema = z.object({
+  contract_id: z.string().uuid(),
+  confirmation: z.string().trim().min(1, "Digite o número do contrato para confirmar."),
+  reason: z.string().trim().min(5, "Informe uma justificativa com pelo menos 5 caracteres."),
+});

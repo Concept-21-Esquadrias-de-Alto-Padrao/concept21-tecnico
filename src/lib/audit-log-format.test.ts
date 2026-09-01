@@ -83,4 +83,18 @@ describe("formatAuditLogEntry", () => {
     expect(entry.details).toContain("Obra: Obra antiga -> Obra corrigida");
     expect(entry.details).toContain("Endereço: Rua errada -> Rua certa");
   });
+
+  it("formats administrator contract deletion as a readable user action", () => {
+    const entry = formatAuditLogEntry(
+      auditLog({
+        entity: "technical_contracts",
+        action: "admin_delete",
+        notes: "Contrato técnico excluído pelo Administrador. Motivo: lançamento duplicado.",
+      }),
+      profiles,
+    );
+
+    expect(entry.title).toBe("O usuário Thaís Martins excluiu o contrato técnico.");
+    expect(entry.details).toBe("Contrato técnico excluído pelo Administrador. Motivo: lançamento duplicado.");
+  });
 });

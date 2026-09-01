@@ -71,6 +71,69 @@ function emptySnapshot(): TechnicalSnapshot {
   };
 }
 
+function filterSnapshotToVisibleContracts(snapshot: TechnicalSnapshot) {
+  const deletedTechnicalContractIds = new Set(
+    snapshot.technicalContracts
+      .filter((technical) => Boolean(technical.deleted_at))
+      .map((technical) => technical.contract_id),
+  );
+  const visibleContractIds = new Set(
+    snapshot.contracts
+      .filter((contract) => contract.active !== false && !deletedTechnicalContractIds.has(contract.id))
+      .map((contract) => contract.id),
+  );
+
+  const belongsToVisibleContract = (record: { contract_id?: string | null }) =>
+    !record.contract_id || visibleContractIds.has(record.contract_id);
+
+  snapshot.contracts = snapshot.contracts.filter((contract) => visibleContractIds.has(contract.id));
+  snapshot.technicalContracts = snapshot.technicalContracts.filter(
+    (technical) => visibleContractIds.has(technical.contract_id) && !technical.deleted_at,
+  );
+  snapshot.pieces = snapshot.pieces.filter(
+    (piece) => visibleContractIds.has(piece.contract_id) && !piece.deleted_at,
+  );
+  snapshot.meetings = snapshot.meetings.filter(belongsToVisibleContract);
+  snapshot.stageValidations = snapshot.stageValidations.filter(belongsToVisibleContract);
+  snapshot.stageValidationParticipants = snapshot.stageValidationParticipants.filter(belongsToVisibleContract);
+  snapshot.actions = snapshot.actions.filter(
+    (action) => visibleContractIds.has(action.contract_id) && !action.deleted_at,
+  );
+  snapshot.visits = snapshot.visits.filter(belongsToVisibleContract);
+  snapshot.releases = snapshot.releases.filter(belongsToVisibleContract);
+  snapshot.corrections = snapshot.corrections.filter(
+    (correction) => visibleContractIds.has(correction.contract_id) && !correction.deleted_at,
+  );
+  snapshot.prodBatches = snapshot.prodBatches.filter(
+    (prod) => visibleContractIds.has(prod.contract_id) && !prod.deleted_at,
+  );
+  snapshot.doubts = snapshot.doubts.filter(belongsToVisibleContract);
+
+  const visiblePieceIds = new Set(snapshot.pieces.map((piece) => piece.id));
+  const visibleVisitIds = new Set(snapshot.visits.map((visit) => visit.id));
+  const visibleReleaseIds = new Set(snapshot.releases.map((release) => release.id));
+  const visibleProdBatchIds = new Set(snapshot.prodBatches.map((prod) => prod.id));
+
+  snapshot.visitPieces = snapshot.visitPieces.filter(
+    (link) => visibleVisitIds.has(link.visit_id) && visiblePieceIds.has(link.piece_id),
+  );
+  snapshot.releasePieces = snapshot.releasePieces.filter(
+    (link) => visibleReleaseIds.has(link.release_id) && visiblePieceIds.has(link.piece_id),
+  );
+  snapshot.releaseParticipants = snapshot.releaseParticipants.filter((participant) =>
+    visibleReleaseIds.has(participant.release_id),
+  );
+  snapshot.prodBatchPieces = snapshot.prodBatchPieces.filter(
+    (link) => visibleProdBatchIds.has(link.prod_batch_id) && visiblePieceIds.has(link.piece_id),
+  );
+  snapshot.prodDocuments = snapshot.prodDocuments.filter((document) =>
+    visibleProdBatchIds.has(document.prod_batch_id),
+  );
+  snapshot.deliveries = snapshot.deliveries.filter((delivery) =>
+    visibleProdBatchIds.has(delivery.prod_batch_id),
+  );
+}
+
 function includeKeys(keys: SnapshotKey[]): SnapshotInclude {
   return Object.fromEntries(keys.map((key) => [key, true])) as SnapshotInclude;
 }
@@ -346,6 +409,8 @@ async function loadTechnicalSnapshot(
       queries[index].apply(snapshot, result.data ?? []);
     });
 
+    filterSnapshotToVisibleContracts(snapshot);
+
     return snapshot;
   } catch (error) {
     console.error("Falha ao carregar dados técnicos", error);
@@ -434,16 +499,19 @@ export async function getTechnicalOperationalData() {
 }
 
 export function buildContractOverviews(snapshot: TechnicalSnapshot): TechnicalContractOverview[] {
-  return snapshot.contracts.map((contract) => ({
-    contract,
-    client: snapshot.clients.find((client) => client.id === contract.client_id) ?? null,
-    technical:
-      snapshot.technicalContracts.find((technical) => technical.contract_id === contract.id) ?? null,
-    pieces: snapshot.pieces.filter((piece) => piece.contract_id === contract.id),
-    actions: snapshot.actions.filter((action) => action.contract_id === contract.id),
-    visits: snapshot.visits.filter((visit) => visit.contract_id === contract.id),
-    corrections: snapshot.corrections.filter((correction) => correction.contract_id === contract.id),
-    prodBatches: snapshot.prodBatches.filter((prod) => prod.contract_id === contract.id),
-    doubts: snapshot.doubts.filter((doubt) => doubt.contract_id === contract.id),
-  }));
+  return snapshot.contracts
+    .filter((contract) => contract.active !== false)
+    .map((contract) => ({
+      contract,
+      client: snapshot.clients.find((client) => client.id === contract.client_id) ?? null,
+      technical:
+        snapshot.technicalContracts.find((technical) => technical.contract_id === contract.id) ?? null,
+      pieces: snapshot.pieces.filter((piece) => piece.contract_id === contract.id),
+      actions: snapshot.actions.filter((action) => action.contract_id === contract.id),
+      visits: snapshot.visits.filter((visit) => visit.contract_id === contract.id),
+      corrections: snapshot.corrections.filter((correction) => correction.contract_id === contract.id),
+      prodBatches: snapshot.prodBatches.filter((prod) => prod.contract_id === contract.id),
+      doubts: snapshot.doubts.filter((doubt) => doubt.contract_id === contract.id),
+    }))
+    .filter((overview) => !overview.technical?.deleted_at);
 }
