@@ -482,18 +482,37 @@ async function assertPiecesBelongToSignedReleaseBatches(
   }
 }
 
-async function findOrCreateClient(context: ActionContext, clientName: string) {
+async function findOrCreateClient(
+  context: ActionContext,
+  clientName: string,
+  { updateExistingName = false }: { updateExistingName?: boolean } = {},
+) {
   const name = clientName.trim();
 
   const { data: existing, error: existingError } = await context.admin
     .from("clients")
-    .select("id")
+    .select("id, name")
     .eq("company_id", context.companyId)
     .ilike("name", name)
     .maybeSingle();
 
   if (existingError) throw existingError;
-  if (existing) return String((existing as { id: string }).id);
+  if (existing) {
+    const client = existing as { id: string; name: string };
+    // Only an authorized correction may replace the spelling of an existing name.
+    if (updateExistingName && client.name !== name) {
+      const { error } = await context.admin
+        .from("clients")
+        .update({ name })
+        .eq("company_id", context.companyId)
+        .eq("id", client.id)
+        .select("id")
+        .single();
+
+      if (error) throw error;
+    }
+    return String(client.id);
+  }
 
   const { data, error } = await context.admin
     .from("clients")
@@ -1182,7 +1201,7 @@ export async function updateContractWorkDataAction(_: ActionState, formData: For
 
     if (currentClientError) throw currentClientError;
 
-    const clientId = await findOrCreateClient(context, clientName);
+    const clientId = await findOrCreateClient(context, clientName, { updateExistingName: true });
     const contractUpdatePayload = {
       ...updatePayload,
       client_id: clientId,
