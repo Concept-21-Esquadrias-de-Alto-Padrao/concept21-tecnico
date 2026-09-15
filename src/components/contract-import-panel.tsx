@@ -13,12 +13,13 @@ import {
   Ruler,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirmContractImportAction } from "@/app/actions";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
 import { normalizeContractNumberKey } from "@/lib/contract-number";
 import type { ParsedTechnicalContract, ParsedTechnicalPiece } from "@/lib/technical-pdf";
 import { cn } from "@/lib/utils";
+import { toUserFriendlyErrorMessage } from "@/lib/errors";
 
 type PreviewPayload = {
   fileName: string;
@@ -260,18 +261,27 @@ function PieceCard({
   );
 }
 
-export function ContractImportPanel() {
+export function ContractImportPanel({ onDirtyChange, onPendingChange, onSuccess }: {
+  onDirtyChange?: (dirty: boolean) => void;
+  onPendingChange?: (pending: boolean) => void;
+  onSuccess?: (message: string) => void;
+}) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewPayload | null>(null);
   const [reprocessExisting, setReprocessExisting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const previewRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => previewRequest.current?.abort(), []);
+  const handlePendingChange = useCallback((pending: boolean) => {
+    setSaving(pending);
+    onPendingChange?.(pending);
+  }, [onPendingChange]);
 
   async function handlePreview() {
+    if (loading || saving) return;
     setMessage("");
-    setPreview(null);
-    setReprocessExisting(false);
-
     if (!file) {
       setMessage("Selecione um PDF para importar.");
       return;
@@ -280,13 +290,20 @@ export function ContractImportPanel() {
     const formData = new FormData();
     formData.append("file", file);
     setLoading(true);
+    const controller = new AbortController();
+    previewRequest.current?.abort();
+    previewRequest.current = controller;
 
     try {
       const response = await fetch("/api/technical/contracts/preview", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
-      const payload = await response.json();
+      const payload = await response.json().catch(() => {
+        throw new Error("Não foi possível ler a resposta da importação. Tente novamente.");
+      });
+      if (controller.signal.aborted) return;
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Falha ao ler PDF.");
@@ -296,9 +313,9 @@ export function ContractImportPanel() {
       setPreview(nextPreview);
       setReprocessExisting(Boolean(nextPreview.duplicateContract));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Falha ao ler PDF.");
+      if (!controller.signal.aborted) setMessage(toUserFriendlyErrorMessage(error, "Não foi possível ler o PDF. Tente novamente."));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }
 
@@ -382,26 +399,33 @@ export function ContractImportPanel() {
       : null;
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-md border border-border bg-white p-4">
+    <fieldset disabled={saving || loading} className="min-w-0 space-y-5">
+      <div className="border-b border-border pb-5">
         <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
-          <label className="space-y-1.5">
+          <label className="min-w-0 space-y-1.5">
             <span className="text-sm font-semibold text-charcoal">PDF do contrato</span>
             <input
               type="file"
               accept="application/pdf"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                const nextFile = event.target.files?.[0] ?? null;
+                setFile(nextFile);
+                setPreview(null);
+                setMessage("");
+                setReprocessExisting(false);
+                onDirtyChange?.(Boolean(nextFile));
+              }}
               className={inputClass}
             />
           </label>
           <button
             type="button"
             onClick={handlePreview}
-            disabled={loading}
+            disabled={loading || saving}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-charcoal px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-60"
           >
             {loading ? <Loader2 className="size-4 animate-spin" /> : <FileSearch className="size-4" />}
-            Conferir extração
+            {loading ? "Lendo PDF..." : "Conferir extração"}
           </button>
         </div>
         {message ? (
@@ -412,13 +436,10 @@ export function ContractImportPanel() {
       </div>
 
       {preview ? (
-        <div className="space-y-5 rounded-md border border-border bg-white p-4">
+        <div className="min-w-0 space-y-5">
           <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-charcoal">{preview.fileName}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Revise os dados antes de gravar. Nada é salvo automaticamente.
-              </p>
+              <p className="break-words text-sm font-semibold text-charcoal">{preview.fileName}</p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center sm:flex sm:text-left">
               <span className="rounded-md bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
@@ -504,7 +525,7 @@ export function ContractImportPanel() {
                 />
               </Field>
               <Field label="Prazo contratual">
-                <div className="grid grid-cols-[1fr_1.2fr] gap-2">
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-2">
                   <input
                     type="number"
                     className={inputClass}
@@ -568,7 +589,7 @@ export function ContractImportPanel() {
             <div className="grid gap-3">
               {preview.pieces.map((piece, index) => (
                 <PieceCard
-                  key={`${piece.code}-${index}`}
+                  key={index}
                   index={index}
                   piece={piece}
                   alreadyRegistered={existingPieceCodeSet.has(normalizedPieceCodeKey(piece.code))}
@@ -592,6 +613,8 @@ export function ContractImportPanel() {
 
           <ActionForm
             action={confirmContractImportAction}
+            onSuccess={onSuccess}
+            onPendingChange={handlePendingChange}
             submitLabel={
               preview.duplicateContract && reprocessExisting
                 ? "Confirmar reprocessamento"
@@ -609,6 +632,6 @@ export function ContractImportPanel() {
           </ActionForm>
         </div>
       ) : null}
-    </div>
+    </fieldset>
   );
 }

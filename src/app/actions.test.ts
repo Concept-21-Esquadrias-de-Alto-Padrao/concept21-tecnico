@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { requirePermissionAccess } from "@/lib/server-access";
-import { updateContractWorkDataAction } from "./actions";
+import { createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, receiveCommercialFolderAction, reopenContractStageAction, signStageValidationAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server-access", () => ({
@@ -14,6 +14,9 @@ const companyId = "00000000-0000-4000-8000-000000000001";
 const contractId = "00000000-0000-4000-8000-000000000002";
 const clientId = "00000000-0000-4000-8000-000000000003";
 const userId = "00000000-0000-4000-8000-000000000004";
+const managerId = "00000000-0000-4000-8000-000000000005";
+const followupId = "00000000-0000-4000-8000-000000000006";
+const pieceId = "00000000-0000-4000-8000-000000000007";
 const originalName = "Amir Rached Abboud";
 const initialState = { ok: false, message: "" };
 
@@ -24,6 +27,10 @@ function setupDatabase() {
     clients: [
       { id: clientId, company_id: companyId, name: originalName, document: "preserved" },
       { id: "other-client", company_id: "other-company", name: originalName },
+    ],
+    profiles: [
+      { id: managerId, company_id: companyId, name: "Técnica Responsável", status: "active" },
+      { id: followupId, company_id: companyId, name: "Responsável pelo Acompanhamento", status: "active" },
     ],
     production_contracts: [{
       id: contractId,
@@ -36,6 +43,23 @@ function setupDatabase() {
       active: true,
     }],
     audit_logs: [],
+    technical_corrections: [],
+    technical_contract_pieces: [],
+    technical_prod_batches: [],
+    technical_contracts: [{
+      id: "technical",
+      company_id: companyId,
+      contract_id: contractId,
+      technical_manager_profile_id: null,
+      followup_profile_id: null,
+      commercial_folder_received: false,
+      technical_status: "aguardando_reuniao",
+    }],
+    technical_closing_meetings: [],
+    technical_stage_validations: [],
+    technical_stage_validation_participants: [],
+    technical_actions: [],
+    platform_notifications: [],
   };
   const database = { tables, rejectClientUpdate: false, clientWrites: 0 };
 
@@ -47,6 +71,7 @@ function setupDatabase() {
     if (!rows) throw new Error(`Unexpected table: ${table}`);
     let selected = rows.filter((row) => Array.from(url.searchParams).every(([key, value]) => {
       if (value.startsWith("eq.")) return String(row[key]) === value.slice(3);
+      if (value === "is.null") return row[key] == null;
       if (value.startsWith("ilike.")) {
         return String(row[key]).toLowerCase() === value.slice(6).toLowerCase();
       }
@@ -180,5 +205,329 @@ describe("updateContractWorkDataAction", () => {
     expect(result.ok).toBe(false);
     expect(requirePermissionAccess).toHaveBeenCalledWith("technical.contracts.correct_work_data", expect.any(String));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateContractResponsiblesAction", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function responsiblesForm(fields: Record<string, string> = {}) {
+    const formData = new FormData();
+    Object.entries({
+      contract_id: contractId,
+      technical_manager_profile_id: managerId,
+      followup_profile_id: followupId,
+      adjustment_reason: "Definição dos responsáveis após o cadastro.",
+      ...fields,
+    }).forEach(([key, value]) => formData.set(key, value));
+    return formData;
+  }
+
+  it("updates only the contract responsibles and records the reason in audit", async () => {
+    const { tables } = setupDatabase();
+    const result = await updateContractResponsiblesAction(initialState, responsiblesForm());
+
+    expect(result).toEqual({ ok: true, message: "Responsáveis do contrato atualizados." });
+    expect(tables.technical_contracts[0]).toMatchObject({
+      technical_manager_profile_id: managerId,
+      followup_profile_id: followupId,
+      commercial_folder_received: false,
+      technical_status: "aguardando_reuniao",
+    });
+    expect(tables.technical_actions).toHaveLength(0);
+    expect(tables.technical_stage_validation_participants).toHaveLength(0);
+    expect(tables.audit_logs[0]).toMatchObject({
+      entity: "technical_contracts",
+      entity_id: contractId,
+      action: "responsibles_update",
+      user_id: userId,
+      before_data: { technical_manager_profile_id: null, followup_profile_id: null },
+      after_data: { technical_manager_profile_id: managerId, followup_profile_id: followupId },
+    });
+    expect(String(tables.audit_logs[0].notes)).toContain("Definição dos responsáveis");
+  });
+
+  it("rejects a responsible who is not an active profile in the company", async () => {
+    const { tables } = setupDatabase();
+    const result = await updateContractResponsiblesAction(initialState, responsiblesForm({
+      technical_manager_profile_id: "perfil-de-outra-empresa",
+    }));
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("usuários ativos da empresa");
+    expect(tables.technical_contracts[0].technical_manager_profile_id).toBeNull();
+    expect(tables.audit_logs).toHaveLength(0);
+  });
+
+  it("does not record an audit entry when the responsibles have not changed", async () => {
+    const { tables } = setupDatabase();
+    tables.technical_contracts[0].technical_manager_profile_id = managerId;
+    tables.technical_contracts[0].followup_profile_id = followupId;
+    const result = await updateContractResponsiblesAction(initialState, responsiblesForm());
+
+    expect(result).toEqual({ ok: false, message: "Altere ao menos um responsável antes de salvar." });
+    expect(tables.audit_logs).toHaveLength(0);
+  });
+
+  it("requires contract edit permission before accessing records", async () => {
+    const { fetchMock } = setupDatabase();
+    vi.mocked(requirePermissionAccess).mockRejectedValueOnce(new Error("Sem permissão para alterar o contrato."));
+    const result = await updateContractResponsiblesAction(initialState, responsiblesForm());
+
+    expect(result.ok).toBe(false);
+    expect(requirePermissionAccess).toHaveBeenCalledWith("technical.contracts.edit", expect.any(String));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("meeting before commercial folder", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function form(fields: Record<string, string> = {}) {
+    const data = new FormData();
+    Object.entries({ contract_id: contractId, meeting_date: "2026-09-14", participants: "Pessoa", folder_received_at: "2026-09-14T10:00", folder_delivered_by: "Comercial", ...fields }).forEach(([key, value]) => data.set(key, value));
+    return data;
+  }
+  function validation(tables: Record<string, Row[]>, stage: string, signedAt: string | null = null) {
+    tables.technical_stage_validations.push({ id: stage, company_id: companyId, contract_id: contractId, stage, validation_required: true });
+    tables.technical_stage_validation_participants.push({ id: stage, company_id: companyId, contract_id: contractId, stage, profile_id: "profile-id", signed_at: signedAt, signed_by_auth_user_id: signedAt ? userId : null });
+  }
+
+  it("registers a meeting without a folder, then accepts the folder", async () => {
+    const { tables } = setupDatabase();
+    expect((await createMeetingAction(initialState, form())).ok).toBe(true);
+    expect(tables.technical_contracts[0]).toMatchObject({ technical_status: "aguardando_pasta", commercial_folder_received: false });
+    expect((await receiveCommercialFolderAction(initialState, form())).ok).toBe(true);
+    expect(tables.technical_contracts[0]).toMatchObject({ technical_status: "em_acompanhamento", commercial_folder_received: true });
+  });
+  it("rejects a folder before a meeting even when the stored status is stale", async () => {
+    const { tables } = setupDatabase();
+    tables.technical_contracts[0].technical_status = "aguardando_pasta";
+    const result = await receiveCommercialFolderAction(initialState, form());
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("reunião");
+    expect(tables.technical_contracts[0].commercial_folder_received).toBe(false);
+  });
+  it("requires every meeting signature before the folder, and does not accept stale signatures after reopening", async () => {
+    const { tables } = setupDatabase();
+    validation(tables, "reuniao_ata");
+    expect((await createMeetingAction(initialState, form())).ok).toBe(true);
+    expect((await receiveCommercialFolderAction(initialState, form())).ok).toBe(false);
+    expect((await signStageValidationAction(initialState, form({ stage: "reuniao_ata" }))).ok).toBe(true);
+    expect((await receiveCommercialFolderAction(initialState, form())).ok).toBe(true);
+    expect((await reopenContractStageAction(initialState, form({ stage: "reuniao_ata", reason: "Corrigir a ata" }))).ok).toBe(true);
+    expect(tables.technical_stage_validation_participants[0]).toMatchObject({ signed_at: null, signed_by_auth_user_id: null });
+    expect(tables.technical_contracts[0].commercial_folder_received).toBe(true);
+    expect(tables.technical_closing_meetings[0].status).toBe("cancelada");
+    expect((await createMeetingAction(initialState, form())).ok).toBe(true);
+    expect(tables.technical_contracts[0].technical_status).toBe("em_acompanhamento");
+  });
+  it("preserves a legacy delivered folder when its missing meeting is registered", async () => {
+    const { tables } = setupDatabase();
+    tables.technical_contracts[0].commercial_folder_received = true;
+    tables.technical_contracts[0].folder_delivered_by = "Comercial original";
+    validation(tables, "entrada_comercial");
+    expect((await createMeetingAction(initialState, form())).ok).toBe(true);
+    expect(tables.technical_contracts[0]).toMatchObject({ technical_status: "em_acompanhamento", commercial_folder_received: true, folder_delivered_by: "Comercial original" });
+  });
+  it("reopens only the folder without cancelling the earlier meeting or its signatures", async () => {
+    const { tables } = setupDatabase();
+    await createMeetingAction(initialState, form());
+    await receiveCommercialFolderAction(initialState, form());
+    validation(tables, "reuniao_ata", "2026-09-14T10:00:00Z");
+    validation(tables, "entrada_comercial", "2026-09-14T11:00:00Z");
+    const result = await reopenContractStageAction(initialState, form({ stage: "entrada_comercial", reason: "Corrigir entrega" }));
+    expect(result.ok).toBe(true);
+    expect(tables.technical_closing_meetings[0].status).toBe("concluida");
+    expect(tables.technical_contracts[0]).toMatchObject({ technical_status: "aguardando_pasta", commercial_folder_received: false });
+    expect(tables.technical_stage_validation_participants[0].signed_at).toBeTruthy();
+    expect(tables.technical_stage_validation_participants[1].signed_at).toBeNull();
+    expect(tables.audit_logs.at(-1)?.notes).toContain("Corrigir entrega");
+  });
+  it("blocks a folder signature until the meeting is complete and signed", async () => {
+    const { tables } = setupDatabase();
+    tables.technical_contracts[0].commercial_folder_received = true;
+    validation(tables, "entrada_comercial");
+    validation(tables, "reuniao_ata");
+    expect((await signStageValidationAction(initialState, form({ stage: "entrada_comercial" }))).ok).toBe(false);
+    await createMeetingAction(initialState, form());
+    expect((await signStageValidationAction(initialState, form({ stage: "entrada_comercial" }))).ok).toBe(false);
+    await signStageValidationAction(initialState, form({ stage: "reuniao_ata" }));
+    expect((await signStageValidationAction(initialState, form({ stage: "entrada_comercial" }))).ok).toBe(true);
+  });
+  it("can resume after both stages have been reopened", async () => {
+    const { tables } = setupDatabase();
+    await createMeetingAction(initialState, form());
+    await receiveCommercialFolderAction(initialState, form());
+    await reopenContractStageAction(initialState, form({ stage: "reuniao_ata", reason: "Corrigir reunião" }));
+    await reopenContractStageAction(initialState, form({ stage: "entrada_comercial", reason: "Corrigir pasta" }));
+    expect(tables.technical_contracts[0].technical_status).toBe("aguardando_reuniao");
+    expect((await createMeetingAction(initialState, form())).ok).toBe(true);
+    expect((await receiveCommercialFolderAction(initialState, form())).ok).toBe(true);
+  });
+  it("does not allow duplicate completed stages", async () => {
+    const { tables } = setupDatabase();
+    await createMeetingAction(initialState, form());
+    expect((await createMeetingAction(initialState, form())).ok).toBe(false);
+    await receiveCommercialFolderAction(initialState, form());
+    expect((await receiveCommercialFolderAction(initialState, form())).ok).toBe(false);
+    expect(tables.technical_closing_meetings).toHaveLength(1);
+  });
+  it("keeps the permission checks and requires a reason for reopening", async () => {
+    const { fetchMock } = setupDatabase();
+    vi.mocked(requirePermissionAccess).mockRejectedValueOnce(new Error("Sem permissão."));
+    expect((await createMeetingAction(initialState, form())).ok).toBe(false);
+    expect(requirePermissionAccess).toHaveBeenCalledWith("technical.meetings.manage", undefined);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await reopenContractStageAction(initialState, form({ stage: "reuniao_ata", reason: "" }))).ok).toBe(false);
+    expect(requirePermissionAccess).toHaveBeenLastCalledWith("technical.contracts.edit", expect.any(String));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("never reads or updates a contract from another company", async () => {
+    const { tables } = setupDatabase();
+    tables.technical_contracts[0].company_id = "another-company";
+    expect((await createMeetingAction(initialState, form())).ok).toBe(false);
+    expect((await receiveCommercialFolderAction(initialState, form())).ok).toBe(false);
+    expect(tables.technical_closing_meetings).toEqual([]);
+  });
+});
+
+describe("createCorrectionAction in the actions center", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function form() {
+    const data = new FormData();
+    Object.entries({ contract_id: contractId, type: "Conferir medida", description: "Conferir largura", piece_id: "piece-1", prod_batch_id: "prod-1" }).forEach(([key, value]) => data.set(key, value));
+    return data;
+  }
+
+  it("saves a correction with unchecked flags and valid piece and PROD links", async () => {
+    const { tables } = setupDatabase();
+    tables.technical_contract_pieces.push({ id: "piece-1", company_id: companyId, contract_id: contractId, deleted_at: null });
+    tables.technical_prod_batches.push({ id: "prod-1", company_id: companyId, contract_id: contractId, deleted_at: null });
+    const result = await createCorrectionAction(initialState, form());
+    expect(result.ok).toBe(true);
+    expect(tables.technical_corrections[0]).toMatchObject({ contract_id: contractId, piece_id: "piece-1", prod_batch_id: "prod-1", blocking: false, critical: false, status: "aberta" });
+    expect(tables.technical_contract_pieces[0].status).toBe("em_correcao");
+    expect(requirePermissionAccess).toHaveBeenCalledWith("technical.corrections.manage", undefined);
+  });
+
+  it.each(["technical_contract_pieces", "technical_prod_batches"])("rejects a cross-contract link in %s", async (table) => {
+    const { tables } = setupDatabase();
+    tables.technical_contract_pieces.push({ id: "piece-1", company_id: companyId, contract_id: contractId, deleted_at: null });
+    tables.technical_prod_batches.push({ id: "prod-1", company_id: companyId, contract_id: contractId, deleted_at: null });
+    tables[table][0].contract_id = "another-contract";
+    const result = await createCorrectionAction(initialState, form());
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("não pertence ao contrato selecionado");
+    expect(tables.technical_corrections).toHaveLength(0);
+  });
+});
+
+describe("piece measurement and structural changes", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function prepareMeasuredPiece() {
+    const state = setupDatabase();
+    state.tables.technical_contract_pieces.push({
+      id: pieceId,
+      company_id: companyId,
+      contract_id: contractId,
+      code: "P1",
+      environment: "Sala",
+      measured_width_mm: null,
+      measured_height_mm: null,
+      status: "aguardando_avaliacao",
+      released_at: null,
+      deleted_at: null,
+    });
+    state.tables.technical_stage_validations.push({
+      id: "validation-visits",
+      company_id: companyId,
+      contract_id: contractId,
+      stage: "visitas",
+      validation_required: false,
+    });
+    return state;
+  }
+
+  it("updates the field environment with the measurement and records the audit trail", async () => {
+    const { tables } = prepareMeasuredPiece();
+    const formData = new FormData();
+    formData.set("id", pieceId);
+    formData.set("environment", "Varanda gourmet");
+    formData.set("measured_width_mm", "2380");
+    formData.set("measured_height_mm", "2190");
+
+    const result = await updatePieceMeasurementAction(initialState, formData);
+
+    expect(result.ok).toBe(true);
+    expect(tables.technical_contract_pieces[0]).toMatchObject({
+      environment: "Varanda gourmet",
+      measured_width_mm: 2380,
+      measured_height_mm: 2190,
+      status: "medida",
+    });
+    expect(tables.audit_logs.at(-1)).toMatchObject({
+      entity: "technical_contract_pieces",
+      action: "measurement_update",
+      before_data: { environment: "Sala" },
+      after_data: { environment: "Varanda gourmet" },
+    });
+  });
+
+  it("creates a piece-linked blocking action for a structural change", async () => {
+    const { tables } = prepareMeasuredPiece();
+    const formData = new FormData();
+    formData.set("piece_id", pieceId);
+    formData.set("description", "Alterar o sistema de abertura definido no contrato.");
+    formData.set("responsible_profile_id", managerId);
+    formData.set("priority", "alta");
+    formData.set("financial_impact", "cobranca_adicional");
+    formData.set("financial_amount", "1250.50");
+
+    const result = await createPieceStructuralChangeAction(initialState, formData);
+
+    expect(result.ok).toBe(true);
+    expect(tables.technical_actions[0]).toMatchObject({
+      contract_id: contractId,
+      piece_id: pieceId,
+      action_type: "alteracao_estrutural",
+      financial_impact: "cobranca_adicional",
+      financial_amount: 1250.5,
+      blocking: true,
+      blocking_stage: "liberacao_peca",
+      status: "aberta",
+    });
+    expect(tables.audit_logs.at(-1)).toMatchObject({
+      entity: "technical_actions",
+      action: "structural_change_create",
+      after_data: { piece_id: pieceId, piece_code: "P1" },
+    });
+  });
+
+  it("prevents releasing only a piece that still has an open structural action", async () => {
+    const { tables } = prepareMeasuredPiece();
+    tables.technical_contract_pieces[0].measured_width_mm = 2380;
+    tables.technical_contract_pieces[0].measured_height_mm = 2190;
+    tables.technical_actions.push({
+      id: "structural-action",
+      company_id: companyId,
+      contract_id: contractId,
+      piece_id: pieceId,
+      action_type: "alteracao_estrutural",
+      title: "Alteração estrutural · P1",
+      status: "aberta",
+      deleted_at: null,
+    });
+    const formData = new FormData();
+    formData.set("contract_id", contractId);
+    formData.set("piece_ids", pieceId);
+
+    const result = await createReleaseBatchAction(initialState, formData);
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("resolva a alteração estrutural pendente antes da liberação");
+    expect(tables.technical_contract_pieces[0].status).toBe("aguardando_avaliacao");
   });
 });

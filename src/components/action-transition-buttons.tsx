@@ -1,4 +1,8 @@
+"use client";
+
+import { useActionState, useEffect } from "react";
 import { transitionTechnicalActionFormAction } from "@/app/actions";
+import { ACTIVITIES_CHANGED_EVENT } from "@/lib/my-activities-events";
 import type { TechnicalAction } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -21,13 +25,21 @@ const buttonClass =
   "rounded-md border border-border bg-white px-3 py-1.5 text-xs font-semibold text-charcoal transition hover:bg-muted disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-60";
 
 function TransitionButton({ actionId, disabled, label, nextStatus, title }: TransitionButtonProps) {
+  const [state, submit, pending] = useActionState(
+    (_previous: { ok: boolean; message: string }, formData: FormData) => transitionTechnicalActionFormAction(formData),
+    { ok: false, message: "" },
+  );
+  useEffect(() => {
+    if (state.ok) window.dispatchEvent(new Event(ACTIVITIES_CHANGED_EVENT));
+  }, [state]);
   return (
-    <form action={transitionTechnicalActionFormAction}>
+    <form action={submit}>
       <input type="hidden" name="id" value={actionId} />
       <input type="hidden" name="next_status" value={nextStatus} />
-      <button className={buttonClass} disabled={disabled} title={title}>
-        {label}
+      <button className={buttonClass} disabled={disabled || pending} title={title}>
+        {pending ? "Salvando..." : label}
       </button>
+      {!state.ok && state.message ? <p role="alert" className="mt-2 max-w-xs text-xs text-danger">{state.message}</p> : null}
     </form>
   );
 }

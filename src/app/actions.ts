@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import {
   actionSchema,
   actionTransitionSchema,
+  actionUpdateSchema,
   answerDoubtSchema,
   cancelVisitSchema,
   confirmedImportSchema,
+  contractResponsiblesSchema,
   correctionSchema,
   deletionRequestSchema,
   deliverySchema,
@@ -18,6 +20,7 @@ import {
   pieceCemSchema,
   pieceMeasurementSchema,
   pieceRegistrationSchema,
+  pieceStructuralChangeSchema,
   prodBatchSchema,
   prodBatchTransitionSchema,
   receiveFolderSchema,
@@ -53,6 +56,7 @@ import {
   canApproveProd,
   canConfirmDepartmentDelivery,
   canReleasePiece,
+  getInitialContractStatus,
 } from "@/lib/technical-rules";
 import { findBestContractNumberMatch } from "@/lib/contract-number";
 import { ensureUniqueTechnicalPieceCodes } from "@/lib/technical-piece-codes";
@@ -167,6 +171,7 @@ function revalidateTechnical(contractId?: string) {
   revalidatePath("/tecnico/contratos");
   revalidatePath("/tecnico/agenda");
   revalidatePath("/tecnico/acoes");
+  revalidatePath("/tecnico/minhas-atividades");
   revalidatePath("/tecnico/correcoes");
   revalidatePath("/tecnico/prods");
   revalidatePath("/tecnico/duvidas");
@@ -227,11 +232,11 @@ function isMissingRelationError(error: unknown) {
 }
 
 const stageLabels: Record<TechnicalContractStageKey, string> = {
-  entrada_comercial: "Entrada comercial",
+  entrada_comercial: "Entrega da pasta",
   reuniao_ata: "Reunião e ata",
   acoes: "Ações",
   visitas: "Visitas",
-  pecas_medicoes_liberacoes: "Peças, medições e liberações",
+  pecas_medicoes_liberacoes: "Medições e liberações",
   correcoes: "Correções",
   prods: "PRODs",
   duvidas: "Dúvidas",
@@ -284,12 +289,42 @@ async function assertStageValidationSatisfied(
   }
 }
 
+async function assertPiecesHaveNoOpenStructuralActions(
+  context: ActionContext,
+  contractId: string,
+  pieces: Array<Pick<TechnicalPiece, "id" | "code">>,
+) {
+  if (!pieces.length) return;
+
+  const { data, error } = await context.admin
+    .from("technical_actions")
+    .select("piece_id, title, status")
+    .eq("company_id", context.companyId)
+    .eq("contract_id", contractId)
+    .eq("action_type", "alteracao_estrutural")
+    .is("deleted_at", null)
+    .in("piece_id", pieces.map((piece) => piece.id));
+
+  if (error) throw error;
+  const openAction = ((data ?? []) as Array<{ piece_id: string | null; title: string; status: string }>).find(
+    (action) => !["concluida", "cancelada"].includes(action.status),
+  );
+  if (!openAction) return;
+
+  const piece = pieces.find((item) => item.id === openAction.piece_id);
+  throw new Error(
+    `${piece?.code ?? "Peça selecionada"}: resolva a alteração estrutural pendente antes da liberação.`,
+  );
+}
+
 async function assertStageCanBeSigned(
   context: ActionContext,
   contractId: string,
   stage: TechnicalContractStageKey,
 ) {
   if (stage === "entrada_comercial") {
+    await assertStageCanBeSigned(context, contractId, "reuniao_ata");
+    await assertStageValidationSatisfied(context, contractId, "reuniao_ata");
     const { data, error } = await context.admin
       .from("technical_contracts")
       .select("commercial_folder_received")
@@ -298,7 +333,7 @@ async function assertStageCanBeSigned(
       .maybeSingle();
     if (error) throw error;
     if (!(data as { commercial_folder_received?: boolean } | null)?.commercial_folder_received) {
-      throw new Error("Registre a entrada comercial antes de solicitar ciência.");
+      throw new Error("Registre a entrega da pasta antes de solicitar ciência.");
     }
     return;
   }
@@ -312,7 +347,7 @@ async function assertStageCanBeSigned(
       .eq("status", "concluida")
       .limit(1);
     if (error) throw error;
-    if (!(data ?? []).length) throw new Error("Registre a reunião e ata antes de solicitar ciência.");
+    if (!(data ?? []).length) throw new Error("Registre a reunião e ata antes de prosseguir.");
     return;
   }
 
@@ -706,7 +741,7 @@ async function createTechnicalContract({
     contract_date: contractDate,
     contractual_deadline_value: deadlineValue,
     contractual_deadline_unit: deadlineUnit,
-    technical_status: "aguardando_pasta",
+    technical_status: "aguardando_reuniao",
     technical_manager_profile_id: technicalManagerProfileId || null,
     followup_profile_id: followupProfileId || null,
     commercial_folder_received: false,
@@ -814,7 +849,7 @@ async function reprocessExistingTechnicalContractFromPdf({
       contract_date: contract.contract_date,
       contractual_deadline_value: contract.deadline_value,
       contractual_deadline_unit: contract.deadline_unit,
-      technical_status: "aguardando_pasta",
+      technical_status: "aguardando_reuniao",
       commercial_folder_received: false,
       commercial_data: commercialData,
       authorized_contacts: contract.authorized_contacts,
@@ -972,11 +1007,14 @@ export async function receiveCommercialFolderAction(_: ActionState, formData: Fo
     if (currentError) throw currentError;
     if (!current) throw new Error("Contrato técnico não encontrado.");
     if ((current as { commercial_folder_received: boolean }).commercial_folder_received) {
-      throw new Error("Entrada comercial já concluída. Reabra a etapa com motivo para alterar.");
+      throw new Error("Entrega da pasta já concluída. Reabra a etapa com motivo para alterar.");
     }
     if ((current as { technical_status: string }).technical_status !== "aguardando_pasta") {
-      throw new Error("Entrada comercial não está liberada para registro neste momento.");
+      throw new Error("A entrega da pasta não está liberada para registro neste momento.");
     }
+
+    await assertStageCanBeSigned(context, parsed.data.contract_id, "reuniao_ata");
+    await assertStageValidationSatisfied(context, parsed.data.contract_id, "reuniao_ata");
 
     const { error } = await context.admin
       .from("technical_contracts")
@@ -986,7 +1024,7 @@ export async function receiveCommercialFolderAction(_: ActionState, formData: Fo
         folder_delivered_by: parsed.data.folder_delivered_by,
         folder_received_by_profile_id: context.profileId,
         technical_notes: parsed.data.technical_notes,
-        technical_status: "aguardando_reuniao",
+        technical_status: "em_acompanhamento",
       })
       .eq("company_id", context.companyId)
       .eq("contract_id", parsed.data.contract_id);
@@ -1014,14 +1052,9 @@ export async function createMeetingAction(_: ActionState, formData: FormData) {
 
     if (technicalError) throw technicalError;
     if (!technical) throw new Error("Contrato técnico não encontrado.");
-    if (!(technical as { commercial_folder_received: boolean }).commercial_folder_received) {
-      throw new Error("Registre a entrada comercial antes da reunião e ata.");
-    }
     if ((technical as { technical_status: string }).technical_status !== "aguardando_reuniao") {
       throw new Error("Reunião e ata já foram concluídas ou a etapa ainda não está liberada.");
     }
-
-    await assertStageValidationSatisfied(context, parsed.data.contract_id, "entrada_comercial");
 
     const { data: completedMeetings, error: completedMeetingError } = await context.admin
       .from("technical_closing_meetings")
@@ -1061,6 +1094,8 @@ export async function createMeetingAction(_: ActionState, formData: FormData) {
         contract_id: parsed.data.contract_id,
         meeting_id: (meeting as { id: string }).id,
         title: parsed.data.create_action_title,
+        description: parsed.data.create_action_description,
+        responsible_profile_id: parsed.data.create_action_responsible_profile_id,
         due_date: parsed.data.create_action_due_date,
         priority: "normal",
         blocking: true,
@@ -1072,7 +1107,7 @@ export async function createMeetingAction(_: ActionState, formData: FormData) {
 
     const { error: statusError } = await context.admin
       .from("technical_contracts")
-      .update({ technical_status: "em_acompanhamento" })
+      .update({ technical_status: getInitialContractStatus(true, Boolean(technical.commercial_folder_received)) })
       .eq("company_id", context.companyId)
       .eq("contract_id", parsed.data.contract_id);
 
@@ -1104,7 +1139,19 @@ export async function reopenContractStageAction(_: ActionState, formData: FormDa
     if (!current) throw new Error("Contrato técnico não encontrado.");
 
     const stageLabel =
-      parsed.data.stage === "entrada_comercial" ? "Entrada comercial" : "Reunião e ata";
+      parsed.data.stage === "entrada_comercial" ? "Entrega da pasta" : "Reunião e ata";
+    let folderReopenStatus = getInitialContractStatus(false, false);
+    if (parsed.data.stage === "entrada_comercial") {
+      const { data: meetings, error: meetingsError } = await context.admin
+        .from("technical_closing_meetings")
+        .select("id")
+        .eq("company_id", context.companyId)
+        .eq("contract_id", parsed.data.contract_id)
+        .eq("status", "concluida")
+        .limit(1);
+      if (meetingsError) throw meetingsError;
+      folderReopenStatus = getInitialContractStatus(Boolean(meetings?.length), false);
+    }
     const updatePayload =
       parsed.data.stage === "entrada_comercial"
         ? {
@@ -1112,13 +1159,13 @@ export async function reopenContractStageAction(_: ActionState, formData: FormDa
             folder_received_at: null,
             folder_delivered_by: null,
             folder_received_by_profile_id: null,
-            technical_status: "aguardando_pasta",
+            technical_status: folderReopenStatus,
           }
         : {
             technical_status: "aguardando_reuniao",
           };
 
-    if (parsed.data.stage === "entrada_comercial" || parsed.data.stage === "reuniao_ata") {
+    if (parsed.data.stage === "reuniao_ata") {
       const { error: meetingError } = await context.admin
         .from("technical_closing_meetings")
         .update({ status: "cancelada" })
@@ -1127,6 +1174,15 @@ export async function reopenContractStageAction(_: ActionState, formData: FormDa
         .eq("status", "concluida");
       if (meetingError) throw meetingError;
     }
+
+    // A reopened stage requires fresh signatures; completed earlier stages remain intact.
+    const { error: signatureError } = await context.admin
+      .from("technical_stage_validation_participants")
+      .update({ signed_at: null, signed_by_auth_user_id: null })
+      .eq("company_id", context.companyId)
+      .eq("contract_id", parsed.data.contract_id)
+      .eq("stage", parsed.data.stage);
+    if (signatureError) throw signatureError;
 
     const { error } = await context.admin
       .from("technical_contracts")
@@ -1238,6 +1294,86 @@ export async function updateContractWorkDataAction(_: ActionState, formData: For
     return ok("Dados da obra atualizados.");
   } catch (error) {
     return fail(error, "Não foi possível corrigir os dados da obra.");
+  }
+}
+
+export async function updateContractResponsiblesAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext(
+      "technical.contracts.edit",
+      "Somente usuários autorizados podem alterar os responsáveis do contrato.",
+    );
+    const parsed = contractResponsiblesSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const selectedProfileIds = Array.from(new Set([
+      parsed.data.technical_manager_profile_id,
+      parsed.data.followup_profile_id,
+    ].filter((profileId): profileId is string => Boolean(profileId))));
+
+    if (selectedProfileIds.length) {
+      const { data: profiles, error: profilesError } = await context.admin
+        .from("profiles")
+        .select("id")
+        .eq("company_id", context.companyId)
+        .eq("status", "active")
+        .in("id", selectedProfileIds);
+      if (profilesError) throw profilesError;
+
+      const validProfileIds = new Set(((profiles ?? []) as Array<{ id: string }>).map((profile) => profile.id));
+      if (selectedProfileIds.some((profileId) => !validProfileIds.has(profileId))) {
+        throw new Error("Selecione apenas usuários ativos da empresa para os responsáveis do contrato.");
+      }
+    }
+
+    const { data: current, error: currentError } = await context.admin
+      .from("technical_contracts")
+      .select("technical_manager_profile_id, followup_profile_id")
+      .eq("company_id", context.companyId)
+      .eq("contract_id", parsed.data.contract_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (currentError) throw currentError;
+    if (!current) throw new Error("Contrato técnico não encontrado.");
+
+    const updatePayload = {
+      technical_manager_profile_id: parsed.data.technical_manager_profile_id ?? null,
+      followup_profile_id: parsed.data.followup_profile_id ?? null,
+    };
+    const currentResponsibles = current as {
+      technical_manager_profile_id: string | null;
+      followup_profile_id: string | null;
+    };
+    if (
+      currentResponsibles.technical_manager_profile_id === updatePayload.technical_manager_profile_id &&
+      currentResponsibles.followup_profile_id === updatePayload.followup_profile_id
+    ) {
+      throw new Error("Altere ao menos um responsável antes de salvar.");
+    }
+    const { error: updateError } = await context.admin
+      .from("technical_contracts")
+      .update(updatePayload)
+      .eq("company_id", context.companyId)
+      .eq("contract_id", parsed.data.contract_id)
+      .is("deleted_at", null);
+    if (updateError) throw updateError;
+
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "technical_contracts",
+      entity_id: parsed.data.contract_id,
+      action: "responsibles_update",
+      user_id: context.authUserId,
+      before_data: current,
+      after_data: updatePayload,
+      notes: `Responsáveis do contrato atualizados. Motivo: ${parsed.data.adjustment_reason}`,
+    });
+    if (auditError) throw auditError;
+
+    revalidateTechnical(parsed.data.contract_id);
+    return ok("Responsáveis do contrato atualizados.");
+  } catch (error) {
+    return fail(error, "Não foi possível atualizar os responsáveis do contrato.");
   }
 }
 
@@ -1464,6 +1600,39 @@ export async function createTechnicalActionAction(_: ActionState, formData: Form
   }
 }
 
+export async function updateTechnicalActionAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.actions.manage");
+    const parsed = actionUpdateSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const { id, ...changes } = parsed.data;
+    const { data: action, error: actionError } = await context.admin
+      .from("technical_actions")
+      .select("contract_id")
+      .eq("company_id", context.companyId)
+      .eq("id", id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (actionError) throw actionError;
+    if (!action) throw new Error("Ação não encontrada.");
+
+    const { error } = await context.admin
+      .from("technical_actions")
+      .update(changes)
+      .eq("company_id", context.companyId)
+      .eq("id", id)
+      .is("deleted_at", null);
+    if (error) throw error;
+
+    const contractId = String((action as { contract_id: string }).contract_id);
+    revalidateTechnical(contractId);
+    return ok("Ação atualizada.");
+  } catch (error) {
+    return fail(error, "Não foi possível atualizar a ação.");
+  }
+}
+
 export async function transitionTechnicalActionAction(first: ActionState | FormData, second?: FormData) {
   try {
     const formData = actionFormData(first, second);
@@ -1542,6 +1711,7 @@ export async function createVisitAction(_: ActionState, formData: FormData) {
     if (gate !== true) throw new Error(String(gate || "Contrato ainda não cumpre os pré-requisitos da visita."));
 
     await assertStageValidationSatisfied(context, parsed.data.contract_id, "reuniao_ata");
+    await assertStageValidationSatisfied(context, parsed.data.contract_id, "entrada_comercial");
     await assertStageValidationSatisfied(context, parsed.data.contract_id, "acoes");
 
     const { data: visit, error } = await context.admin
@@ -1727,22 +1897,116 @@ export async function updatePieceMeasurementAction(_: ActionState, formData: For
       if (!canEditReleased) throw new Error("Peça liberada só pode ser editada por Gestor Técnico ou Administrador.");
     }
 
+    const source = piece as TechnicalPiece;
+    const environment = formData.has("environment") ? parsed.data.environment ?? null : source.environment;
+    const updatePayload = {
+      environment,
+      measured_width_mm: parsed.data.measured_width_mm,
+      measured_height_mm: parsed.data.measured_height_mm,
+      notes: parsed.data.notes,
+      status: source.released_at ? source.status : "medida",
+    };
+
     const { error } = await context.admin
       .from("technical_contract_pieces")
-      .update({
-        measured_width_mm: parsed.data.measured_width_mm,
-        measured_height_mm: parsed.data.measured_height_mm,
-        notes: parsed.data.notes,
-        status: "medida",
-      })
+      .update(updatePayload)
       .eq("company_id", context.companyId)
       .eq("id", parsed.data.id);
     if (error) throw error;
 
-    revalidateTechnical((piece as TechnicalPiece).contract_id);
-    return ok("Medição registrada.");
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "technical_contract_pieces",
+      entity_id: source.id,
+      action: "measurement_update",
+      user_id: context.authUserId,
+      before_data: {
+        code: source.code,
+        environment: source.environment,
+        measured_width_mm: source.measured_width_mm,
+        measured_height_mm: source.measured_height_mm,
+      },
+      after_data: {
+        code: source.code,
+        environment,
+        measured_width_mm: parsed.data.measured_width_mm,
+        measured_height_mm: parsed.data.measured_height_mm,
+      },
+      notes: parsed.data.notes,
+    });
+    if (auditError) throw auditError;
+
+    revalidateTechnical(source.contract_id);
+    return ok(source.environment !== environment ? "Medição e ambiente atualizados." : "Medição registrada.");
   } catch (error) {
     return fail(error);
+  }
+}
+
+export async function createPieceStructuralChangeAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.measurements.manage");
+    const parsed = pieceStructuralChangeSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const { data: piece, error: pieceError } = await context.admin
+      .from("technical_contract_pieces")
+      .select("id, contract_id, code, environment")
+      .eq("company_id", context.companyId)
+      .eq("id", parsed.data.piece_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (pieceError) throw pieceError;
+    if (!piece) throw new Error("Peça não encontrada.");
+
+    const source = piece as Pick<TechnicalPiece, "id" | "contract_id" | "code" | "environment">;
+    await assertStageValidationSatisfied(context, source.contract_id, "visitas");
+
+    const { data: action, error } = await context.admin
+      .from("technical_actions")
+      .insert({
+        company_id: context.companyId,
+        contract_id: source.contract_id,
+        piece_id: source.id,
+        action_type: "alteracao_estrutural",
+        title: `Alteração estrutural · ${source.code}`,
+        description: parsed.data.description,
+        responsible_profile_id: parsed.data.responsible_profile_id,
+        due_date: parsed.data.due_date,
+        priority: parsed.data.priority,
+        financial_impact: parsed.data.financial_impact,
+        financial_amount: parsed.data.financial_amount,
+        blocking: true,
+        blocking_stage: "liberacao_peca",
+        status: "aberta",
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+
+    const actionId = String((action as { id: string }).id);
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "technical_actions",
+      entity_id: actionId,
+      action: "structural_change_create",
+      user_id: context.authUserId,
+      after_data: {
+        contract_id: source.contract_id,
+        piece_id: source.id,
+        piece_code: source.code,
+        environment: source.environment,
+        financial_impact: parsed.data.financial_impact,
+        financial_amount: parsed.data.financial_amount,
+      },
+      notes: parsed.data.description,
+    });
+    if (auditError) throw auditError;
+
+    revalidateTechnical(source.contract_id);
+    return ok("Alteração estrutural registrada. A liberação desta peça ficará bloqueada até a conclusão da ação.");
+  } catch (error) {
+    return fail(error, "Não foi possível registrar a alteração estrutural.");
   }
 }
 
@@ -1852,6 +2116,8 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
     );
     if (alreadyReleased) throw new Error(`${alreadyReleased.code}: esta peça já está liberada.`);
 
+    await assertPiecesHaveNoOpenStructuralActions(context, parsed.data.contract_id, typedPieces);
+
     const { data: corrections, error: correctionsError } = await context.admin
       .from("technical_corrections")
       .select("*")
@@ -1924,7 +2190,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
       new Set(((stageParticipants ?? []) as Array<{ profile_id: string }>).map((participant) => participant.profile_id)),
     );
     if (validationRequired && !participantProfileIds.length) {
-      throw new Error("Configure os participantes da validação de peças antes de criar o lote.");
+      throw new Error("Configure os participantes da validação de medições e liberações antes de criar o lote.");
     }
 
     const now = new Date().toISOString();
@@ -2166,6 +2432,11 @@ export async function releasePieceAction(_: ActionState, formData: FormData) {
     if (!piece) throw new Error("Peça não encontrada.");
 
     await assertStageValidationSatisfied(context, (piece as TechnicalPiece).contract_id, "visitas");
+    await assertPiecesHaveNoOpenStructuralActions(
+      context,
+      (piece as TechnicalPiece).contract_id,
+      [piece as TechnicalPiece],
+    );
 
     const { data: corrections, error: correctionsError } = await context.admin
       .from("technical_corrections")
@@ -2293,6 +2564,33 @@ export async function createCorrectionAction(_: ActionState, formData: FormData)
     const context = await getActionContext("technical.corrections.manage");
     const parsed = correctionSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return invalidForm(parsed.error);
+
+    const { data: contract, error: contractError } = await context.admin
+      .from("production_contracts")
+      .select("id")
+      .eq("company_id", context.companyId)
+      .eq("id", parsed.data.contract_id)
+      .eq("active", true)
+      .maybeSingle();
+    if (contractError) throw contractError;
+    if (!contract) throw new Error("Selecione um contrato ativo para registrar a correção.");
+
+    for (const [table, linkedId, label] of [
+      ["technical_contract_pieces", parsed.data.piece_id, "A peça"],
+      ["technical_prod_batches", parsed.data.prod_batch_id, "O PROD"],
+    ] as const) {
+      if (!linkedId) continue;
+      const { data: linked, error: linkedError } = await context.admin
+        .from(table)
+        .select("id")
+        .eq("company_id", context.companyId)
+        .eq("contract_id", parsed.data.contract_id)
+        .eq("id", linkedId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (linkedError) throw linkedError;
+      if (!linked) throw new Error(`${label} não pertence ao contrato selecionado ou foi excluído.`);
+    }
 
     const { error } = await context.admin.from("technical_corrections").insert({
       company_id: context.companyId,
@@ -3637,7 +3935,7 @@ export async function deleteTechnicalRoleFormAction(formData: FormData) {
 }
 
 export async function transitionTechnicalActionFormAction(formData: FormData) {
-  await transitionTechnicalActionAction(formData);
+  return await transitionTechnicalActionAction(formData);
 }
 
 export async function generateVisitReportFormAction(formData: FormData) {

@@ -92,6 +92,13 @@ export const workDataCorrectionSchema = z.object({
   adjustment_reason: z.string().trim().min(5, "Informe o motivo do ajuste."),
 });
 
+export const contractResponsiblesSchema = z.object({
+  contract_id: z.string().uuid(),
+  technical_manager_profile_id: optionalText,
+  followup_profile_id: optionalText,
+  adjustment_reason: z.string().trim().min(5, "Informe o motivo da alteração."),
+});
+
 export const meetingSchema = z.object({
   contract_id: z.string().uuid(),
   meeting_date: z.string().min(1, "Informe a data."),
@@ -101,7 +108,17 @@ export const meetingSchema = z.object({
   decisions: optionalText,
   blockers: optionalText,
   create_action_title: optionalText,
+  create_action_description: optionalText,
+  create_action_responsible_profile_id: optionalText,
   create_action_due_date: optionalDate,
+}).superRefine((value, context) => {
+  if (!value.create_action_title) return;
+  if (!value.create_action_description) {
+    context.addIssue({ code: "custom", path: ["create_action_description"], message: "Descreva brevemente a ação." });
+  }
+  if (!value.create_action_responsible_profile_id) {
+    context.addIssue({ code: "custom", path: ["create_action_responsible_profile_id"], message: "Selecione o responsável pela ação." });
+  }
 });
 
 export const stageValidationSchema = z.object({
@@ -119,14 +136,16 @@ export const actionSchema = z.object({
   contract_id: z.string().uuid(),
   meeting_id: optionalText,
   title: z.string().trim().min(1, "Informe o título da ação."),
-  description: optionalText,
-  responsible_profile_id: optionalText,
+  description: z.string().trim().min(1, "Descreva brevemente a ação.").max(240, "A descrição deve ter no máximo 240 caracteres."),
+  responsible_profile_id: z.string().uuid("Selecione o responsável pela ação."),
   due_date: optionalDate,
   priority: z.enum(PRIORITIES).default("normal"),
-  blocking: z
-    .union([z.literal("on"), z.literal("true"), z.literal("false"), z.null(), z.undefined()])
-    .transform((value) => value === "on" || value === "true"),
+  blocking: checkboxBoolean,
   blocking_stage: optionalText,
+});
+
+export const actionUpdateSchema = actionSchema.omit({ contract_id: true, meeting_id: true, blocking_stage: true }).extend({
+  id: z.string().uuid(),
 });
 
 export const actionTransitionSchema = z.object({
@@ -158,9 +177,20 @@ export const cancelVisitSchema = z.object({
 
 export const pieceMeasurementSchema = z.object({
   id: z.string().uuid(),
+  environment: optionalText,
   measured_width_mm: optionalNumber,
   measured_height_mm: optionalNumber,
   notes: optionalText,
+});
+
+export const pieceStructuralChangeSchema = z.object({
+  piece_id: z.string().uuid(),
+  description: z.string().trim().min(10, "Descreva a alteração estrutural identificada."),
+  responsible_profile_id: z.string().uuid("Selecione o responsável pela ação."),
+  due_date: optionalDate,
+  priority: z.enum(PRIORITIES).default("alta"),
+  financial_impact: z.enum(["a_avaliar", "sem_impacto", "credito", "cobranca_adicional"]).default("a_avaliar"),
+  financial_amount: optionalNumber,
 });
 
 export const pieceRegistrationSchema = z.object({
@@ -211,8 +241,8 @@ export const correctionSchema = z.object({
   responsible_profile_id: optionalText,
   due_date: optionalDate,
   priority: z.enum(PRIORITIES).default("normal"),
-  blocking: z.union([z.literal("on"), z.literal("true"), z.literal("false"), z.null(), z.undefined()]).transform((value) => value === "on" || value === "true"),
-  critical: z.union([z.literal("on"), z.literal("true"), z.literal("false"), z.null(), z.undefined()]).transform((value) => value === "on" || value === "true"),
+  blocking: checkboxBoolean,
+  critical: checkboxBoolean,
   impact: optionalText,
 });
 

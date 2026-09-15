@@ -19,13 +19,11 @@ import type { ReactNode } from "react";
 import {
   cancelVisitAction,
   checkProdBatchFormAction,
-  closeCorrectionFormAction,
-  createCorrectionAction,
   createDoubtAction,
   createMeetingAction,
+  createPieceStructuralChangeAction,
   createProdBatchAction,
   createReleaseBatchAction,
-  createTechnicalActionAction,
   createVisitAction,
   deliverDepartmentDocumentAction,
   generateVisitReportFormAction,
@@ -37,23 +35,26 @@ import {
   signStageValidationAction,
   splitPieceAction,
   updateContractWorkDataAction,
+  updateContractResponsiblesAction,
   updatePieceCemAction,
   updatePieceMeasurementAction,
   updatePieceRegistrationAction,
   approveProdBatchFormAction,
 } from "@/app/actions";
-import { ActionTransitionButtons } from "@/components/action-transition-buttons";
+import { TechnicalActionsPanel } from "@/components/technical-actions-panel";
+import { buildTechnicalWorkItems, filterTechnicalWorkItems } from "@/lib/technical-work-items";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
 import { DeleteTechnicalContractForm } from "@/components/delete-technical-contract-form";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody } from "@/components/panel";
-import { PriorityBadge, StatusBadge } from "@/components/status-badge";
+import { StatusBadge } from "@/components/status-badge";
 import { StatCard } from "@/components/stat-card";
 import { VisitReportPdfButton } from "@/components/visit-report-pdf-button";
 import { formatAuditLogEntry } from "@/lib/audit-log-format";
 import {
   appNavigationPermissionKeys,
   canAccessModule,
+  getWorkItemPermissions,
   firstAllowedAppRoute,
   MODULE_ACCESS,
   TECHNICAL_PERMISSIONS,
@@ -65,7 +66,9 @@ import type {
   Client,
   Profile,
   ProductionContract,
+  TechnicalContract,
   TechnicalContractStageKey,
+  TechnicalAction,
   TechnicalPiece,
   TechnicalRelease,
   TechnicalReleaseParticipant,
@@ -189,7 +192,7 @@ function StageValidationPanel({
   );
 
   return (
-    <div className={cn("rounded-md border border-border bg-white p-3", className)}>
+    <div id={`assinatura-${stage}`} className={cn("scroll-mt-40 rounded-md border border-border bg-white p-3", className)}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-charcoal">
@@ -434,6 +437,52 @@ function WorkDataCorrectionForm({
   );
 }
 
+function ContractResponsiblesForm({
+  contract,
+  profiles,
+}: {
+  contract: TechnicalContract;
+  profiles: Profile[];
+}) {
+  const availableProfiles = profiles.filter((profile) => profile.status !== "inactive");
+  return (
+    <ActionForm
+      action={updateContractResponsiblesAction}
+      submitLabel="Salvar responsáveis"
+      className="rounded-md border border-border bg-white p-3"
+      confirmMessage="Confirma a alteração dos responsáveis? A mudança será registrada no histórico e não alterará ações, participantes ou assinaturas existentes."
+    >
+      <input type="hidden" name="contract_id" value={contract.contract_id} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Técnico responsável">
+          <select name="technical_manager_profile_id" className={inputClass} defaultValue={contract.technical_manager_profile_id ?? ""}>
+            <option value="">A definir</option>
+            {availableProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>{profile.name} · {profileTitle(profile)}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Acompanhamento">
+          <select name="followup_profile_id" className={inputClass} defaultValue={contract.followup_profile_id ?? ""}>
+            <option value="">A definir</option>
+            {availableProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>{profile.name} · {profileTitle(profile)}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Motivo da alteração">
+        <textarea
+          name="adjustment_reason"
+          className={textareaClass}
+          placeholder="Ex.: definição do técnico responsável após o cadastro."
+          required
+        />
+      </Field>
+    </ActionForm>
+  );
+}
+
 function PieceRegistrationForm({ piece }: { piece: TechnicalPiece }) {
   return (
     <ActionForm action={updatePieceRegistrationAction} submitLabel="Salvar cadastro" className="rounded-md border border-border bg-white p-3">
@@ -462,28 +511,176 @@ function PieceRegistrationForm({ piece }: { piece: TechnicalPiece }) {
   );
 }
 
+function ContractPiecesSummary({
+  pieces,
+  canEditRegistration,
+}: {
+  pieces: TechnicalPiece[];
+  canEditRegistration: boolean;
+}) {
+  return (
+    <section className="min-w-0 space-y-3 border-t border-border pt-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-charcoal">Peças do contrato</h3>
+          <p className="mt-1 break-words text-sm text-muted-foreground">
+            Cadastro-base recebido do Comercial. As etapas seguintes confirmam e atualizam estas mesmas peças.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-md bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-800 ring-1 ring-orange-200">
+            {pieces.length} peça(s)
+          </span>
+          <a href="#pecas" className="text-sm font-semibold text-accent hover:underline">
+            Ir para medições e liberações
+          </a>
+        </div>
+      </div>
+
+      {pieces.length ? (
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="min-w-[760px] w-full border-separate border-spacing-0 bg-white text-left text-sm">
+            <thead>
+              <tr className="text-xs uppercase text-muted-foreground">
+                <th className="border-b border-border px-3 py-3">Código</th>
+                <th className="border-b border-border px-3 py-3">Ambiente</th>
+                <th className="border-b border-border px-3 py-3">Tipo</th>
+                <th className="border-b border-border px-3 py-3">Medidas de venda</th>
+                <th className="border-b border-border px-3 py-3">Situação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pieces.map((piece) => (
+                <tr key={piece.id} className="align-top last:[&>td]:border-b-0">
+                  <td className="border-b border-border px-3 py-3 font-semibold text-charcoal">{piece.code}</td>
+                  <td className="border-b border-border px-3 py-3">{piece.environment ?? "Sem ambiente"}</td>
+                  <td className="max-w-md border-b border-border px-3 py-3 text-muted-foreground">{piece.piece_type ?? "Sem tipo"}</td>
+                  <td className="border-b border-border px-3 py-3 whitespace-nowrap">{piece.sale_width_mm ?? "-"} x {piece.sale_height_mm ?? "-"} mm</td>
+                  <td className="border-b border-border px-3 py-3"><StatusBadge status={piece.status} type="piece" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+          Nenhuma peça cadastrada neste contrato.
+        </div>
+      )}
+
+      {canEditRegistration && pieces.length ? (
+        <details className="group rounded-md border border-border bg-muted/20">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-semibold text-charcoal marker:hidden">
+            <span className="inline-flex items-center gap-2"><Pencil className="size-4 text-accent" /> Corrigir cadastro-base</span>
+            <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
+          </summary>
+          <div className="space-y-2 border-t border-border p-3">
+            <p className="text-xs text-muted-foreground">
+              Use esta área somente para corrigir erro de cadastro ou importação. Mudanças estruturais encontradas em campo devem ser registradas como ação.
+            </p>
+            {pieces.map((piece) => (
+              <details key={piece.id} className="group rounded-md border border-border bg-white">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm marker:hidden">
+                  <span><strong className="text-charcoal">{piece.code}</strong> · {piece.environment ?? "Sem ambiente"}</span>
+                  <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
+                </summary>
+                <div className="border-t border-border p-3"><PieceRegistrationForm piece={piece} /></div>
+              </details>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
+function StructuralChangeActionForm({ piece, profiles }: { piece: TechnicalPiece; profiles: Profile[] }) {
+  return (
+    <details className="group rounded-md border border-amber-200 bg-amber-50/50">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-semibold text-amber-900 marker:hidden">
+        <span className="inline-flex items-center gap-2"><AlertTriangle className="size-4" /> Registrar alteração estrutural</span>
+        <ChevronDown className="size-4 transition group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-amber-200 p-3">
+        <p className="mb-3 text-xs text-amber-900">
+          Use quando a mudança afetar a estrutura da peça e puder gerar crédito ou cobrança. A liberação desta peça ficará bloqueada até a ação ser concluída.
+        </p>
+        <ActionForm
+          action={createPieceStructuralChangeAction}
+          submitLabel="Registrar ação estrutural"
+          confirmMessage="Confirma o registro? A liberação desta peça ficará bloqueada até a conclusão da ação."
+          className="bg-transparent p-0 shadow-none"
+        >
+          <input type="hidden" name="piece_id" value={piece.id} />
+          <Field label="Alteração identificada">
+            <textarea name="description" className={textareaClass} required placeholder="Descreva o que mudou na estrutura da peça." />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Field label="Impacto financeiro">
+              <select name="financial_impact" defaultValue="a_avaliar" className={inputClass}>
+                <option value="a_avaliar">A avaliar</option>
+                <option value="sem_impacto">Sem impacto</option>
+                <option value="credito">Possível crédito</option>
+                <option value="cobranca_adicional">Possível cobrança adicional</option>
+              </select>
+            </Field>
+            <Field label="Valor estimado">
+              <input name="financial_amount" type="number" min="0" step="0.01" className={inputClass} placeholder="R$ 0,00" />
+            </Field>
+            <Field label="Responsável">
+              <select name="responsible_profile_id" className={inputClass} defaultValue="" required>
+                <option value="">Selecione</option>
+                {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Prazo">
+              <input name="due_date" type="date" className={inputClass} />
+            </Field>
+          </div>
+          <input type="hidden" name="priority" value="alta" />
+        </ActionForm>
+      </div>
+    </details>
+  );
+}
+
 function PieceActionForms({
   piece,
   canMeasure,
   canManageProds,
+  profiles,
+  structuralActions,
   className,
 }: {
   piece: TechnicalPiece;
   canMeasure: boolean;
   canManageProds: boolean;
+  profiles: Profile[];
+  structuralActions: TechnicalAction[];
   className?: string;
 }) {
   if (!canMeasure && !canManageProds) return null;
 
   return (
-    <div className={className ?? "grid gap-3 md:grid-cols-2 xl:grid-cols-4"}>
+    <div className={cn("space-y-3", className)}>
+      {structuralActions.length ? (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <p className="font-semibold">Liberação bloqueada por alteração estrutural</p>
+          {structuralActions.map((action) => <p key={action.id} className="mt-1">{action.title}</p>)}
+        </div>
+      ) : null}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       {canMeasure ? (
-        <ActionForm action={updatePieceMeasurementAction} submitLabel="Medir" className="rounded-md bg-muted/40 p-3">
+        <ActionForm action={updatePieceMeasurementAction} submitLabel="Salvar medição" className="rounded-md bg-muted/40 p-3 xl:col-span-2">
           <input type="hidden" name="id" value={piece.id} />
+          <Field label="Ambiente conferido em obra">
+            <input name="environment" className={inputClass} defaultValue={piece.environment ?? ""} />
+          </Field>
           <div className="grid gap-2 sm:grid-cols-2">
             <input name="measured_width_mm" type="number" className={inputClass} placeholder="Largura" defaultValue={piece.measured_width_mm ?? ""} />
             <input name="measured_height_mm" type="number" className={inputClass} placeholder="Altura" defaultValue={piece.measured_height_mm ?? ""} />
           </div>
+          <textarea name="notes" className={textareaClass} placeholder="Observação da medição (opcional)" defaultValue={piece.notes ?? ""} />
         </ActionForm>
       ) : null}
       {canManageProds ? (
@@ -505,11 +702,21 @@ function PieceActionForms({
           <input name="suffix" className={inputClass} placeholder="A" />
         </ActionForm>
       ) : null}
+      </div>
+      {canMeasure ? <StructuralChangeActionForm piece={piece} profiles={profiles} /> : null}
     </div>
   );
 }
 
-function ReleaseBatchForm({ contractId, pieces }: { contractId: string; pieces: TechnicalPiece[] }) {
+function ReleaseBatchForm({
+  contractId,
+  pieces,
+  blockingActionsByPieceId,
+}: {
+  contractId: string;
+  pieces: TechnicalPiece[];
+  blockingActionsByPieceId: Map<string, TechnicalAction[]>;
+}) {
   if (!pieces.length) {
     return (
       <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-800">
@@ -546,10 +753,13 @@ function ReleaseBatchForm({ contractId, pieces }: { contractId: string; pieces: 
           </p>
         </div>
         <div className="grid gap-2">
-          {pieces.map((piece) => (
-            <div key={piece.id} className="rounded-md border border-border bg-muted/20 p-3">
+          {pieces.map((piece) => {
+            const blockingActions = blockingActionsByPieceId.get(piece.id) ?? [];
+            const blocked = blockingActions.length > 0;
+            return (
+            <div key={piece.id} className={cn("rounded-md border p-3", blocked ? "border-red-200 bg-red-50/60" : "border-border bg-muted/20")}>
               <label className="flex cursor-pointer items-start gap-3 text-sm">
-                <input name="piece_ids" type="checkbox" value={piece.id} className="mt-1 size-4 accent-orange-600" />
+                <input name="piece_ids" type="checkbox" value={piece.id} className="mt-1 size-4 accent-orange-600" disabled={blocked} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold text-charcoal">{piece.code}</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
@@ -558,6 +768,11 @@ function ReleaseBatchForm({ contractId, pieces }: { contractId: string; pieces: 
                 </span>
                 <StatusBadge status={piece.status} type="piece" />
               </label>
+              {blocked ? (
+                <p className="mt-2 text-xs font-semibold text-red-800">
+                  Liberação bloqueada até a conclusão da ação estrutural.
+                </p>
+              ) : null}
               <div className="mt-3 grid gap-2 md:grid-cols-3">
                 <label className="space-y-1.5">
                   <span className="text-xs font-semibold text-muted-foreground">Ambiente</span>
@@ -590,7 +805,8 @@ function ReleaseBatchForm({ contractId, pieces }: { contractId: string; pieces: 
                 </label>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </ActionForm>
@@ -640,7 +856,7 @@ function ReleaseBatchList({
         );
 
         return (
-          <details key={release.id} className="group rounded-md border border-border bg-white">
+          <details id={`lote-${release.id}`} key={release.id} className="group scroll-mt-40 rounded-md border border-border bg-white">
             <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-3 py-3 marker:hidden">
               <div className="min-w-0">
                 <p className="font-semibold text-charcoal">{release.batch_number ?? "Lote de liberação"}</p>
@@ -775,19 +991,18 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const nextVisit = visits
     .filter((visit) => visit.status === "agendada")
     .sort((left, right) => left.scheduled_date.localeCompare(right.scheduled_date))[0];
-  const nextAction = actions
-    .filter((action) => !["concluida", "cancelada"].includes(action.status))
-    .sort((left, right) => String(left.due_date ?? "").localeCompare(String(right.due_date ?? "")))[0];
+  const workItemPermissions = getWorkItemPermissions(access);
+  const nextAction = filterTechnicalWorkItems(buildTechnicalWorkItems(
+    workItemPermissions.canViewActions ? actions : [],
+    workItemPermissions.canViewCorrections ? corrections : [],
+  ), { situation: "open" })[0];
 
   const canReceiveFolder = access.isMaster || access.permissions["technical.folder.receive"];
   const canManageMeetings = access.isMaster || access.permissions["technical.meetings.manage"];
-  const canManageActions = access.isMaster || access.permissions["technical.actions.manage"];
-  const canValidateActions = access.isMaster || access.permissions["technical.actions.reopen"];
   const canManageVisits = access.isMaster || access.permissions["technical.visits.manage"];
   const canCancelVisits = access.isMaster || access.permissions["technical.visits.cancel"];
   const canMeasure = access.isMaster || access.permissions["technical.measurements.manage"];
   const canRelease = access.isMaster || access.permissions["technical.pieces.release"];
-  const canManageCorrections = access.isMaster || access.permissions["technical.corrections.manage"];
   const canManageProds = access.isMaster || access.permissions["technical.prods.manage"];
   const canCheckProds = access.isMaster || access.permissions["technical.prods.check"];
   const canApproveProds = access.isMaster || access.permissions["technical.prods.approve"];
@@ -795,13 +1010,24 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const canManageDoubts = access.isMaster || access.permissions["technical.doubts.manage"];
   const canReopenStages = access.isMaster || access.permissions["technical.contracts.edit"];
   const canCorrectWorkData = access.isMaster || access.permissions["technical.contracts.correct_work_data"];
+  const canEditResponsibles = access.isMaster || access.permissions["technical.contracts.edit"];
   const canEditPieceRegistration = access.isMaster || access.permissions["technical.pieces.edit_released"];
   const canDeleteContract = access.isMaster;
-  const currentStatus = technical?.technical_status ?? "aguardando_pasta";
+  const currentStatus = technical?.technical_status ?? "aguardando_reuniao";
   const hasCommercialFolder = Boolean(technical?.commercial_folder_received);
   const completedMeetings = snapshot.meetings.filter((meeting) => meeting.status === "concluida");
   const hasCompletedMeeting = completedMeetings.length > 0;
   const activeActions = actions.filter((action) => !["concluida", "cancelada"].includes(action.status));
+  const openStructuralActions = activeActions.filter(
+    (action) => action.action_type === "alteracao_estrutural" && Boolean(action.piece_id),
+  );
+  const structuralActionsByPieceId = new Map<string, TechnicalAction[]>();
+  for (const action of openStructuralActions) {
+    if (!action.piece_id) continue;
+    const current = structuralActionsByPieceId.get(action.piece_id) ?? [];
+    current.push(action);
+    structuralActionsByPieceId.set(action.piece_id, current);
+  }
   const performedVisits = visits.filter((visit) =>
     ["realizada", "aguardando_relatorio", "relatorio_emitido"].includes(visit.status),
   );
@@ -879,26 +1105,25 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const prodsValidation = stageValidationFor("prods");
   const duvidasValidation = stageValidationFor("duvidas");
   const entradaReadyForNext = hasCommercialFolder && entradaValidation.complete;
-  const reuniaoReadyForNext = hasCompletedMeeting && reuniaoValidation.complete && acoesValidation.complete;
+  const reuniaoReadyForNext = hasCompletedMeeting && reuniaoValidation.complete;
   const visitasReadyForNext = visitasValidation.complete;
-  const canRegisterCommercialEntry = canReceiveFolder && currentStatus === "aguardando_pasta" && !hasCommercialFolder;
+  const canRegisterCommercialEntry = canReceiveFolder && reuniaoReadyForNext && currentStatus === "aguardando_pasta" && !hasCommercialFolder;
   const canRegisterMeeting =
     canManageMeetings &&
-    entradaReadyForNext &&
     currentStatus === "aguardando_reuniao" &&
     !hasCompletedMeeting;
-  const canRegisterVisit = canManageVisits && entradaReadyForNext && reuniaoReadyForNext;
-  const canOperatePieces = reuniaoReadyForNext && visitasReadyForNext;
+  const canRegisterVisit = canManageVisits && entradaReadyForNext && reuniaoReadyForNext && acoesValidation.complete;
+  const canOperatePieces = entradaReadyForNext && reuniaoReadyForNext && acoesValidation.complete && visitasReadyForNext;
   const canCreateProdBatch = canManageProds && piecesReadyForProd.length > 0;
 
   const tabLinks: Array<readonly [string, string]> = [
     ["#visao-geral", "Visão geral"],
     ["#dados-obra", "Dados da obra"],
-    ["#entrada", "Entrada comercial"],
     ["#reuniao", "Reunião e ata"],
+    ["#entrada", "Entrega da pasta"],
+    ["#acoes", "Ações"],
     ["#visitas", "Visitas"],
-    ["#pecas", "Peças"],
-    ["#correcoes", "Correções"],
+    ["#pecas", "Medições e liberações"],
     ["#prods", "PRODs"],
     ["#duvidas", "Dúvidas"],
     ["#historico", "Histórico"],
@@ -926,7 +1151,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={technical?.technical_status ?? "aguardando_pasta"} type="contract" />
+                <StatusBadge status={currentStatus} type="contract" />
                 <span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
                   {releaseProgress.percent}% liberado
                 </span>
@@ -958,6 +1183,9 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
               <p className="font-semibold text-charcoal">Próxima ação</p>
               <p className="mt-2 text-muted-foreground">{nextAction?.title ?? "Nenhuma ação aberta."}</p>
+              {nextAction?.description ? (
+                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground" title={nextAction.description}>{nextAction.description}</p>
+              ) : nextAction ? <p className="mt-1 text-xs text-muted-foreground">Sem descrição informada.</p> : null}
               {nextAction ? (
                 <p className="mt-2 text-xs text-muted-foreground">
                   Responsável: <span className="font-semibold text-charcoal">{profileName(snapshot.profiles, nextAction.responsible_profile_id)}</span>
@@ -986,18 +1214,20 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         <StatCard label="Peças contratadas" value={releaseProgress.total} icon={PackageCheck} />
         <StatCard label="Liberadas" value={releaseProgress.released} icon={CheckCircle2} tone="success" />
         <StatCard label="Saldo" value={releaseProgress.balance} icon={AlertTriangle} tone={releaseProgress.balance ? "warning" : "success"} />
-        <StatCard label="Correções abertas" value={corrections.filter((item) => !["encerrada", "cancelada"].includes(item.status)).length} icon={AlertTriangle} tone="danger" />
+        <StatCard label="Ações abertas" value={activeActions.length + activeCorrections.length} icon={AlertTriangle} tone="danger" href="#acoes" />
         <StatCard label="PRODs ativos" value={prodBatches.filter((item) => !["concluido", "cancelado"].includes(item.status)).length} icon={Factory} />
       </section>
 
       <FlowStep
         id="dados-obra"
         title="Dados da obra"
-        description="Correção controlada dos dados lidos ou importados para a obra."
-        status={canCorrectWorkData ? "Correção autorizada" : "Somente leitura"}
-        locked={!canCorrectWorkData}
+        description="Dados gerais da obra e cadastro-base das peças contratadas."
+        status={`${pieces.length} peça(s)${canCorrectWorkData || canEditResponsibles || canEditPieceRegistration ? " · edição autorizada" : ""}`}
+        locked={!canCorrectWorkData && !canEditResponsibles && !canEditPieceRegistration}
       >
-        <div className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
+        <div className="space-y-4">
+          <ContractPiecesSummary pieces={pieces} canEditRegistration={canEditPieceRegistration} />
+          <div className="grid gap-4 border-t border-border pt-4 xl:grid-cols-[1fr_1.1fr]">
           <div className="rounded-md border border-border bg-white p-3 text-sm">
             <h3 className="font-semibold text-charcoal">Dados atuais</h3>
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -1035,6 +1265,14 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 <dt className="text-xs font-semibold uppercase text-muted-foreground">Telefone</dt>
                 <dd className="mt-1 text-charcoal">{contract.site_contact_phone ?? "-"}</dd>
               </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">Técnico</dt>
+                <dd className="mt-1 text-charcoal">{profileName(snapshot.profiles, technical?.technical_manager_profile_id)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">Acompanhamento</dt>
+                <dd className="mt-1 text-charcoal">{profileName(snapshot.profiles, technical?.followup_profile_id)}</dd>
+              </div>
             </dl>
             {contract.notes ? (
               <p className="mt-3 border-t border-border pt-3 text-muted-foreground">
@@ -1043,78 +1281,34 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             ) : null}
           </div>
 
-          {canCorrectWorkData ? (
-            <WorkDataCorrectionForm client={client} contract={contract} />
-          ) : (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              A correção dos dados da obra é restrita aos perfis autorizados pelo Administrador.
-            </div>
-          )}
+          <div className="space-y-4">
+            {technical && canEditResponsibles ? (
+              <ContractResponsiblesForm contract={technical} profiles={snapshot.profiles} />
+            ) : null}
+            {canCorrectWorkData ? (
+              <WorkDataCorrectionForm client={client} contract={contract} />
+            ) : (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                A correção dos dados da obra é restrita aos perfis autorizados pelo Administrador.
+              </div>
+            )}
+            {!canEditResponsibles ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                A alteração de Técnico e Acompanhamento é restrita aos perfis autorizados pelo Administrador.
+              </div>
+            ) : null}
+          </div>
+        </div>
         </div>
       </FlowStep>
 
       <div className="space-y-4">
         <FlowStep
-          id="entrada"
-          title="Entrada comercial"
-          description="Pasta comercial obrigatória antes da primeira visita."
-          status={stageStatusWithValidation(
-            hasCommercialFolder ? "Concluída" : currentStatus === "aguardando_pasta" ? "Liberada" : "Bloqueada",
-            entradaValidation,
-            hasCommercialFolder,
-          )}
-          locked={hasCommercialFolder}
-        >
-          <div className="space-y-4">
-            <StageValidationPanel
-              contractId={id}
-              stage="entrada_comercial"
-              title="Entrada comercial"
-              profiles={snapshot.profiles}
-              validation={entradaValidation}
-              canManage={canReopenStages}
-              stageComplete={hasCommercialFolder}
-              completeMessage="Registre a pasta comercial para liberar a assinatura dos participantes."
-            />
-            <div className="rounded-md border border-border bg-white p-3 text-sm">
-              <p className="font-semibold text-charcoal">
-                Pasta {technical?.commercial_folder_received ? "entregue" : "pendente"}
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                Data: {formatDateTime(technical?.folder_received_at)} · Entregue por: {technical?.folder_delivered_by ?? "-"}
-              </p>
-            </div>
-            {canRegisterCommercialEntry ? (
-              <ActionForm action={receiveCommercialFolderAction} submitLabel="Registrar pasta">
-                {hiddenContract(id)}
-                <Field label="Data da entrega">
-                  <input name="folder_received_at" type="datetime-local" className={inputClass} required />
-                </Field>
-                <Field label="Responsável pela entrega">
-                  <input name="folder_delivered_by" className={inputClass} required />
-                </Field>
-                <Field label="Observação">
-                  <textarea name="technical_notes" className={textareaClass} />
-                </Field>
-              </ActionForm>
-            ) : null}
-            {hasCommercialFolder ? (
-              <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-800">
-                Entrada comercial concluída. A etapa está travada para alteração direta.
-              </div>
-            ) : null}
-            {hasCommercialFolder && canReopenStages ? (
-              <ReopenStageForm contractId={id} stage="entrada_comercial" submitLabel="Reabrir entrada comercial" />
-            ) : null}
-          </div>
-        </FlowStep>
-
-        <FlowStep
           id="reuniao"
           title="Reunião e ata"
           description="A reunião de fechamento é pré-requisito do fluxo."
           status={stageStatusWithValidation(
-            !entradaReadyForNext ? "Bloqueada" : hasCompletedMeeting ? "Concluída" : "Liberada",
+            hasCompletedMeeting ? "Concluída" : currentStatus === "aguardando_reuniao" ? "Liberada" : "Bloqueada",
             reuniaoValidation,
             hasCompletedMeeting,
           )}
@@ -1131,16 +1325,6 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               stageComplete={hasCompletedMeeting}
               completeMessage="Registre a reunião e ata para liberar a assinatura dos participantes."
             />
-            {!hasCommercialFolder ? (
-              <div className="rounded-md border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
-                Conclua a entrada comercial para liberar esta etapa.
-              </div>
-            ) : null}
-            {hasCommercialFolder && !entradaValidation.complete ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                Entrada comercial aguarda ciência de todos os participantes antes da reunião.
-              </div>
-            ) : null}
             {snapshot.meetings.map((meeting) => (
               <article key={meeting.id} className="rounded-md border border-border bg-white p-3 text-sm">
                 <p className="font-semibold text-charcoal">{formatDate(meeting.meeting_date)} · {meeting.participants.join(", ")}</p>
@@ -1176,6 +1360,15 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     <input name="create_action_due_date" type="date" className={inputClass} />
                   </Field>
                 </div>
+                <Field label="Descrição breve da ação">
+                  <textarea name="create_action_description" maxLength={240} className={textareaClass} />
+                </Field>
+                <Field label="Responsável pela ação">
+                  <select name="create_action_responsible_profile_id" className={inputClass} defaultValue="">
+                    <option value="">Selecione</option>
+                    {snapshot.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                  </select>
+                </Field>
               </ActionForm>
             ) : null}
             {hasCompletedMeeting ? (
@@ -1188,88 +1381,113 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             ) : null}
           </div>
         </FlowStep>
+
+        <FlowStep
+          id="entrada"
+          title="Entrega da pasta"
+          description="Pasta comercial obrigatória antes da primeira visita."
+          status={stageStatusWithValidation(
+            hasCommercialFolder ? "Concluída" : reuniaoReadyForNext && currentStatus === "aguardando_pasta" ? "Liberada" : "Bloqueada",
+            entradaValidation,
+            hasCommercialFolder,
+          )}
+          locked={hasCommercialFolder}
+        >
+          <div className="space-y-4">
+            <StageValidationPanel
+              contractId={id}
+              stage="entrada_comercial"
+              title="Entrega da pasta"
+              profiles={snapshot.profiles}
+              validation={entradaValidation}
+              canManage={canReopenStages}
+              stageComplete={hasCommercialFolder && reuniaoReadyForNext}
+              completeMessage={reuniaoReadyForNext
+                ? "Registre a entrega da pasta para liberar a assinatura dos participantes."
+                : "Conclua a reunião e as assinaturas dos participantes antes da entrega da pasta."}
+            />
+            <div className="rounded-md border border-border bg-white p-3 text-sm">
+              <p className="font-semibold text-charcoal">
+                Pasta {technical?.commercial_folder_received ? "entregue" : "pendente"}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Data: {formatDateTime(technical?.folder_received_at)} · Entregue por: {technical?.folder_delivered_by ?? "-"}
+              </p>
+            </div>
+            {canRegisterCommercialEntry ? (
+              <ActionForm action={receiveCommercialFolderAction} submitLabel="Registrar pasta">
+                {hiddenContract(id)}
+                <Field label="Data da entrega">
+                  <input name="folder_received_at" type="datetime-local" className={inputClass} required />
+                </Field>
+                <Field label="Responsável pela entrega">
+                  <input name="folder_delivered_by" className={inputClass} required />
+                </Field>
+                <Field label="Observação">
+                  <textarea name="technical_notes" className={textareaClass} />
+                </Field>
+              </ActionForm>
+            ) : null}
+            {hasCommercialFolder ? (
+              <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-800">
+                Entrega da pasta concluída. A etapa está travada para alteração direta.
+              </div>
+            ) : null}
+            {hasCommercialFolder && canReopenStages ? (
+              <ReopenStageForm contractId={id} stage="entrada_comercial" submitLabel="Reabrir entrega da pasta" />
+            ) : null}
+          </div>
+        </FlowStep>
       </div>
 
       <FlowStep
         id="acoes"
         title="Ações"
-        description="Ações da reunião e pendências de acompanhamento."
-        status={stageStatusWithValidation(
-          activeActions.length ? `${activeActions.length} aberta(s)` : "Concluída",
-          acoesValidation,
-          activeActions.length === 0,
-        )}
-        locked={activeActions.length === 0}
+        status={activeActions.length + activeCorrections.length
+          ? `${activeActions.length + activeCorrections.length} aberta(s)`
+          : !acoesValidation.complete || !correcoesValidation.complete ? "Aguardando ciência" : "Concluída"}
+        locked={activeActions.length + activeCorrections.length === 0}
       >
-        <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-          <StageValidationPanel
-            contractId={id}
-            stage="acoes"
-            title="Ações"
-            profiles={snapshot.profiles}
-            validation={acoesValidation}
-            canManage={canReopenStages}
-            stageComplete={activeActions.length === 0}
-            completeMessage="Valide e conclua as ações abertas para liberar a assinatura dos participantes."
-            className="xl:col-span-2"
-          />
-          <div className="space-y-3">
-            {actions.map((action) => (
-              <article key={action.id} className="rounded-md border border-border bg-white p-3 text-sm">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-charcoal">{action.title}</p>
-                    <p className="mt-1 text-muted-foreground">
-                      Responsável: {profileName(snapshot.profiles, action.responsible_profile_id)} · Prazo: {formatDate(action.due_date)}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <PriorityBadge priority={action.priority} />
-                    <StatusBadge status={action.status} type="action" />
-                  </div>
-                </div>
-                <ActionTransitionButtons action={action} canManage={canManageActions} canValidate={canValidateActions} />
-              </article>
-            ))}
-          </div>
-          {canManageActions ? (
-            <ActionForm action={createTechnicalActionAction} submitLabel="Criar ação">
-              {hiddenContract(id)}
-              <Field label="Título">
-                <input name="title" className={inputClass} required />
-              </Field>
-              <Field label="Descrição">
-                <textarea name="description" className={textareaClass} />
-              </Field>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Responsável">
-                  <select name="responsible_profile_id" className={inputClass}>
-                    <option value="">A definir</option>
-                    {snapshot.profiles.map((profile) => (
-                      <option key={profile.id} value={profile.id}>{profile.name}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Prazo">
-                  <input name="due_date" type="date" className={inputClass} />
-                </Field>
-                <Field label="Prioridade">
-                  <select name="priority" className={inputClass} defaultValue="normal">
-                    <option value="baixa">Baixa</option>
-                    <option value="normal">Normal</option>
-                    <option value="alta">Alta</option>
-                    <option value="urgente">Urgente</option>
-                  </select>
-                </Field>
-                <Field label="Etapa bloqueada">
-                  <input name="blocking_stage" className={inputClass} placeholder="entrada_inicial" />
-                </Field>
-              </div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-charcoal">
-                <input name="blocking" type="checkbox" className="size-4" />
-                Ação bloqueante
-              </label>
-            </ActionForm>
+        <div className="space-y-6">
+          <TechnicalActionsPanel snapshot={snapshot} access={access} contractId={id} />
+          {workItemPermissions.canViewActions ? (
+            <details className="group border-t border-border pt-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                Validação das ações gerais
+                <ChevronDown className="size-4 group-open:rotate-180" />
+              </summary>
+              <StageValidationPanel
+                contractId={id}
+                stage="acoes"
+                title="Ações gerais"
+                profiles={snapshot.profiles}
+                validation={acoesValidation}
+                canManage={canReopenStages}
+                stageComplete={activeActions.length === 0}
+                completeMessage="Valide e conclua as ações gerais abertas para liberar a assinatura dos participantes."
+                className="mt-4"
+              />
+            </details>
+          ) : null}
+          <span id="correcoes" className="block scroll-mt-4" />
+          {workItemPermissions.canViewCorrections ? (
+            <details className="group border-t border-border pt-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                Validação das correções técnicas
+                <ChevronDown className="size-4 group-open:rotate-180" />
+              </summary>
+              <StageValidationPanel
+                contractId={id}
+                stage="correcoes"
+                title="Correções técnicas"
+                profiles={snapshot.profiles}
+                validation={correcoesValidation}
+                canManage={canReopenStages}
+                stageComplete={activeCorrections.length === 0}
+                completeMessage="Encerre ou cancele as correções técnicas abertas para liberar a assinatura dos participantes."
+                className="mt-4"
+              />
+            </details>
           ) : null}
         </div>
       </FlowStep>
@@ -1365,6 +1583,11 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 A reunião/ações aguardam ciência de todos os participantes antes das visitas.
               </div>
             ) : null}
+            {reuniaoReadyForNext && !entradaReadyForNext ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Registre a pasta comercial e conclua suas assinaturas antes de agendar visitas.
+              </div>
+            ) : null}
           </div>
           {canRegisterVisit ? (
             <ActionForm action={createVisitAction} submitLabel="Agendar visita">
@@ -1400,15 +1623,15 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
 
       <FlowStep
         id="pecas"
-        title="Peças, medições e liberações"
-        description="Peças recolhidas por padrão, com ajustes e ações dentro de cada item."
+        title="Medições e liberações"
+        description="Registro das medidas encontradas em obra e liberação das peças por lotes."
         status={pecasStageStatus}
       >
         <div className="space-y-3">
           <StageValidationPanel
             contractId={id}
             stage="pecas_medicoes_liberacoes"
-            title="Peças, medições e liberações"
+            title="Medições e liberações"
             profiles={snapshot.profiles}
             validation={pecasValidation}
             canManage={canReopenStages}
@@ -1422,7 +1645,11 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             </div>
           ) : null}
           {canRelease && canOperatePieces ? (
-            <ReleaseBatchForm contractId={id} pieces={releaseCandidates} />
+            <ReleaseBatchForm
+              contractId={id}
+              pieces={releaseCandidates}
+              blockingActionsByPieceId={structuralActionsByPieceId}
+            />
           ) : null}
           <ReleaseBatchList
             releases={releases}
@@ -1491,25 +1718,12 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     </div>
                   </dl>
 
-                  {canEditPieceRegistration ? (
-                    <details className="group rounded-md border border-border bg-muted/20">
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-semibold text-charcoal marker:hidden">
-                        <span className="inline-flex items-center gap-2">
-                          <Pencil className="size-4 text-accent" />
-                          Ajustar cadastro
-                        </span>
-                        <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
-                      </summary>
-                      <div className="border-t border-border p-3">
-                        <PieceRegistrationForm piece={piece} />
-                      </div>
-                    </details>
-                  ) : null}
-
                   <PieceActionForms
                     piece={piece}
                     canMeasure={canMeasure && canOperatePieces}
                     canManageProds={canManageProds && canOperatePieces}
+                    profiles={snapshot.profiles}
+                    structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
                   />
                 </div>
               </details>
@@ -1559,6 +1773,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                   piece={piece}
                   canMeasure={canMeasure && canOperatePieces}
                   canManageProds={canManageProds && canOperatePieces}
+                  profiles={snapshot.profiles}
+                  structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
                   className="mt-3 grid gap-2"
                 />
               </article>
@@ -1594,6 +1810,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                         piece={piece}
                         canMeasure={canMeasure && canOperatePieces}
                         canManageProds={canManageProds && canOperatePieces}
+                        profiles={snapshot.profiles}
+                        structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
                       />
                     </td>
                   </tr>
@@ -1601,94 +1819,6 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               </tbody>
             </table>
           </div>
-        </div>
-      </FlowStep>
-
-      <FlowStep
-        id="correcoes"
-        title="Correções"
-        status={stageStatusWithValidation(
-          activeCorrections.length ? `${activeCorrections.length} aberta(s)` : "Concluída",
-          correcoesValidation,
-          activeCorrections.length === 0,
-        )}
-        locked={activeCorrections.length === 0}
-      >
-        <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-          <StageValidationPanel
-            contractId={id}
-            stage="correcoes"
-            title="Correções"
-            profiles={snapshot.profiles}
-            validation={correcoesValidation}
-            canManage={canReopenStages}
-            stageComplete={activeCorrections.length === 0}
-            completeMessage="Encerre ou cancele as correções abertas para liberar a assinatura dos participantes."
-            className="xl:col-span-2"
-          />
-          <div className="space-y-3">
-            {corrections.map((correction) => (
-              <article key={correction.id} className="rounded-md border border-border bg-white p-3 text-sm">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-charcoal">{correction.type}</p>
-                    <p className="mt-1 text-muted-foreground">{correction.description}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Prazo: {formatDate(correction.due_date)} · Responsável: {profileName(snapshot.profiles, correction.responsible_profile_id)}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <PriorityBadge priority={correction.priority} />
-                    <StatusBadge status={correction.status} type="correction" />
-                  </div>
-                </div>
-                {canManageCorrections && !["encerrada", "cancelada"].includes(correction.status) ? (
-                  <form action={closeCorrectionFormAction} className="mt-3">
-                    <input type="hidden" name="id" value={correction.id} />
-                    <button className="rounded-md bg-charcoal px-3 py-2 text-xs font-semibold text-white hover:bg-black">Encerrar correção</button>
-                  </form>
-                ) : null}
-              </article>
-            ))}
-          </div>
-          {canManageCorrections ? (
-            <ActionForm action={createCorrectionAction} submitLabel="Registrar correção">
-              {hiddenContract(id)}
-              <Field label="Peça">
-                <select name="piece_id" className={inputClass}>
-                  <option value="">Contrato/PROD</option>
-                  {pieces.map((piece) => (
-                    <option key={piece.id} value={piece.id}>{piece.code}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Tipo">
-                <input name="type" className={inputClass} required />
-              </Field>
-              <Field label="Descrição">
-                <textarea name="description" className={textareaClass} required />
-              </Field>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Responsável">
-                  <select name="responsible_profile_id" className={inputClass}>
-                    <option value="">A definir</option>
-                    {snapshot.profiles.map((profile) => (
-                      <option key={profile.id} value={profile.id}>{profile.name}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Prazo">
-                  <input name="due_date" type="date" className={inputClass} />
-                </Field>
-              </div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-charcoal">
-                <input name="blocking" type="checkbox" />
-                Bloqueante
-              </label>
-              <label className="flex items-center gap-2 text-sm font-semibold text-charcoal">
-                <input name="critical" type="checkbox" />
-                Crítica
-              </label>
-            </ActionForm>
-          ) : null}
         </div>
       </FlowStep>
 

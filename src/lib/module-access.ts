@@ -1,8 +1,9 @@
 export const MODULE_ACCESS = {
   dashboard: ["technical.dashboard.view"],
+  myActivities: ["technical.contracts.view", "technical.actions.view", "technical.corrections.view"],
   contracts: ["technical.contracts.view"],
   agenda: ["technical.visits.view", "technical.followup.view"],
-  actions: ["technical.actions.view"],
+  actions: ["technical.actions.view", "technical.corrections.view"],
   corrections: ["technical.corrections.view"],
   prods: ["technical.prods.view"],
   doubts: ["technical.doubts.view"],
@@ -64,6 +65,7 @@ export const appRouteAccess = [
   { href: "/tecnico/contratos", permissions: MODULE_ACCESS.contracts },
   { href: "/tecnico/agenda", permissions: MODULE_ACCESS.agenda },
   { href: "/tecnico/acoes", permissions: MODULE_ACCESS.actions },
+  { href: "/tecnico/minhas-atividades", permissions: MODULE_ACCESS.myActivities },
   { href: "/tecnico/correcoes", permissions: MODULE_ACCESS.corrections },
   { href: "/tecnico/prods", permissions: MODULE_ACCESS.prods },
   { href: "/tecnico/duvidas", permissions: MODULE_ACCESS.doubts },
@@ -83,6 +85,19 @@ export function canAccessModule(
   permissionKeys: readonly string[],
 ) {
   return access.isMaster || hasAnyPermission(access.permissions, permissionKeys);
+}
+
+export function getWorkItemPermissions(access: PermissionLookup) {
+  const allowed = (key: string) => access.isMaster || Boolean(access.permissions[key]);
+  const canViewActions = allowed("technical.actions.view");
+  const canViewCorrections = allowed("technical.corrections.view");
+  return {
+    canViewActions,
+    canViewCorrections,
+    canManageActions: canViewActions && allowed("technical.actions.manage"),
+    canValidateActions: canViewActions && allowed("technical.actions.reopen"),
+    canManageCorrections: canViewCorrections && allowed("technical.corrections.manage"),
+  };
 }
 
 export function firstAllowedAppRoute(access: PermissionLookup) {

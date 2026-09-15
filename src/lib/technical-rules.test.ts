@@ -9,6 +9,7 @@ import {
   canReleasePiece,
   calculateReleaseProgress,
   getTechnicalContractProcessOrder,
+  getInitialContractStatus,
   isStageValidationSatisfied,
 } from "./technical-rules";
 
@@ -49,7 +50,17 @@ describe("technical workflow gates", () => {
         (left, right) =>
           getTechnicalContractProcessOrder(left) - getTechnicalContractProcessOrder(right),
       ),
-    ).toEqual(["aguardando_pasta", "aguardando_reuniao", "aguardando_visita", "em_liberacao"]);
+    ).toEqual(["aguardando_reuniao", "aguardando_pasta", "aguardando_visita", "em_liberacao"]);
+  });
+
+  it.each([
+    [false, false, "aguardando_reuniao"],
+    [false, true, "aguardando_reuniao"],
+    [true, false, "aguardando_pasta"],
+    [true, true, "em_acompanhamento"],
+  ] as const)("resolves initial status for meeting=%s and folder=%s", (meeting, folder, expected) => {
+    expect(getInitialContractStatus(meeting, folder)).toBe(expected);
+    expect(getTechnicalContractProcessOrder(null)).toBe(getTechnicalContractProcessOrder("aguardando_reuniao"));
   });
 
   it("blocks first visit without commercial folder", () => {

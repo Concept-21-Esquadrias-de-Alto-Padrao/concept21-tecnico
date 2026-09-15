@@ -44,17 +44,19 @@ export function TechnicalContractsTable({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Buscar por número, cliente ou endereço"
+            aria-label="Buscar contratos"
             className="min-h-11 w-full rounded-md border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-accent"
           />
         </label>
         <select
           value={status}
+          aria-label="Situação do contrato"
           onChange={(event) => setStatus(event.target.value)}
           className="min-h-11 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-accent"
         >
           <option value="">Todas as situações</option>
-          <option value="aguardando_pasta">Aguardando pasta</option>
           <option value="aguardando_reuniao">Aguardando reunião</option>
+          <option value="aguardando_pasta">Aguardando pasta</option>
           <option value="em_acompanhamento">Em acompanhamento</option>
           <option value="aguardando_visita">Aguardando visita</option>
           <option value="em_medicao">Em medição</option>
@@ -92,7 +94,7 @@ export function TechnicalContractsTable({
                   </p>
                 </div>
                 <StatusBadge
-                  status={overview.technical?.technical_status ?? "aguardando_pasta"}
+                  status={overview.technical?.technical_status ?? "aguardando_reuniao"}
                   type="contract"
                 />
               </div>
@@ -183,7 +185,7 @@ export function TechnicalContractsTable({
                   </td>
                   <td className="border-b border-border px-3 py-3">
                     <StatusBadge
-                      status={overview.technical?.technical_status ?? "aguardando_pasta"}
+                      status={overview.technical?.technical_status ?? "aguardando_reuniao"}
                       type="contract"
                     />
                   </td>

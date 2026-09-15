@@ -8,6 +8,9 @@ const profiles = [
     user_id: "auth-1",
     name: "Thaís Martins",
   },
+  { id: "manager-old", user_id: null, name: "Técnico anterior" },
+  { id: "manager-new", user_id: null, name: "Técnico atual" },
+  { id: "followup-new", user_id: null, name: "Acompanhamento atual" },
 ];
 
 function auditLog(partial: Partial<TechnicalAuditLog>): TechnicalAuditLog {
@@ -96,5 +99,58 @@ describe("formatAuditLogEntry", () => {
 
     expect(entry.title).toBe("O usuário Thaís Martins excluiu o contrato técnico.");
     expect(entry.details).toBe("Contrato técnico excluído pelo Administrador. Motivo: lançamento duplicado.");
+  });
+
+  it("formats responsible changes with the previous and new names", () => {
+    const entry = formatAuditLogEntry(
+      auditLog({
+        entity: "technical_contracts",
+        action: "responsibles_update",
+        before_data: { technical_manager_profile_id: "manager-old", followup_profile_id: null },
+        after_data: { technical_manager_profile_id: "manager-new", followup_profile_id: "followup-new" },
+        notes: "Responsáveis do contrato atualizados. Motivo: definição após a visita.",
+      }),
+      profiles,
+    );
+
+    expect(entry.title).toBe("O usuário Thaís Martins atualizou os responsáveis do contrato.");
+    expect(entry.details).toContain("Técnico: Técnico anterior -> Técnico atual");
+    expect(entry.details).toContain("Acompanhamento: A definir -> Acompanhamento atual");
+  });
+
+  it("describes a measurement and an environment adaptation without technical jargon", () => {
+    const entry = formatAuditLogEntry(
+      auditLog({
+        entity: "technical_contract_pieces",
+        action: "measurement_update",
+        before_data: { code: "P1", environment: "Sala", measured_width_mm: null, measured_height_mm: null },
+        after_data: { code: "P1", environment: "Varanda", measured_width_mm: 1800, measured_height_mm: 2200 },
+      }),
+      profiles,
+    );
+
+    expect(entry.title).toBe("O usuário Thaís Martins registrou a medição da peça P1.");
+    expect(entry.details).toContain("Medição: 1800 x 2200 mm");
+    expect(entry.details).toContain("Ambiente: Sala -> Varanda");
+  });
+
+  it("describes a structural action and its possible financial impact", () => {
+    const entry = formatAuditLogEntry(
+      auditLog({
+        entity: "technical_actions",
+        action: "structural_change_create",
+        after_data: {
+          piece_code: "P2",
+          financial_impact: "cobranca_adicional",
+          financial_amount: 1250.5,
+        },
+        notes: "Troca do sistema de abertura.",
+      }),
+      profiles,
+    );
+
+    expect(entry.title).toBe("O usuário Thaís Martins registrou uma alteração estrutural na peça P2.");
+    expect(entry.details).toContain("Possível cobrança adicional");
+    expect(entry.details?.replace(/\s/g, " ")).toContain("R$ 1.250,50");
   });
 });

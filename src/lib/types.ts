@@ -1,6 +1,6 @@
 export const TECHNICAL_CONTRACT_STATUSES = [
-  "aguardando_pasta",
   "aguardando_reuniao",
+  "aguardando_pasta",
   "em_acompanhamento",
   "aguardando_visita",
   "em_medicao",
@@ -64,8 +64,8 @@ export const DEPARTMENT_KEYS = ["suprimentos", "producao"] as const;
 export const PRIORITIES = ["baixa", "normal", "alta", "urgente"] as const;
 export const DEADLINE_UNITS = ["dias_uteis", "dias_corridos"] as const;
 export const TECHNICAL_CONTRACT_STAGE_KEYS = [
-  "entrada_comercial",
   "reuniao_ata",
+  "entrada_comercial",
   "acoes",
   "visitas",
   "pecas_medicoes_liberacoes",
@@ -312,6 +312,10 @@ export type TechnicalAction = {
   company_id: string;
   contract_id: string;
   meeting_id: string | null;
+  piece_id?: string | null;
+  action_type?: "geral" | "alteracao_estrutural";
+  financial_impact?: "a_avaliar" | "sem_impacto" | "credito" | "cobranca_adicional";
+  financial_amount?: number | null;
   title: string;
   description: string | null;
   responsible_profile_id: string | null;

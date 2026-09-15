@@ -24,7 +24,7 @@ export function SummarySheetButton({
         "Total de peças",
         "Peças liberadas",
         "Saldo",
-        "Correções abertas",
+        "Ações abertas",
         "PRODs pendentes",
       ],
       ...overviews.map((overview) => {
@@ -33,11 +33,12 @@ export function SummarySheetButton({
           overview.contract.contract_number,
           overview.client?.name ?? "",
           overview.contract.work_name,
-          overview.technical?.technical_status ?? "aguardando_pasta",
+          overview.technical?.technical_status ?? "aguardando_reuniao",
           progress.total,
           progress.released,
           progress.balance,
-          overview.corrections.filter((correction) => !["encerrada", "cancelada"].includes(correction.status)).length,
+          overview.actions.filter((action) => !["concluida", "cancelada"].includes(action.status)).length +
+            overview.corrections.filter((correction) => !["encerrada", "cancelada"].includes(correction.status)).length,
           overview.prodBatches.filter((prod) => !["concluido", "cancelado"].includes(prod.status)).length,
         ];
       }),

@@ -12,6 +12,7 @@ const entityLabels: Record<string, string> = {
   profiles: "cadastro de usuário",
   technical_contract_import: "importação de contrato",
   technical_contract_pieces: "cadastro de peça",
+  technical_actions: "ação técnica",
   technical_contracts: "contrato técnico",
   technical_release_participants: "assinatura de lote de liberação",
   technical_releases: "lote de liberação",
@@ -20,11 +21,11 @@ const entityLabels: Record<string, string> = {
 };
 
 const stageLabels: Record<TechnicalContractStageKey, string> = {
-  entrada_comercial: "Entrada comercial",
+  entrada_comercial: "Entrega da pasta",
   reuniao_ata: "Reunião e ata",
   acoes: "Ações",
   visitas: "Visitas",
-  pecas_medicoes_liberacoes: "Peças, medições e liberações",
+  pecas_medicoes_liberacoes: "Medições e liberações",
   correcoes: "Correções",
   prods: "PRODs",
   duvidas: "Dúvidas",
@@ -87,6 +88,37 @@ function pieceRegistrationDetails(log: TechnicalAuditLog) {
   return changes.length ? changes.join(" · ") : null;
 }
 
+function pieceMeasurementDetails(log: TechnicalAuditLog) {
+  const code = valueAsString(log.after_data?.code);
+  const beforeEnvironment = valueAsString(log.before_data?.environment) ?? "sem ambiente";
+  const afterEnvironment = valueAsString(log.after_data?.environment) ?? "sem ambiente";
+  const width = valueAsNumber(log.after_data?.measured_width_mm);
+  const height = valueAsNumber(log.after_data?.measured_height_mm);
+  const details = [
+    code ? `Peça: ${code}` : null,
+    width !== null || height !== null ? `Medição: ${width ?? "-"} x ${height ?? "-"} mm` : null,
+    beforeEnvironment !== afterEnvironment ? `Ambiente: ${beforeEnvironment} -> ${afterEnvironment}` : null,
+    valueAsString(log.notes),
+  ].filter(Boolean);
+  return details.length ? details.join(" · ") : null;
+}
+
+function structuralChangeDetails(log: TechnicalAuditLog) {
+  const labels: Record<string, string> = {
+    a_avaliar: "Impacto financeiro a avaliar",
+    sem_impacto: "Sem impacto financeiro",
+    credito: "Possível crédito ao cliente",
+    cobranca_adicional: "Possível cobrança adicional",
+  };
+  const impact = valueAsString(log.after_data?.financial_impact);
+  const amount = valueAsNumber(log.after_data?.financial_amount);
+  return [
+    impact ? labels[impact] ?? impact : null,
+    amount !== null ? `Valor estimado: ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(amount)}` : null,
+    valueAsString(log.notes),
+  ].filter(Boolean).join(" · ") || null;
+}
+
 function workDataDetails(log: TechnicalAuditLog) {
   const beforeClientName = valueAsString(log.before_data?.client_name);
   const afterClientName = valueAsString(log.after_data?.client_name);
@@ -107,6 +139,23 @@ function workDataDetails(log: TechnicalAuditLog) {
     valueAsString(log.notes),
   ].filter(Boolean);
 
+  return changes.length ? changes.join(" · ") : null;
+}
+
+function responsiblesDetails(log: TechnicalAuditLog, profiles: AuditProfile[]) {
+  const profileName = (value: unknown) => {
+    const id = valueAsString(value);
+    return id ? profiles.find((profile) => profile.id === id)?.name ?? "Usuário não encontrado" : "A definir";
+  };
+  const beforeTechnical = profileName(log.before_data?.technical_manager_profile_id);
+  const afterTechnical = profileName(log.after_data?.technical_manager_profile_id);
+  const beforeFollowup = profileName(log.before_data?.followup_profile_id);
+  const afterFollowup = profileName(log.after_data?.followup_profile_id);
+  const changes = [
+    beforeTechnical !== afterTechnical ? `Técnico: ${beforeTechnical} -> ${afterTechnical}` : null,
+    beforeFollowup !== afterFollowup ? `Acompanhamento: ${beforeFollowup} -> ${afterFollowup}` : null,
+    valueAsString(log.notes),
+  ].filter(Boolean);
   return changes.length ? changes.join(" · ") : null;
 }
 
@@ -164,6 +213,11 @@ export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfi
         title: actedBy(actorName, "atualizou os dados técnicos do contrato"),
         details: defaultDetails(log),
       };
+    case "technical_contracts:responsibles_update":
+      return {
+        title: actedBy(actorName, "atualizou os responsáveis do contrato"),
+        details: responsiblesDetails(log, profiles),
+      };
     case "technical_contracts:reopen_stage":
       return {
         title: actedBy(actorName, `reabriu a etapa ${stageName(log.after_data?.stage)}`),
@@ -188,6 +242,16 @@ export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfi
       return {
         title: actedBy(actorName, `atualizou o cadastro da peça ${valueAsString(log.after_data?.code) ?? ""}`.trim()),
         details: pieceRegistrationDetails(log),
+      };
+    case "technical_contract_pieces:measurement_update":
+      return {
+        title: actedBy(actorName, `registrou a medição da peça ${valueAsString(log.after_data?.code) ?? ""}`.trim()),
+        details: pieceMeasurementDetails(log),
+      };
+    case "technical_actions:structural_change_create":
+      return {
+        title: actedBy(actorName, `registrou uma alteração estrutural na peça ${valueAsString(log.after_data?.piece_code) ?? ""}`.trim()),
+        details: structuralChangeDetails(log),
       };
     case "technical_releases:release_batch_create":
       return {

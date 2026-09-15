@@ -1,7 +1,8 @@
 "use client";
 
 import { Loader2, Save } from "lucide-react";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { ACTIVITIES_CHANGED_EVENT } from "@/lib/my-activities-events";
 import { cn } from "@/lib/utils";
 
 export type ActionState = {
@@ -20,14 +21,27 @@ export function ActionForm({
   submitLabel,
   className,
   confirmMessage,
+  onSuccess,
+  onPendingChange,
 }: {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
   children: React.ReactNode;
   submitLabel: string;
   className?: string;
   confirmMessage?: string;
+  onSuccess?: (message: string) => void;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
+  useEffect(() => {
+    if (state.ok) window.dispatchEvent(new Event(ACTIVITIES_CHANGED_EVENT));
+  }, [state]);
+  useEffect(() => {
+    if (state.ok) onSuccess?.(state.message);
+  }, [state, onSuccess]);
+  useEffect(() => {
+    onPendingChange?.(pending);
+  }, [pending, onPendingChange]);
 
   return (
     <form

@@ -11,7 +11,7 @@ import {
   Home,
   Settings,
   ShieldCheck,
-  TriangleAlert,
+  UserRoundCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -19,6 +19,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { CurrentUserMenu } from "@/components/current-user-menu";
 import { NotificationsBell } from "@/components/notifications-bell";
+import { MyActivitiesCount, MyActivitiesProvider } from "@/components/my-activities-provider";
 import {
   getCurrentUserAccess,
   isCurrentUserMaster,
@@ -30,10 +31,10 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/tecnico", label: "Painel Técnico", icon: Home, permissions: MODULE_ACCESS.dashboard },
+  { href: "/tecnico/minhas-atividades", label: "Minhas atividades", icon: UserRoundCheck, permissions: MODULE_ACCESS.myActivities },
   { href: "/tecnico/contratos", label: "Contratos", icon: ClipboardList, permissions: MODULE_ACCESS.contracts },
   { href: "/tecnico/agenda", label: "Agenda Técnica", icon: CalendarDays, permissions: MODULE_ACCESS.agenda },
   { href: "/tecnico/acoes", label: "Ações", icon: CheckSquare, permissions: MODULE_ACCESS.actions },
-  { href: "/tecnico/correcoes", label: "Correções", icon: TriangleAlert, permissions: MODULE_ACCESS.corrections },
   { href: "/tecnico/prods", label: "PRODs", icon: Factory, permissions: MODULE_ACCESS.prods },
   { href: "/tecnico/duvidas", label: "Base de Dúvidas", icon: HelpCircle, permissions: MODULE_ACCESS.doubts },
   { href: "/tecnico/relatorios", label: "Indicadores", icon: BarChart3, permissions: MODULE_ACCESS.reports },
@@ -79,8 +80,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (publicRoutes.has(pathname)) return <>{children}</>;
 
   const visibleNavItems = navItems.filter((item) => canShowNavItem(access, item.permissions));
+  const currentProfile = access && typeof access === "object" ? access.profile : null;
 
   return (
+    <MyActivitiesProvider key={currentProfile?.id ?? "anonymous"} enabled={Boolean(currentProfile?.status === "active" && canShowNavItem(access, MODULE_ACCESS.myActivities))}>
     <div className="min-h-screen bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 flex-col border-r border-white/10 bg-charcoal p-4 text-white shadow-2xl md:flex">
         <Link href="/tecnico" className="mb-8 flex items-center gap-3">
@@ -110,6 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon className="size-4" />
                 {item.label}
+                {item.href === "/tecnico/minhas-atividades" ? <MyActivitiesCount /> : null}
               </Link>
             );
           })}
@@ -164,6 +168,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 >
                   <Icon className="size-4" />
                   {item.label}
+                  {item.href === "/tecnico/minhas-atividades" ? <MyActivitiesCount /> : null}
                 </Link>
               );
             })}
@@ -175,5 +180,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
     </div>
+    </MyActivitiesProvider>
   );
 }

@@ -17,8 +17,8 @@ export type CalendarHoliday = {
 };
 
 export const technicalContractProcessOrder: Record<TechnicalContractStatus, number> = {
-  aguardando_pasta: 10,
-  aguardando_reuniao: 20,
+  aguardando_reuniao: 10,
+  aguardando_pasta: 20,
   em_acompanhamento: 30,
   aguardando_visita: 40,
   em_medicao: 50,
@@ -30,7 +30,12 @@ export const technicalContractProcessOrder: Record<TechnicalContractStatus, numb
 };
 
 export function getTechnicalContractProcessOrder(status: TechnicalContractStatus | null | undefined) {
-  return technicalContractProcessOrder[status ?? "aguardando_pasta"];
+  return technicalContractProcessOrder[status ?? "aguardando_reuniao"];
+}
+
+export function getInitialContractStatus(hasCompletedMeeting: boolean, hasCommercialFolder: boolean) {
+  if (!hasCompletedMeeting) return "aguardando_reuniao";
+  return hasCommercialFolder ? "em_acompanhamento" : "aguardando_pasta";
 }
 
 export function addDeadlineDays({
@@ -115,12 +120,10 @@ export function canAdvanceToVisit({
   meetings: Array<{ status: string }>;
   actions: Array<Pick<TechnicalAction, "blocking" | "blocking_stage" | "status">>;
 }) {
-  const folder = canScheduleInitialVisit({ technical, actions });
-  if (!folder.ok) return folder;
   if (!hasPerformedMeeting(meetings)) {
     return { ok: false, reason: "A reunião de fechamento precisa estar registrada." };
   }
-  return { ok: true, reason: null };
+  return canScheduleInitialVisit({ technical, actions });
 }
 
 export function canReleasePiece({

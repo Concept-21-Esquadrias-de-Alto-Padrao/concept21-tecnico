@@ -18,6 +18,7 @@ import { buildContractOverviews, getTechnicalDashboardData } from "@/lib/technic
 import {
   appNavigationPermissionKeys,
   canAccessModule,
+  getWorkItemPermissions,
   firstAllowedAppRoute,
   MODULE_ACCESS,
 } from "@/lib/module-access";
@@ -29,6 +30,11 @@ import {
   visitRequiresReport,
 } from "@/lib/technical-rules";
 import { formatDate } from "@/lib/utils";
+import { buildTechnicalWorkItems } from "@/lib/technical-work-items";
+
+function formatVisitTime(value: string | null) {
+  return value ? value.slice(0, 5) : "A definir";
+}
 
 export default async function TechnicalDashboardPage() {
   const access = await getCurrentPermissionFlags(appNavigationPermissionKeys);
@@ -37,32 +43,39 @@ export default async function TechnicalDashboardPage() {
   }
 
   const snapshot = await getTechnicalDashboardData();
+  const workItemPermissions = getWorkItemPermissions(access);
+  const workItems = buildTechnicalWorkItems(
+    workItemPermissions.canViewActions ? snapshot.actions : [],
+    workItemPermissions.canViewCorrections ? snapshot.corrections : [],
+  );
   const overviews = buildContractOverviews(snapshot);
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 7);
   const sevenDays = tomorrow.toISOString().slice(0, 10);
+  const upcomingAgendaVisits = snapshot.visits
+    .filter((visit) => visit.scheduled_date >= today && visit.scheduled_date <= sevenDays)
+    .slice(0, 8);
 
   const metrics = {
-    waitingFolder: overviews.filter((item) => !item.technical?.commercial_folder_received).length,
     waitingMeeting: overviews.filter(
       (item) =>
-        item.technical?.commercial_folder_received &&
+        !["concluido", "cancelado"].includes(item.technical?.technical_status ?? "") &&
         !snapshot.meetings.some((meeting) => meeting.contract_id === item.contract.id && meeting.status === "concluida"),
     ).length,
-    openActions: snapshot.actions.filter(
-      (action) => !action.deleted_at && !["concluida", "cancelada"].includes(action.status),
+    waitingFolder: overviews.filter(
+      (item) =>
+        !["concluido", "cancelado"].includes(item.technical?.technical_status ?? "") &&
+        !item.technical?.commercial_folder_received &&
+        snapshot.meetings.some((meeting) => meeting.contract_id === item.contract.id && meeting.status === "concluida"),
     ).length,
+    openActions: workItems.filter((item) => !item.closed).length,
     visitsToday: snapshot.visits.filter((visit) => visit.scheduled_date === today && visit.status === "agendada").length,
     upcomingVisits: snapshot.visits.filter(
       (visit) => visit.scheduled_date > today && visit.scheduled_date <= sevenDays && visit.status === "agendada",
     ).length,
     visitsWaitingReport: snapshot.visits.filter(visitRequiresReport).length,
     piecesWaitingRelease: snapshot.pieces.filter((piece) => ["avaliada", "medida"].includes(piece.status)).length,
-    correctionsOpen: snapshot.corrections.filter((correction) => !["encerrada", "cancelada"].includes(correction.status)).length,
-    criticalCorrections: snapshot.corrections.filter(
-      (correction) => correction.critical && !["encerrada", "cancelada"].includes(correction.status),
-    ).length,
     prodsWaitingCheck: snapshot.prodBatches.filter((prod) => prod.status === "aguardando_conferencia").length,
     prodsWaitingApproval: snapshot.prodBatches.filter((prod) => prod.status === "aguardando_aprovacao").length,
     pendingConfirmations: snapshot.deliveries.filter((delivery) => delivery.status === "entregue").length,
@@ -123,14 +136,13 @@ export default async function TechnicalDashboardPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Aguardando pasta" value={metrics.waitingFolder} icon={FolderClock} href="/tecnico/contratos" />
         <StatCard label="Aguardando reunião" value={metrics.waitingMeeting} icon={CalendarDays} tone="warning" href="/tecnico/contratos" />
+        <StatCard label="Aguardando pasta" value={metrics.waitingFolder} icon={FolderClock} href="/tecnico/contratos" />
         <StatCard label="Ações abertas" value={metrics.openActions} icon={AlertTriangle} tone="warning" href="/tecnico/acoes" />
         <StatCard label="Visitas hoje" value={metrics.visitsToday} icon={CalendarDays} tone="accent" href="/tecnico/agenda" />
         <StatCard label="Próximas visitas" value={metrics.upcomingVisits} icon={CalendarDays} href="/tecnico/agenda" />
         <StatCard label="Visitas aguardando relatório" value={metrics.visitsWaitingReport} icon={ClipboardList} tone="warning" href="/tecnico/agenda" />
         <StatCard label="Peças aguardando liberação" value={metrics.piecesWaitingRelease} icon={PackageCheck} href="/tecnico/contratos" />
-        <StatCard label="Correções abertas" value={metrics.correctionsOpen} icon={AlertTriangle} tone={metrics.criticalCorrections ? "danger" : "neutral"} href="/tecnico/correcoes" />
         <StatCard label="PRODs aguardando conferência" value={metrics.prodsWaitingCheck} icon={Factory} href="/tecnico/prods" />
         <StatCard label="PRODs aguardando aprovação" value={metrics.prodsWaitingApproval} icon={CheckCircle2} tone="accent" href="/tecnico/prods" />
         <StatCard label="Confirmações pendentes" value={metrics.pendingConfirmations} icon={PackageCheck} tone="warning" href="/tecnico/prods" />
@@ -141,7 +153,7 @@ export default async function TechnicalDashboardPage() {
         <Panel>
           <PanelHeader
             title="Atividades prioritárias"
-            description="Contratos ordenados pela sequência interna: pasta, reunião, visitas, medição, liberação e PROD."
+            description="Contratos ordenados pela sequência interna: reunião, pasta, visitas, medição, liberação e PROD."
           />
           <PanelBody className="space-y-3">
             {priorityContracts.length ? (
@@ -157,7 +169,7 @@ export default async function TechnicalDashboardPage() {
                       </Link>
                       <p className="mt-1 text-sm text-muted-foreground">{reason}</p>
                     </div>
-                    <StatusBadge status={overview.technical?.technical_status ?? "aguardando_pasta"} type="contract" />
+                    <StatusBadge status={overview.technical?.technical_status ?? "aguardando_reuniao"} type="contract" />
                   </div>
                   <div className="mt-3 h-2 rounded-full bg-muted">
                     <div className="h-2 rounded-full bg-accent" style={{ width: `${progress.percent}%` }} />
@@ -174,21 +186,23 @@ export default async function TechnicalDashboardPage() {
         <Panel>
           <PanelHeader title="Agenda próxima" description="Visitas agendadas para os próximos sete dias." />
           <PanelBody className="space-y-3">
-            {snapshot.visits
-              .filter((visit) => visit.scheduled_date >= today && visit.scheduled_date <= sevenDays)
-              .slice(0, 8)
-              .map((visit) => {
+            {upcomingAgendaVisits.map((visit) => {
                 const contract = snapshot.contracts.find((item) => item.id === visit.contract_id);
                 return (
                   <article key={visit.id} className="rounded-md border border-border bg-white p-3">
-                    <p className="font-semibold text-charcoal">{formatDate(visit.scheduled_date)} · {visit.visit_type}</p>
+                    <p className="font-semibold text-charcoal">
+                      {formatDate(visit.scheduled_date)} · {formatVisitTime(visit.scheduled_time)} · {visit.visit_type}
+                    </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {contract?.contract_number ?? "Contrato"} · {visit.technicians.join(", ") || "Sem técnico"}
+                      {contract?.contract_number ?? "Contrato"} · {contract?.work_name ?? "Obra não informada"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Técnico: <span className="font-medium text-charcoal">{visit.technicians.join(", ") || "A definir"}</span>
                     </p>
                   </article>
                 );
               })}
-            {snapshot.visits.length === 0 ? (
+            {upcomingAgendaVisits.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma visita agendada.</p>
             ) : null}
           </PanelBody>

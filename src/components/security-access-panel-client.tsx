@@ -49,7 +49,7 @@ const permissionGroupLabels: Record<string, string> = {
   deliveries: "Entregas",
   doubts: "Base de dúvidas",
   financial: "Comercial e financeiro",
-  folder: "Entrada comercial",
+  folder: "Entrega da pasta",
   followup: "Acompanhamento",
   measurements: "Medições",
   meetings: "Reunião e ata",
