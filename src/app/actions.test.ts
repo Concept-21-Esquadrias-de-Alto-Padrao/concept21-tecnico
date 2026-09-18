@@ -45,6 +45,9 @@ function setupDatabase() {
     audit_logs: [],
     technical_corrections: [],
     technical_contract_pieces: [],
+    technical_releases: [],
+    technical_release_pieces: [],
+    technical_release_participants: [],
     technical_prod_batches: [],
     technical_contracts: [{
       id: "technical",
@@ -89,9 +92,10 @@ function setupDatabase() {
       const values = JSON.parse(String(init?.body)) as Row;
       selected.forEach((row) => Object.assign(row, values));
     } else if (method === "POST") {
-      const values = { id: `${table}-${rows.length + 1}`, ...JSON.parse(String(init?.body)) } as Row;
-      rows.push(values);
-      selected = [values];
+      const body = JSON.parse(String(init?.body)) as Row | Row[];
+      const values = Array.isArray(body) ? body : [body];
+      selected = values.map((value, index) => ({ id: `${table}-${rows.length + index + 1}`, ...value }));
+      rows.push(...selected);
     }
 
     const columns = url.searchParams.get("select");
@@ -139,7 +143,7 @@ describe("updateContractWorkDataAction", () => {
     const { tables } = setupDatabase();
     const result = await updateContractWorkDataAction(initialState, correctionForm(name));
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, result.message).toBe(true);
     expect(tables.clients[0]).toMatchObject({ id: clientId, name, document: "preserved" });
     expect(tables.production_contracts[0].client_id).toBe(clientId);
     expect(tables.clients).toHaveLength(2);
@@ -437,6 +441,7 @@ describe("piece measurement and structural changes", () => {
       environment: "Sala",
       measured_width_mm: null,
       measured_height_mm: null,
+      project_only: false,
       status: "aguardando_avaliacao",
       released_at: null,
       deleted_at: null,
@@ -461,7 +466,7 @@ describe("piece measurement and structural changes", () => {
 
     const result = await updatePieceMeasurementAction(initialState, formData);
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, result.message).toBe(true);
     expect(tables.technical_contract_pieces[0]).toMatchObject({
       environment: "Varanda gourmet",
       measured_width_mm: 2380,
@@ -473,6 +478,85 @@ describe("piece measurement and structural changes", () => {
       action: "measurement_update",
       before_data: { environment: "Sala" },
       after_data: { environment: "Varanda gourmet" },
+    });
+  });
+
+  it("marks a piece as Projeto and clears existing measurements without treating it as measured", async () => {
+    const { tables } = prepareMeasuredPiece();
+    tables.technical_contract_pieces[0].measured_width_mm = 2380;
+    tables.technical_contract_pieces[0].measured_height_mm = 2190;
+    tables.technical_contract_pieces[0].status = "medida";
+    const formData = new FormData();
+    formData.set("id", pieceId);
+    formData.set("environment", "Sala");
+    formData.set("project_only", "on");
+
+    const result = await updatePieceMeasurementAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_contract_pieces[0]).toMatchObject({
+      project_only: true,
+      measured_width_mm: null,
+      measured_height_mm: null,
+      status: "avaliada",
+    });
+    expect(tables.audit_logs.at(-1)?.after_data).toMatchObject({ project_only: true, measured_width_mm: null });
+  });
+
+  it("replaces Projeto with a real measurement when dimensions are recorded", async () => {
+    const { tables } = prepareMeasuredPiece();
+    tables.technical_contract_pieces[0].project_only = true;
+    const formData = new FormData();
+    formData.set("id", pieceId);
+    formData.set("environment", "Sala");
+    formData.set("measured_width_mm", "2380");
+    formData.set("measured_height_mm", "2190");
+
+    const result = await updatePieceMeasurementAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_contract_pieces[0]).toMatchObject({
+      project_only: false,
+      measured_width_mm: 2380,
+      measured_height_mm: 2190,
+      status: "medida",
+    });
+  });
+
+  it("does not remove Projeto without both dimensions", async () => {
+    const { tables } = prepareMeasuredPiece();
+    tables.technical_contract_pieces[0].project_only = true;
+    const formData = new FormData();
+    formData.set("id", pieceId);
+    formData.set("environment", "Sala");
+    formData.set("measured_width_mm", "2380");
+
+    const result = await updatePieceMeasurementAction(initialState, formData);
+
+    expect(result.ok).toBe(false);
+    expect(tables.technical_contract_pieces[0].project_only).toBe(true);
+  });
+
+  it("releases a Projeto piece in a batch without numeric measurements and keeps the batch snapshot", async () => {
+    const { tables } = prepareMeasuredPiece();
+    const formData = new FormData();
+    formData.set("contract_id", contractId);
+    formData.set("piece_ids", pieceId);
+    formData.set(`project_only_${pieceId}`, "on");
+    formData.set(`environment_${pieceId}`, "Sala");
+
+    const result = await createReleaseBatchAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_contract_pieces[0]).toMatchObject({
+      project_only: true,
+      measured_width_mm: null,
+      measured_height_mm: null,
+      status: "liberada",
+    });
+    expect(tables.technical_release_pieces[0]).toMatchObject({
+      piece_id: pieceId,
+      project_only_at_release: true,
     });
   });
 

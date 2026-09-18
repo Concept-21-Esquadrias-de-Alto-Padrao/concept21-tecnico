@@ -1898,13 +1898,22 @@ export async function updatePieceMeasurementAction(_: ActionState, formData: For
     }
 
     const source = piece as TechnicalPiece;
+    if (parsed.data.project_only && (source.active_prod_batch_id || ["em_prod", "entregue"].includes(source.status))) {
+      throw new Error("Peças em produção ou entregues não podem ser marcadas como Projeto.");
+    }
     const environment = formData.has("environment") ? parsed.data.environment ?? null : source.environment;
+    const measuredWidth = parsed.data.project_only ? null : parsed.data.measured_width_mm;
+    const measuredHeight = parsed.data.project_only ? null : parsed.data.measured_height_mm;
+    if (source.project_only && !parsed.data.project_only && (!measuredWidth || !measuredHeight)) {
+      throw new Error("Informe largura e altura para substituir Projeto por uma medição.");
+    }
     const updatePayload = {
       environment,
-      measured_width_mm: parsed.data.measured_width_mm,
-      measured_height_mm: parsed.data.measured_height_mm,
+      measured_width_mm: measuredWidth,
+      measured_height_mm: measuredHeight,
+      project_only: parsed.data.project_only,
       notes: parsed.data.notes,
-      status: source.released_at ? source.status : "medida",
+      status: source.released_at ? source.status : parsed.data.project_only ? "avaliada" : measuredWidth && measuredHeight ? "medida" : "avaliada",
     };
 
     const { error } = await context.admin
@@ -1925,19 +1934,21 @@ export async function updatePieceMeasurementAction(_: ActionState, formData: For
         environment: source.environment,
         measured_width_mm: source.measured_width_mm,
         measured_height_mm: source.measured_height_mm,
+        project_only: source.project_only,
       },
       after_data: {
         code: source.code,
         environment,
-        measured_width_mm: parsed.data.measured_width_mm,
-        measured_height_mm: parsed.data.measured_height_mm,
+        measured_width_mm: measuredWidth,
+        measured_height_mm: measuredHeight,
+        project_only: parsed.data.project_only,
       },
       notes: parsed.data.notes,
     });
     if (auditError) throw auditError;
 
     revalidateTechnical(source.contract_id);
-    return ok(source.environment !== environment ? "Medição e ambiente atualizados." : "Medição registrada.");
+    return ok(parsed.data.project_only ? "Peça identificada como Projeto. Medidas removidas." : source.environment !== environment ? "Medição e ambiente atualizados." : "Medição registrada.");
   } catch (error) {
     return fail(error);
   }
@@ -2128,13 +2139,14 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
     if (correctionsError) throw correctionsError;
     const typedCorrections = (corrections ?? []) as TechnicalCorrection[];
 
-    const measuredByPieceId = new Map<string, { width: number | null; height: number | null }>();
+    const measuredByPieceId = new Map<string, { width: number | null; height: number | null; projectOnly: boolean }>();
     const environmentByPieceId = new Map<string, string | null>();
     for (const piece of typedPieces) {
-      const width = optionalNumberFromForm(formData, `measured_width_mm_${piece.id}`) ?? piece.measured_width_mm;
-      const height = optionalNumberFromForm(formData, `measured_height_mm_${piece.id}`) ?? piece.measured_height_mm;
+      const projectOnly = formData.get(`project_only_${piece.id}`) === "on";
+      const width = projectOnly ? null : optionalNumberFromForm(formData, `measured_width_mm_${piece.id}`) ?? piece.measured_width_mm;
+      const height = projectOnly ? null : optionalNumberFromForm(formData, `measured_height_mm_${piece.id}`) ?? piece.measured_height_mm;
       const environment = nullableTextFromForm(formData, `environment_${piece.id}`, piece.environment);
-      measuredByPieceId.set(piece.id, { width, height });
+      measuredByPieceId.set(piece.id, { width, height, projectOnly });
       environmentByPieceId.set(piece.id, environment);
 
       const allowed = canReleasePiece({
@@ -2142,6 +2154,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
           ...piece,
           measured_width_mm: width,
           measured_height_mm: height,
+          project_only: projectOnly,
         },
         corrections: typedCorrections.filter((correction) => correction.piece_id === piece.id),
       });
@@ -2236,6 +2249,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
       pieceIds.map((pieceId) => ({
         release_id: releaseId,
         piece_id: pieceId,
+        project_only_at_release: measuredByPieceId.get(pieceId)?.projectOnly ?? false,
         due_date: dueDate,
       })),
     );
@@ -2281,8 +2295,9 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
         .from("technical_contract_pieces")
         .update({
           environment: environmentByPieceId.get(piece.id) ?? null,
-          measured_width_mm: measured?.width ?? piece.measured_width_mm,
-          measured_height_mm: measured?.height ?? piece.measured_height_mm,
+          measured_width_mm: measured?.width ?? null,
+          measured_height_mm: measured?.height ?? null,
+          project_only: measured?.projectOnly ?? false,
           status: "liberada",
           released_at: now,
           release_due_date: dueDate,
@@ -2304,6 +2319,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
         contract_id: parsed.data.contract_id,
         batch_number: batchNumber,
         piece_ids: pieceIds,
+        project_piece_ids: typedPieces.filter((piece) => measuredByPieceId.get(piece.id)?.projectOnly).map((piece) => piece.id),
         environment_updates: environmentChanges,
         validation_required: validationRequired,
       },

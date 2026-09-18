@@ -47,6 +47,7 @@ import { ActionForm, Field, inputClass, textareaClass } from "@/components/actio
 import { DeleteTechnicalContractForm } from "@/components/delete-technical-contract-form";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody } from "@/components/panel";
+import { ProjectMeasurementFields } from "@/components/project-measurement-fields";
 import { StatusBadge } from "@/components/status-badge";
 import { StatCard } from "@/components/stat-card";
 import { VisitReportPdfButton } from "@/components/visit-report-pdf-button";
@@ -676,10 +677,7 @@ function PieceActionForms({
           <Field label="Ambiente conferido em obra">
             <input name="environment" className={inputClass} defaultValue={piece.environment ?? ""} />
           </Field>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <input name="measured_width_mm" type="number" className={inputClass} placeholder="Largura" defaultValue={piece.measured_width_mm ?? ""} />
-            <input name="measured_height_mm" type="number" className={inputClass} placeholder="Altura" defaultValue={piece.measured_height_mm ?? ""} />
-          </div>
+          <ProjectMeasurementFields projectOnly={piece.project_only} width={piece.measured_width_mm} height={piece.measured_height_mm} />
           <textarea name="notes" className={textareaClass} placeholder="Observação da medição (opcional)" defaultValue={piece.notes ?? ""} />
         </ActionForm>
       ) : null}
@@ -783,26 +781,13 @@ function ReleaseBatchForm({
                     placeholder="Ambiente correto"
                   />
                 </label>
-                <label className="space-y-1.5">
-                  <span className="text-xs font-semibold text-muted-foreground">Largura medida</span>
-                  <input
-                    name={`measured_width_mm_${piece.id}`}
-                    type="number"
-                    className={inputClass}
-                    defaultValue={piece.measured_width_mm ?? ""}
-                    placeholder={piece.sale_width_mm ? String(piece.sale_width_mm) : "Largura"}
-                  />
-                </label>
-                <label className="space-y-1.5">
-                  <span className="text-xs font-semibold text-muted-foreground">Altura medida</span>
-                  <input
-                    name={`measured_height_mm_${piece.id}`}
-                    type="number"
-                    className={inputClass}
-                    defaultValue={piece.measured_height_mm ?? ""}
-                    placeholder={piece.sale_height_mm ? String(piece.sale_height_mm) : "Altura"}
-                  />
-                </label>
+                <ProjectMeasurementFields
+                  nameSuffix={`_${piece.id}`}
+                  projectOnly={piece.project_only}
+                  width={piece.measured_width_mm}
+                  height={piece.measured_height_mm}
+                  placeholders={{ width: piece.sale_width_mm ? String(piece.sale_width_mm) : "Largura", height: piece.sale_height_mm ? String(piece.sale_height_mm) : "Altura" }}
+                />
               </div>
             </div>
             );
@@ -844,8 +829,8 @@ function ReleaseBatchList({
         const participants = participantsByReleaseId.get(release.id) ?? [];
         const links = releasePiecesByReleaseId.get(release.id) ?? [];
         const batchPieces = links
-          .map((link) => piecesById.get(link.piece_id))
-          .filter((piece): piece is TechnicalPiece => Boolean(piece));
+          .map((link) => ({ link, piece: piecesById.get(link.piece_id) }))
+          .filter((item): item is { link: TechnicalReleasePiece; piece: TechnicalPiece } => Boolean(item.piece));
         const signed = isReleaseBatchSigned(release, participants);
         const currentParticipant = participants.find((participant) => participant.profile_id === currentProfileId);
         const currentCanSign = Boolean(
@@ -901,9 +886,9 @@ function ReleaseBatchList({
               <div>
                 <p className="text-xs font-semibold uppercase text-muted-foreground">Peças do lote</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {batchPieces.map((piece) => (
+                  {batchPieces.map(({ piece, link }) => (
                     <span key={piece.id} className="rounded-md border border-border bg-muted/30 px-2 py-1 text-xs font-semibold text-charcoal">
-                      {piece.code} · {piece.environment ?? "Sem ambiente"} · {piece.measured_width_mm ?? piece.sale_width_mm ?? "-"} x {piece.measured_height_mm ?? piece.sale_height_mm ?? "-"}
+                      {piece.code} · {piece.environment ?? "Sem ambiente"} · {link.project_only_at_release ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}
                     </span>
                   ))}
                   {!batchPieces.length ? (
@@ -1076,6 +1061,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const piecesReadyForProd = pieces.filter(
     (piece) =>
       piece.status === "liberada" &&
+      !piece.project_only &&
       piece.cem_registered &&
       piece.cem_checked &&
       !piece.active_prod_batch_id &&
@@ -1706,7 +1692,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     </div>
                     <div className="rounded-md bg-muted/50 p-2">
                       <dt className="text-muted-foreground">Medição</dt>
-                      <dd className="mt-1 font-semibold text-charcoal">{piece.measured_width_mm ?? "-"} x {piece.measured_height_mm ?? "-"}</dd>
+                      <dd className="mt-1 font-semibold text-charcoal">{piece.project_only ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}</dd>
                     </div>
                     <div className="rounded-md bg-muted/50 p-2">
                       <dt className="text-muted-foreground">CEM</dt>
@@ -1752,7 +1738,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                   <div className="rounded-md bg-muted/50 p-2">
                     <dt className="text-muted-foreground">Medição</dt>
                     <dd className="mt-1 font-semibold text-charcoal">
-                      {piece.measured_width_mm ?? "-"} x {piece.measured_height_mm ?? "-"}
+                      {piece.project_only ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}
                     </dd>
                   </div>
                   <div className="rounded-md bg-muted/50 p-2">
@@ -1801,7 +1787,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     <td className="border-b border-border px-3 py-3 font-semibold text-charcoal">{piece.code}</td>
                     <td className="border-b border-border px-3 py-3">{piece.environment ?? "-"}</td>
                     <td className="border-b border-border px-3 py-3">{piece.sale_width_mm ?? "-"} x {piece.sale_height_mm ?? "-"}</td>
-                    <td className="border-b border-border px-3 py-3">{piece.measured_width_mm ?? "-"} x {piece.measured_height_mm ?? "-"}</td>
+                    <td className="border-b border-border px-3 py-3">{piece.project_only ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}</td>
                     <td className="border-b border-border px-3 py-3"><StatusBadge status={piece.status} type="piece" /></td>
                     <td className="border-b border-border px-3 py-3">{piece.cem_registered ? "Cad." : "Pendente"} / {piece.cem_checked ? "Conf." : "Pendente"}</td>
                     <td className="border-b border-border px-3 py-3">{formatDate(piece.exceptional_due_date ?? piece.release_due_date)}</td>

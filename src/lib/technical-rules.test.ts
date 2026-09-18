@@ -149,6 +149,17 @@ describe("technical workflow gates", () => {
 });
 
 describe("piece and PROD rules", () => {
+  it("allows a Projeto piece in a release batch without inventing measurements", () => {
+    expect(canReleasePiece({
+      piece: { project_only: true, measured_width_mm: null, measured_height_mm: null, status: "avaliada" },
+      corrections: [],
+    })).toMatchObject({ ok: true });
+    expect(canReleasePiece({
+      piece: { project_only: true, measured_width_mm: 1000, measured_height_mm: null, status: "avaliada" },
+      corrections: [],
+    })).toMatchObject({ ok: false });
+  });
+
   it("blocks piece release without measurement", () => {
     expect(
       canReleasePiece({
@@ -180,6 +191,13 @@ describe("piece and PROD rules", () => {
         corrections: [],
       }),
     ).toMatchObject({ ok: false });
+  });
+
+  it("blocks a Projeto piece from entering PROD even after the release batch is signed", () => {
+    expect(canAddPieceToProd({
+      piece: { project_only: true, released_at: "2026-07-30T12:00:00Z", cem_registered: true, cem_checked: true, status: "liberada" },
+      corrections: [],
+    })).toMatchObject({ ok: false, reason: expect.stringContaining("Registre as medidas") });
   });
 
   it("requires CEM registration and check before PROD", () => {

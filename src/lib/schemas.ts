@@ -178,8 +178,9 @@ export const cancelVisitSchema = z.object({
 export const pieceMeasurementSchema = z.object({
   id: z.string().uuid(),
   environment: optionalText,
-  measured_width_mm: optionalNumber,
-  measured_height_mm: optionalNumber,
+  measured_width_mm: optionalNumber.optional().transform((value) => value ?? null),
+  measured_height_mm: optionalNumber.optional().transform((value) => value ?? null),
+  project_only: checkboxBoolean,
   notes: optionalText,
 });
 

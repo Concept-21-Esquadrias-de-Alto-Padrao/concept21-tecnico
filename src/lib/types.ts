@@ -247,6 +247,7 @@ export type TechnicalPiece = {
   sale_height_mm: number | null;
   measured_width_mm: number | null;
   measured_height_mm: number | null;
+  project_only: boolean;
   environment: string | null;
   floor: string | null;
   description: string | null;
@@ -382,6 +383,7 @@ export type TechnicalReleasePiece = {
   id: string;
   release_id: string;
   piece_id: string;
+  project_only_at_release: boolean;
   due_date: string | null;
   exception_reason: string | null;
   created_at: string;

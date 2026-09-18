@@ -130,10 +130,13 @@ export function canReleasePiece({
   piece,
   corrections,
 }: {
-  piece: Pick<TechnicalPiece, "measured_width_mm" | "measured_height_mm" | "status">;
+  piece: Pick<TechnicalPiece, "measured_width_mm" | "measured_height_mm" | "status"> & Partial<Pick<TechnicalPiece, "project_only">>;
   corrections: Array<Pick<TechnicalCorrection, "blocking" | "status">>;
 }) {
-  if (!piece.measured_width_mm || !piece.measured_height_mm) {
+  if (piece.project_only && (piece.measured_width_mm !== null || piece.measured_height_mm !== null)) {
+    return { ok: false, reason: "Peças marcadas como Projeto não podem ter medidas preenchidas." };
+  }
+  if (!piece.project_only && (!piece.measured_width_mm || !piece.measured_height_mm)) {
     return { ok: false, reason: "A peça precisa estar medida antes da liberação." };
   }
 
@@ -158,11 +161,16 @@ export function canAddPieceToProd({
   activeProdBatchId,
   corrections,
 }: {
-  piece: Pick<TechnicalPiece, "released_at" | "cem_registered" | "cem_checked" | "status">;
+  piece: Pick<TechnicalPiece, "released_at" | "cem_registered" | "cem_checked" | "status"> & Partial<Pick<TechnicalPiece, "project_only" | "measured_width_mm" | "measured_height_mm">>;
   activeProdBatchId?: string | null;
   corrections: Array<Pick<TechnicalCorrection, "blocking" | "status">>;
 }) {
   if (!piece.released_at) return { ok: false, reason: "A peça precisa estar liberada." };
+  if (piece.project_only) return { ok: false, reason: "A peça está marcada como Projeto. Registre as medidas antes de incluí-la em um PROD." };
+  if (piece.measured_width_mm !== undefined && piece.measured_height_mm !== undefined &&
+    (!piece.measured_width_mm || !piece.measured_height_mm)) {
+    return { ok: false, reason: "Registre largura e altura medidas antes de incluir a peça em um PROD." };
+  }
   if (!piece.cem_registered || !piece.cem_checked) {
     return { ok: false, reason: "Cadastro e conferência no CEM são obrigatórios." };
   }

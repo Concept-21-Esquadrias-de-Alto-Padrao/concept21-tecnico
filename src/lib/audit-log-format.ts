@@ -94,9 +94,10 @@ function pieceMeasurementDetails(log: TechnicalAuditLog) {
   const afterEnvironment = valueAsString(log.after_data?.environment) ?? "sem ambiente";
   const width = valueAsNumber(log.after_data?.measured_width_mm);
   const height = valueAsNumber(log.after_data?.measured_height_mm);
+  const projectOnly = log.after_data?.project_only === true;
   const details = [
     code ? `Peça: ${code}` : null,
-    width !== null || height !== null ? `Medição: ${width ?? "-"} x ${height ?? "-"} mm` : null,
+    projectOnly ? "Medição: Projeto" : width !== null || height !== null ? `Medição: ${width ?? "-"} x ${height ?? "-"} mm` : null,
     beforeEnvironment !== afterEnvironment ? `Ambiente: ${beforeEnvironment} -> ${afterEnvironment}` : null,
     valueAsString(log.notes),
   ].filter(Boolean);
