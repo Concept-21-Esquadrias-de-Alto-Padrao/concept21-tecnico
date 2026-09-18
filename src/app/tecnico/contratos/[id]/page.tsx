@@ -706,6 +706,51 @@ function PieceActionForms({
   );
 }
 
+function SplitPieceForm({ pieces }: { pieces: TechnicalPiece[] }) {
+  const splitCandidates = pieces.filter(
+    (piece) =>
+      piece.quantity > 1 &&
+      !piece.released_at &&
+      !piece.active_prod_batch_id &&
+      !["liberada", "em_prod", "entregue", "cancelada"].includes(piece.status),
+  );
+
+  if (!splitCandidates.length) return null;
+
+  return (
+    <ActionForm
+      action={splitPieceAction}
+      submitLabel="Desdobrar peça"
+      className="rounded-md border border-border bg-white p-3"
+      confirmMessage="Confirma o desdobro desta peça? A quantidade da peça base será reduzida e uma nova peça será criada."
+    >
+      <div>
+        <p className="text-sm font-semibold text-charcoal">Desdobrar peça</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Use quando uma peça com quantidade maior que 1 precisar virar registros separados, como P8, P8_A e P8_B.
+        </p>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_1fr_1fr]">
+        <Field label="Peça base">
+          <select name="id" className={inputClass} required>
+            {splitCandidates.map((piece) => (
+              <option key={piece.id} value={piece.id}>
+                {piece.code} · Qtd {piece.quantity} · {piece.environment ?? "Sem ambiente"}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Sufixo da nova peça">
+          <input name="suffix" className={inputClass} placeholder="A" required />
+        </Field>
+        <Field label="Quantidade destacada">
+          <input name="quantity" type="number" min={1} step={1} defaultValue={1} className={inputClass} />
+        </Field>
+      </div>
+    </ActionForm>
+  );
+}
+
 function ReleaseBatchForm({
   contractId,
   pieces,
@@ -1100,6 +1145,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
     !hasCompletedMeeting;
   const canRegisterVisit = canManageVisits && entradaReadyForNext && reuniaoReadyForNext && acoesValidation.complete;
   const canOperatePieces = entradaReadyForNext && reuniaoReadyForNext && acoesValidation.complete && visitasReadyForNext;
+  const canSplitPieces = (canMeasure || canRelease) && canOperatePieces;
   const canCreateProdBatch = canManageProds && piecesReadyForProd.length > 0;
 
   const tabLinks: Array<readonly [string, string]> = [
@@ -1630,6 +1676,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               A etapa de visitas aguarda ciência de todos os participantes antes das ações de peça.
             </div>
           ) : null}
+          {canSplitPieces ? <SplitPieceForm pieces={releaseCandidates} /> : null}
           {canRelease && canOperatePieces ? (
             <ReleaseBatchForm
               contractId={id}

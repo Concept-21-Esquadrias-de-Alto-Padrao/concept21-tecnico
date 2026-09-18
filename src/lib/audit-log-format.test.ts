@@ -153,4 +153,25 @@ describe("formatAuditLogEntry", () => {
     expect(entry.details).toContain("Possível cobrança adicional");
     expect(entry.details?.replace(/\s/g, " ")).toContain("R$ 1.250,50");
   });
+
+  it("describes a piece split with the original and new quantities", () => {
+    const entry = formatAuditLogEntry(
+      auditLog({
+        entity: "technical_contract_pieces",
+        action: "split_piece",
+        before_data: { code: "P8", quantity: 3 },
+        after_data: {
+          code: "P8",
+          quantity: 2,
+          split_piece_code: "P8_A",
+          split_quantity: 1,
+        },
+      }),
+      profiles,
+    );
+
+    expect(entry.title).toBe("O usuário Thaís Martins desdobrou a peça P8 em P8_A.");
+    expect(entry.details).toContain("P8 ficou com quantidade 2");
+    expect(entry.details).toContain("P8_A criada com quantidade 1");
+  });
 });

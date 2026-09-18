@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { requirePermissionAccess } from "@/lib/server-access";
-import { createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, receiveCommercialFolderAction, reopenContractStageAction, signStageValidationAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
+import { createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, receiveCommercialFolderAction, reopenContractStageAction, signStageValidationAction, splitPieceAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server-access", () => ({
@@ -63,6 +63,20 @@ function setupDatabase() {
     technical_stage_validation_participants: [],
     technical_actions: [],
     platform_notifications: [],
+    permissions: [
+      { id: "permission-contracts-view", key: "technical.contracts.view" },
+      { id: "permission-measurements", key: "technical.measurements.manage" },
+      { id: "permission-release", key: "technical.pieces.release" },
+    ],
+    roles: [
+      { id: "role-technical", company_id: companyId, active: true },
+    ],
+    user_roles: [
+      { id: "user-role-technical", company_id: companyId, profile_id: "profile-id", role_id: "role-technical" },
+    ],
+    role_permissions: [
+      { id: "grant-measurements", company_id: companyId, role_id: "role-technical", permission_id: "permission-measurements" },
+    ],
   };
   const database = { tables, rejectClientUpdate: false, clientWrites: 0 };
 
@@ -438,6 +452,10 @@ describe("piece measurement and structural changes", () => {
       company_id: companyId,
       contract_id: contractId,
       code: "P1",
+      piece_type: "PORTA DE CORRER",
+      quantity: 1,
+      sale_width_mm: 2000,
+      sale_height_mm: 1200,
       environment: "Sala",
       measured_width_mm: null,
       measured_height_mm: null,
@@ -558,6 +576,59 @@ describe("piece measurement and structural changes", () => {
       piece_id: pieceId,
       project_only_at_release: true,
     });
+  });
+
+  it("splits a pending piece while preserving the total quantity", async () => {
+    const { tables } = prepareMeasuredPiece();
+    tables.technical_contract_pieces[0].quantity = 3;
+    tables.technical_contract_pieces[0].measured_width_mm = 2380;
+    tables.technical_contract_pieces[0].measured_height_mm = 2190;
+    tables.technical_contract_pieces[0].status = "medida";
+    const formData = new FormData();
+    formData.set("id", pieceId);
+    formData.set("suffix", "A");
+    formData.set("quantity", "1");
+
+    const result = await splitPieceAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_contract_pieces[0]).toMatchObject({
+      code: "P1",
+      quantity: 2,
+    });
+    expect(tables.technical_contract_pieces[1]).toMatchObject({
+      parent_piece_id: pieceId,
+      code: "P1_A",
+      quantity: 1,
+      measured_width_mm: 2380,
+      measured_height_mm: 2190,
+      status: "medida",
+    });
+    expect(tables.audit_logs.at(-1)).toMatchObject({
+      entity: "technical_contract_pieces",
+      action: "split_piece",
+      after_data: {
+        quantity: 2,
+        split_piece_code: "P1_A",
+        split_quantity: 1,
+      },
+    });
+  });
+
+  it("does not split a piece when the detached quantity consumes the original piece", async () => {
+    const { tables } = prepareMeasuredPiece();
+    tables.technical_contract_pieces[0].quantity = 2;
+    const formData = new FormData();
+    formData.set("id", pieceId);
+    formData.set("suffix", "A");
+    formData.set("quantity", "2");
+
+    const result = await splitPieceAction(initialState, formData);
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("menor que a quantidade atual");
+    expect(tables.technical_contract_pieces).toHaveLength(1);
+    expect(tables.technical_contract_pieces[0].quantity).toBe(2);
   });
 
   it("creates a piece-linked blocking action for a structural change", async () => {

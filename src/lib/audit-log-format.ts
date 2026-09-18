@@ -104,6 +104,20 @@ function pieceMeasurementDetails(log: TechnicalAuditLog) {
   return details.length ? details.join(" · ") : null;
 }
 
+function pieceSplitDetails(log: TechnicalAuditLog) {
+  const originalCode = valueAsString(log.after_data?.code);
+  const splitCode = valueAsString(log.after_data?.split_piece_code);
+  const remainingQuantity = valueAsNumber(log.after_data?.quantity);
+  const splitQuantity = valueAsNumber(log.after_data?.split_quantity);
+  const details = [
+    originalCode && remainingQuantity !== null ? `${originalCode} ficou com quantidade ${remainingQuantity}` : null,
+    splitCode && splitQuantity !== null ? `${splitCode} criada com quantidade ${splitQuantity}` : null,
+    valueAsString(log.notes),
+  ].filter(Boolean);
+
+  return details.length ? details.join(" · ") : null;
+}
+
 function structuralChangeDetails(log: TechnicalAuditLog) {
   const labels: Record<string, string> = {
     a_avaliar: "Impacto financeiro a avaliar",
@@ -248,6 +262,14 @@ export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfi
       return {
         title: actedBy(actorName, `registrou a medição da peça ${valueAsString(log.after_data?.code) ?? ""}`.trim()),
         details: pieceMeasurementDetails(log),
+      };
+    case "technical_contract_pieces:split_piece":
+      return {
+        title: actedBy(
+          actorName,
+          `desdobrou a peça ${valueAsString(log.before_data?.code) ?? ""} em ${valueAsString(log.after_data?.split_piece_code) ?? ""}`.trim(),
+        ),
+        details: pieceSplitDetails(log),
       };
     case "technical_actions:structural_change_create":
       return {

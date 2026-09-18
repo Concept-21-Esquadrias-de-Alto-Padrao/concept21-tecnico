@@ -2528,7 +2528,14 @@ export async function updatePieceCemAction(_: ActionState, formData: FormData) {
 
 export async function splitPieceAction(_: ActionState, formData: FormData) {
   try {
-    const context = await getActionContext("technical.measurements.manage");
+    const context = await getActionContext("technical.contracts.view");
+    const canSplitPieces = context.isMaster ||
+      await hasContextPermission(context, "technical.measurements.manage") ||
+      await hasContextPermission(context, "technical.pieces.release");
+    if (!canSplitPieces) {
+      throw new Error("Você não tem permissão para desdobrar peças.");
+    }
+
     const parsed = splitPieceSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return invalidForm(parsed.error);
 
@@ -2544,32 +2551,108 @@ export async function splitPieceAction(_: ActionState, formData: FormData) {
     await assertStageValidationSatisfied(context, (piece as TechnicalPiece).contract_id, "visitas");
 
     const source = piece as TechnicalPiece;
+    if (source.deleted_at) throw new Error("Peça base não encontrada.");
+    if (source.released_at || source.active_prod_batch_id || ["liberada", "em_prod", "entregue", "cancelada"].includes(source.status)) {
+      throw new Error("Só é possível desdobrar peças que ainda não foram liberadas.");
+    }
+    await assertPiecesHaveNoOpenStructuralActions(context, source.contract_id, [source]);
+
     const suffix = parsed.data.suffix.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const { error } = await context.admin.from("technical_contract_pieces").insert({
+    if (!suffix) throw new Error("Informe um sufixo com letras ou números para a peça desdobrada.");
+
+    const sourceQuantity = Math.max(1, Math.trunc(source.quantity));
+    const splitQuantity = Math.trunc(parsed.data.quantity ?? 1);
+    if (!Number.isFinite(splitQuantity) || splitQuantity < 1) {
+      throw new Error("Informe uma quantidade válida para o desdobro.");
+    }
+    if (sourceQuantity < 2) {
+      throw new Error("A peça precisa ter quantidade maior que 1 para ser desdobrada.");
+    }
+    if (splitQuantity >= sourceQuantity) {
+      throw new Error("A quantidade destacada precisa ser menor que a quantidade atual da peça base.");
+    }
+
+    const newCode = `${source.code}_${suffix}`;
+    const { data: existingPieces, error: existingPieceError } = await context.admin
+      .from("technical_contract_pieces")
+      .select("id")
+      .eq("company_id", context.companyId)
+      .eq("contract_id", source.contract_id)
+      .eq("code", newCode)
+      .is("deleted_at", null)
+      .limit(1);
+    if (existingPieceError) throw existingPieceError;
+    if ((existingPieces ?? []).length) throw new Error(`Já existe uma peça ativa com o código ${newCode}.`);
+
+    const remainingQuantity = sourceQuantity - splitQuantity;
+    const { error: sourceUpdateError } = await context.admin
+      .from("technical_contract_pieces")
+      .update({ quantity: remainingQuantity })
+      .eq("company_id", context.companyId)
+      .eq("id", source.id)
+      .eq("quantity", sourceQuantity);
+    if (sourceUpdateError) throw sourceUpdateError;
+
+    const insertPayload = {
       company_id: context.companyId,
       contract_id: source.contract_id,
       parent_piece_id: source.id,
-      code: `${source.code}_${suffix}`,
+      code: newCode,
       piece_type: source.piece_type,
-      quantity: Math.max(1, Math.trunc(parsed.data.quantity ?? source.quantity)),
+      quantity: splitQuantity,
       sale_width_mm: source.sale_width_mm,
       sale_height_mm: source.sale_height_mm,
       measured_width_mm: source.measured_width_mm,
       measured_height_mm: source.measured_height_mm,
+      project_only: source.project_only,
       environment: source.environment,
       floor: source.floor,
       description: source.description,
       glass: source.glass,
       color: source.color,
       line: source.line,
-      status: "medida",
+      status: source.status,
       source: "split",
       notes: `Desdobrada a partir de ${source.code}.`,
+    };
+
+    const { data: createdPiece, error: insertError } = await context.admin
+      .from("technical_contract_pieces")
+      .insert(insertPayload)
+      .select("id")
+      .single();
+    if (insertError) {
+      await context.admin
+        .from("technical_contract_pieces")
+        .update({ quantity: sourceQuantity })
+        .eq("company_id", context.companyId)
+        .eq("id", source.id);
+      throw insertError;
+    }
+
+    const { error: auditError } = await context.admin.from("audit_logs").insert({
+      company_id: context.companyId,
+      entity: "technical_contract_pieces",
+      entity_id: source.id,
+      action: "split_piece",
+      user_id: context.authUserId,
+      before_data: {
+        code: source.code,
+        quantity: sourceQuantity,
+      },
+      after_data: {
+        code: source.code,
+        quantity: remainingQuantity,
+        split_piece_id: (createdPiece as { id?: string } | null)?.id ?? null,
+        split_piece_code: newCode,
+        split_quantity: splitQuantity,
+      },
+      notes: `Peça ${source.code} desdobrada em ${newCode}.`,
     });
-    if (error) throw error;
+    if (auditError) throw auditError;
 
     revalidateTechnical(source.contract_id);
-    return ok("Peça desdobrada criada como registro independente.");
+    return ok(`${newCode} criada com quantidade ${splitQuantity}. ${source.code} ficou com quantidade ${remainingQuantity}.`);
   } catch (error) {
     return fail(error);
   }
