@@ -18,6 +18,7 @@ import type {
   TechnicalProdBatchPiece,
   TechnicalProdDocument,
   TechnicalRelease,
+  TechnicalReleaseChangeRequest,
   TechnicalReleaseParticipant,
   TechnicalReleasePiece,
   TechnicalStageValidation,
@@ -60,6 +61,7 @@ function emptySnapshot(): TechnicalSnapshot {
     releases: [],
     releasePieces: [],
     releaseParticipants: [],
+    releaseChangeRequests: [],
     corrections: [],
     prodBatches: [],
     prodBatchPieces: [],
@@ -313,6 +315,19 @@ async function loadTechnicalSnapshot(
       load: () => supabase.from("technical_release_participants").select("*").order("created_at"),
       apply: (target, data) => {
         target.releaseParticipants = data as TechnicalReleaseParticipant[];
+      },
+    });
+    addSnapshotQuery(queries, include, {
+      key: "releaseChangeRequests",
+      optionalMissing: true,
+      load: () => {
+        const query = supabase.from("technical_release_change_requests").select("*");
+        return filters.contractId
+          ? query.eq("contract_id", filters.contractId).order("created_at", { ascending: false })
+          : query.order("created_at", { ascending: false });
+      },
+      apply: (target, data) => {
+        target.releaseChangeRequests = data as TechnicalReleaseChangeRequest[];
       },
     });
     addSnapshotQuery(queries, include, {

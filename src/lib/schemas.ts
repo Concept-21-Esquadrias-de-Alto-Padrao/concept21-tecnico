@@ -233,6 +233,33 @@ export const releaseBatchSignatureSchema = z.object({
   release_id: z.string().uuid(),
 });
 
+const releaseBatchChangeBaseSchema = z.object({
+  release_id: z.string().uuid(),
+  reason: z.string().trim().min(5, "Informe o motivo da solicitação."),
+});
+
+export const releaseBatchEditRequestSchema = releaseBatchChangeBaseSchema.extend({
+  batch_number: optionalText,
+  default_due_date: optionalDate,
+  notes: optionalText,
+});
+
+export const releaseBatchDeleteRequestSchema = releaseBatchChangeBaseSchema;
+export const releaseBatchAuthorizedEditSchema = releaseBatchEditRequestSchema;
+export const releaseBatchAuthorizedDeleteSchema = releaseBatchDeleteRequestSchema;
+
+export const releaseBatchChangeDecisionSchema = z.object({
+  request_id: z.string().uuid(),
+  decision: z.enum(["approve", "reject"]),
+  review_notes: z
+    .string()
+    .trim()
+    .min(3, "Informe uma observação sobre a decisão.")
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value ? value : null)),
+});
+
 export const correctionSchema = z.object({
   contract_id: z.string().uuid(),
   piece_id: optionalText,

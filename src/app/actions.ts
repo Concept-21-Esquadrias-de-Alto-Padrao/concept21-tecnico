@@ -25,6 +25,11 @@ import {
   prodBatchTransitionSchema,
   receiveFolderSchema,
   reopenContractStageSchema,
+  releaseBatchAuthorizedDeleteSchema,
+  releaseBatchAuthorizedEditSchema,
+  releaseBatchChangeDecisionSchema,
+  releaseBatchDeleteRequestSchema,
+  releaseBatchEditRequestSchema,
   releaseBatchSchema,
   releaseBatchSignatureSchema,
   releasePieceSchema,
@@ -69,7 +74,9 @@ import type {
   TechnicalPiece,
   TechnicalProdBatch,
   TechnicalRelease,
+  TechnicalReleaseChangeRequest,
   TechnicalReleaseParticipant,
+  TechnicalReleasePiece,
 } from "@/lib/types";
 import { toUserFriendlyErrorMessage } from "@/lib/errors";
 
@@ -2429,6 +2436,572 @@ export async function signReleaseBatchAction(_: ActionState, formData: FormData)
     return ok("Lote assinado digitalmente.");
   } catch (error) {
     return fail(error, "Não foi possível assinar o lote de liberação.");
+  }
+}
+
+type ReleaseBatchEditChange = {
+  batch_number: string | null;
+  default_due_date: string | null;
+  notes: string | null;
+  piece_ids: string[];
+};
+
+function releaseBatchEditChangeFromForm(
+  formData: FormData,
+  parsed: { batch_number?: string | null; default_due_date?: string | null; notes?: string | null },
+): ReleaseBatchEditChange {
+  return {
+    batch_number: parsed.batch_number ?? null,
+    default_due_date: parsed.default_due_date ?? null,
+    notes: parsed.notes ?? null,
+    piece_ids: Array.from(new Set(idsFromForm(formData, "piece_ids"))),
+  };
+}
+
+function releaseBatchEditChangeFromRequest(request: TechnicalReleaseChangeRequest) {
+  const changes = request.requested_changes ?? {};
+  const pieceIds = Array.isArray(changes.piece_ids)
+    ? changes.piece_ids.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    : [];
+
+  return {
+    batch_number: typeof changes.batch_number === "string" ? changes.batch_number : null,
+    default_due_date: typeof changes.default_due_date === "string" ? changes.default_due_date : null,
+    notes: typeof changes.notes === "string" ? changes.notes : null,
+    piece_ids: Array.from(new Set(pieceIds)),
+  } satisfies ReleaseBatchEditChange;
+}
+
+function pieceStatusAfterReleaseRemoval(piece: TechnicalPiece) {
+  if (piece.project_only) return "avaliada";
+  if (piece.measured_width_mm && piece.measured_height_mm) return "medida";
+  return "aguardando_avaliacao";
+}
+
+function assertReleaseBatchPiecesCanChange(pieces: TechnicalPiece[]) {
+  const locked = pieces.find((piece) =>
+    Boolean(piece.active_prod_batch_id) || ["em_prod", "entregue"].includes(piece.status),
+  );
+  if (locked) {
+    throw new Error(
+      `${locked.code}: esta peça já está em PROD ou entregue. O lote não pode ser alterado por aqui.`,
+    );
+  }
+}
+
+async function loadReleaseForChange(context: ActionContext, releaseId: string) {
+  const { data: release, error } = await context.admin
+    .from("technical_releases")
+    .select("*")
+    .eq("company_id", context.companyId)
+    .eq("id", releaseId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!release) throw new Error("Lote de liberação não encontrado.");
+  const typedRelease = release as TechnicalRelease;
+  if (typedRelease.status === "cancelado") {
+    throw new Error("Este lote já está cancelado.");
+  }
+  return typedRelease;
+}
+
+async function loadReleaseLinks(context: ActionContext, releaseId: string) {
+  const { data, error } = await context.admin
+    .from("technical_release_pieces")
+    .select("*")
+    .eq("release_id", releaseId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as TechnicalReleasePiece[];
+}
+
+async function loadContractPiecesById(context: ActionContext, contractId: string, pieceIds: string[]) {
+  if (!pieceIds.length) return [] as TechnicalPiece[];
+
+  const { data, error } = await context.admin
+    .from("technical_contract_pieces")
+    .select("*")
+    .eq("company_id", context.companyId)
+    .eq("contract_id", contractId)
+    .is("deleted_at", null)
+    .in("id", pieceIds);
+
+  if (error) throw error;
+  const pieces = (data ?? []) as TechnicalPiece[];
+  if (pieces.length !== pieceIds.length) {
+    throw new Error("Uma ou mais peças selecionadas não foram encontradas neste contrato.");
+  }
+  return pieces;
+}
+
+async function resetReleaseParticipants(context: ActionContext, release: TechnicalRelease) {
+  if (!release.validation_required) return;
+
+  const { error } = await context.admin
+    .from("technical_release_participants")
+    .update({
+      signed_at: null,
+      signed_by_auth_user_id: null,
+    })
+    .eq("company_id", context.companyId)
+    .eq("release_id", release.id);
+
+  if (error) throw error;
+
+  const { data: participants, error: participantsError } = await context.admin
+    .from("technical_release_participants")
+    .select("id, profile_id")
+    .eq("company_id", context.companyId)
+    .eq("release_id", release.id);
+
+  if (participantsError) throw participantsError;
+
+  const notifications = ((participants ?? []) as Array<{ id: string; profile_id: string }>).map((participant) => ({
+    company_id: context.companyId,
+    recipient_profile_id: participant.profile_id,
+    title: "Lote de liberação editado",
+    body: `${release.batch_number ?? "Lote de liberação"} foi alterado e aguarda nova assinatura.`,
+    category: "technical_release_signature",
+    entity: "technical_release_participants",
+    entity_id: participant.id,
+    action_url: `/tecnico/contratos/${release.contract_id}#pecas`,
+  }));
+
+  if (notifications.length) {
+    const { error: notificationError } = await context.admin.from("platform_notifications").insert(notifications);
+    if (notificationError) throw notificationError;
+  }
+}
+
+async function closePendingReleaseChangeRequests(
+  context: ActionContext,
+  releaseId: string,
+  reviewNotes: string,
+) {
+  const { error } = await context.admin
+    .from("technical_release_change_requests")
+    .update({
+      status: "cancelada",
+      reviewed_by_profile_id: context.profileId,
+      reviewed_at: new Date().toISOString(),
+      review_notes: reviewNotes,
+    })
+    .eq("company_id", context.companyId)
+    .eq("release_id", releaseId)
+    .eq("status", "pendente");
+
+  if (error && !isMissingRelationError(error)) throw error;
+}
+
+async function applyReleaseBatchEdit(
+  context: ActionContext,
+  releaseId: string,
+  changes: ReleaseBatchEditChange,
+  reason: string,
+) {
+  const release = await loadReleaseForChange(context, releaseId);
+  if (!changes.piece_ids.length) throw new Error("Selecione ao menos uma peça para manter no lote.");
+
+  const currentLinks = await loadReleaseLinks(context, release.id);
+  const currentPieceIds = currentLinks.map((link) => link.piece_id);
+  const selectedPieceIds = Array.from(new Set(changes.piece_ids));
+  const addedPieceIds = selectedPieceIds.filter((pieceId) => !currentPieceIds.includes(pieceId));
+  const removedPieceIds = currentPieceIds.filter((pieceId) => !selectedPieceIds.includes(pieceId));
+  const compositionChanged = addedPieceIds.length > 0 || removedPieceIds.length > 0;
+
+  const relevantPieceIds = Array.from(new Set([...currentPieceIds, ...selectedPieceIds]));
+  const relevantPieces = await loadContractPiecesById(context, release.contract_id, relevantPieceIds);
+  const piecesById = new Map(relevantPieces.map((piece) => [piece.id, piece]));
+
+  if (compositionChanged) {
+    assertReleaseBatchPiecesCanChange(currentPieceIds.map((pieceId) => piecesById.get(pieceId)).filter(Boolean) as TechnicalPiece[]);
+  }
+
+  const addedPieces = addedPieceIds.map((pieceId) => piecesById.get(pieceId)).filter(Boolean) as TechnicalPiece[];
+  const blockedAdded = addedPieces.find((piece) =>
+    ["liberada", "em_prod", "entregue", "cancelada"].includes(piece.status) || Boolean(piece.active_prod_batch_id),
+  );
+  if (blockedAdded) throw new Error(`${blockedAdded.code}: esta peça não está disponível para este lote.`);
+
+  if (addedPieces.length) {
+    await assertPiecesHaveNoOpenStructuralActions(context, release.contract_id, addedPieces);
+    const { data: corrections, error: correctionsError } = await context.admin
+      .from("technical_corrections")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("contract_id", release.contract_id)
+      .in("piece_id", addedPieceIds);
+
+    if (correctionsError) throw correctionsError;
+    const typedCorrections = (corrections ?? []) as TechnicalCorrection[];
+    for (const piece of addedPieces) {
+      const allowed = canReleasePiece({
+        piece,
+        corrections: typedCorrections.filter((correction) => correction.piece_id === piece.id),
+      });
+      if (!allowed.ok) throw new Error(`${piece.code}: ${allowed.reason ?? "Peça não pode ser liberada."}`);
+    }
+  }
+
+  const now = new Date().toISOString();
+  const dueDate = changes.default_due_date ?? release.default_due_date;
+  const { error: releaseUpdateError } = await context.admin
+    .from("technical_releases")
+    .update({
+      batch_number: changes.batch_number ?? release.batch_number,
+      default_due_date: dueDate,
+      notes: changes.notes,
+      status: release.validation_required ? "aguardando_assinatura" : "validado",
+      validated_at: release.validation_required ? null : release.validated_at ?? now,
+    })
+    .eq("company_id", context.companyId)
+    .eq("id", release.id);
+
+  if (releaseUpdateError) throw releaseUpdateError;
+
+  if (removedPieceIds.length) {
+    const { error: deleteLinksError } = await context.admin
+      .from("technical_release_pieces")
+      .delete()
+      .eq("release_id", release.id)
+      .in("piece_id", removedPieceIds);
+
+    if (deleteLinksError) throw deleteLinksError;
+  }
+
+  if (addedPieceIds.length) {
+    const { error: addLinksError } = await context.admin.from("technical_release_pieces").insert(
+      addedPieceIds.map((pieceId) => ({
+        release_id: release.id,
+        piece_id: pieceId,
+        due_date: dueDate,
+        project_only_at_release: piecesById.get(pieceId)?.project_only ?? false,
+      })),
+    );
+
+    if (addLinksError) throw addLinksError;
+  }
+
+  if (selectedPieceIds.length) {
+    const { error: updateLinksError } = await context.admin
+      .from("technical_release_pieces")
+      .update({ due_date: dueDate })
+      .eq("release_id", release.id)
+      .in("piece_id", selectedPieceIds);
+
+    if (updateLinksError) throw updateLinksError;
+  }
+
+  for (const pieceId of selectedPieceIds) {
+    const { error } = await context.admin
+      .from("technical_contract_pieces")
+      .update({
+        status: "liberada",
+        released_at: piecesById.get(pieceId)?.released_at ?? now,
+        release_due_date: dueDate,
+        exceptional_due_date: changes.default_due_date,
+      })
+      .eq("company_id", context.companyId)
+      .eq("id", pieceId);
+
+    if (error) throw error;
+  }
+
+  for (const pieceId of removedPieceIds) {
+    const piece = piecesById.get(pieceId);
+    if (!piece) continue;
+    const { error } = await context.admin
+      .from("technical_contract_pieces")
+      .update({
+        status: pieceStatusAfterReleaseRemoval(piece),
+        released_at: null,
+        release_due_date: null,
+        exceptional_due_date: null,
+      })
+      .eq("company_id", context.companyId)
+      .eq("id", pieceId);
+
+    if (error) throw error;
+  }
+
+  await resetReleaseParticipants(context, {
+    ...release,
+    batch_number: changes.batch_number ?? release.batch_number,
+    default_due_date: dueDate,
+  });
+
+  const { error: auditError } = await context.admin.from("audit_logs").insert({
+    company_id: context.companyId,
+    entity: "technical_releases",
+    entity_id: release.id,
+    action: "release_batch_update",
+    user_id: context.authUserId,
+    before_data: {
+      contract_id: release.contract_id,
+      batch_number: release.batch_number,
+      default_due_date: release.default_due_date,
+      notes: release.notes,
+      piece_ids: currentPieceIds,
+    },
+    after_data: {
+      contract_id: release.contract_id,
+      batch_number: changes.batch_number ?? release.batch_number,
+      default_due_date: dueDate,
+      notes: changes.notes,
+      piece_ids: selectedPieceIds,
+      added_piece_ids: addedPieceIds,
+      removed_piece_ids: removedPieceIds,
+      validation_required: release.validation_required,
+    },
+    notes: `Lote editado com autorização. Motivo: ${reason}`,
+  });
+
+  if (auditError) throw auditError;
+  return { release, selectedPieceIds, removedPieceIds, addedPieceIds };
+}
+
+async function applyReleaseBatchCancel(context: ActionContext, releaseId: string, reason: string) {
+  const release = await loadReleaseForChange(context, releaseId);
+  const links = await loadReleaseLinks(context, release.id);
+  const pieceIds = links.map((link) => link.piece_id);
+  const pieces = await loadContractPiecesById(context, release.contract_id, pieceIds);
+  assertReleaseBatchPiecesCanChange(pieces);
+
+  const now = new Date().toISOString();
+  const { error: releaseUpdateError } = await context.admin
+    .from("technical_releases")
+    .update({
+      status: "cancelado",
+      validated_at: null,
+    })
+    .eq("company_id", context.companyId)
+    .eq("id", release.id);
+
+  if (releaseUpdateError) throw releaseUpdateError;
+
+  const { error: participantUpdateError } = await context.admin
+    .from("technical_release_participants")
+    .update({
+      signed_at: null,
+      signed_by_auth_user_id: null,
+    })
+    .eq("company_id", context.companyId)
+    .eq("release_id", release.id);
+
+  if (participantUpdateError) throw participantUpdateError;
+
+  for (const piece of pieces) {
+    const { error } = await context.admin
+      .from("technical_contract_pieces")
+      .update({
+        status: pieceStatusAfterReleaseRemoval(piece),
+        released_at: null,
+        release_due_date: null,
+        exceptional_due_date: null,
+      })
+      .eq("company_id", context.companyId)
+      .eq("id", piece.id);
+
+    if (error) throw error;
+  }
+
+  const { error: auditError } = await context.admin.from("audit_logs").insert({
+    company_id: context.companyId,
+    entity: "technical_releases",
+    entity_id: release.id,
+    action: "release_batch_cancel",
+    user_id: context.authUserId,
+    before_data: {
+      contract_id: release.contract_id,
+      batch_number: release.batch_number,
+      status: release.status,
+      piece_ids: pieceIds,
+    },
+    after_data: {
+      contract_id: release.contract_id,
+      batch_number: release.batch_number,
+      status: "cancelado",
+      piece_ids: pieceIds,
+      canceled_at: now,
+    },
+    notes: `Lote cancelado com autorização. Motivo: ${reason}`,
+  });
+
+  if (auditError) throw auditError;
+  return { release, pieceIds };
+}
+
+async function ensureNoPendingReleaseChangeRequest(context: ActionContext, releaseId: string) {
+  const { data, error } = await context.admin
+    .from("technical_release_change_requests")
+    .select("id")
+    .eq("company_id", context.companyId)
+    .eq("release_id", releaseId)
+    .eq("status", "pendente")
+    .limit(1);
+
+  if (error && !isMissingRelationError(error)) throw error;
+  if ((data ?? []).length) {
+    throw new Error("Já existe uma solicitação pendente para este lote. Aguarde a autorização antes de abrir outra.");
+  }
+}
+
+export async function requestReleaseBatchEditAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.releases.change_request");
+    const parsed = releaseBatchEditRequestSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const release = await loadReleaseForChange(context, parsed.data.release_id);
+    const changes = releaseBatchEditChangeFromForm(formData, parsed.data);
+    if (!changes.piece_ids.length) throw new Error("Selecione ao menos uma peça para manter no lote.");
+    await ensureNoPendingReleaseChangeRequest(context, release.id);
+
+    const { error } = await context.admin.from("technical_release_change_requests").insert({
+      company_id: context.companyId,
+      contract_id: release.contract_id,
+      release_id: release.id,
+      request_type: "edit",
+      status: "pendente",
+      reason: parsed.data.reason,
+      requested_changes: changes,
+      requested_by_profile_id: context.profileId,
+    });
+
+    if (error) throw error;
+    revalidateTechnical(release.contract_id);
+    return ok("Solicitação de edição enviada para autorização.");
+  } catch (error) {
+    return fail(error, "Não foi possível solicitar a edição do lote.");
+  }
+}
+
+export async function requestReleaseBatchDeleteAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.releases.change_request");
+    const parsed = releaseBatchDeleteRequestSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const release = await loadReleaseForChange(context, parsed.data.release_id);
+    await ensureNoPendingReleaseChangeRequest(context, release.id);
+
+    const { error } = await context.admin.from("technical_release_change_requests").insert({
+      company_id: context.companyId,
+      contract_id: release.contract_id,
+      release_id: release.id,
+      request_type: "delete",
+      status: "pendente",
+      reason: parsed.data.reason,
+      requested_changes: null,
+      requested_by_profile_id: context.profileId,
+    });
+
+    if (error) throw error;
+    revalidateTechnical(release.contract_id);
+    return ok("Solicitação de exclusão enviada para autorização.");
+  } catch (error) {
+    return fail(error, "Não foi possível solicitar a exclusão do lote.");
+  }
+}
+
+export async function updateReleaseBatchAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.releases.authorize_change");
+    const parsed = releaseBatchAuthorizedEditSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const changes = releaseBatchEditChangeFromForm(formData, parsed.data);
+    const { release } = await applyReleaseBatchEdit(context, parsed.data.release_id, changes, parsed.data.reason);
+    await closePendingReleaseChangeRequests(context, release.id, "Lote editado diretamente por usuário autorizado.");
+
+    revalidateTechnical(release.contract_id);
+    return ok("Lote de liberação atualizado.");
+  } catch (error) {
+    return fail(error, "Não foi possível editar o lote de liberação.");
+  }
+}
+
+export async function cancelReleaseBatchAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.releases.authorize_change");
+    const parsed = releaseBatchAuthorizedDeleteSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const { release } = await applyReleaseBatchCancel(context, parsed.data.release_id, parsed.data.reason);
+    await closePendingReleaseChangeRequests(context, release.id, "Lote excluído diretamente por usuário autorizado.");
+
+    revalidateTechnical(release.contract_id);
+    return ok("Lote de liberação excluído do fluxo.");
+  } catch (error) {
+    return fail(error, "Não foi possível excluir o lote de liberação.");
+  }
+}
+
+export async function decideReleaseBatchChangeRequestAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.releases.authorize_change");
+    const parsed = releaseBatchChangeDecisionSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const { data: request, error: requestError } = await context.admin
+      .from("technical_release_change_requests")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("id", parsed.data.request_id)
+      .maybeSingle();
+
+    if (requestError) throw requestError;
+    if (!request) throw new Error("Solicitação não encontrada.");
+    const typedRequest = request as TechnicalReleaseChangeRequest;
+    if (typedRequest.status !== "pendente") throw new Error("Esta solicitação já foi analisada.");
+
+    const reviewedAt = new Date().toISOString();
+    if (parsed.data.decision === "reject") {
+      const { error } = await context.admin
+        .from("technical_release_change_requests")
+        .update({
+          status: "recusada",
+          reviewed_by_profile_id: context.profileId,
+          reviewed_at: reviewedAt,
+          review_notes: parsed.data.review_notes,
+        })
+        .eq("company_id", context.companyId)
+        .eq("id", typedRequest.id);
+
+      if (error) throw error;
+      revalidateTechnical(typedRequest.contract_id);
+      return ok("Solicitação recusada.");
+    }
+
+    if (typedRequest.request_type === "edit") {
+      await applyReleaseBatchEdit(
+        context,
+        typedRequest.release_id,
+        releaseBatchEditChangeFromRequest(typedRequest),
+        typedRequest.reason,
+      );
+    } else {
+      await applyReleaseBatchCancel(context, typedRequest.release_id, typedRequest.reason);
+    }
+
+    const { error: decisionError } = await context.admin
+      .from("technical_release_change_requests")
+      .update({
+        status: "aprovada",
+        reviewed_by_profile_id: context.profileId,
+        reviewed_at: reviewedAt,
+        review_notes: parsed.data.review_notes,
+      })
+      .eq("company_id", context.companyId)
+      .eq("id", typedRequest.id);
+
+    if (decisionError) throw decisionError;
+    revalidateTechnical(typedRequest.contract_id);
+    return ok("Solicitação aprovada e aplicada.");
+  } catch (error) {
+    return fail(error, "Não foi possível analisar a solicitação.");
   }
 }
 

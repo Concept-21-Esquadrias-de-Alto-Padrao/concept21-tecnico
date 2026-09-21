@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { requirePermissionAccess } from "@/lib/server-access";
-import { createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, receiveCommercialFolderAction, reopenContractStageAction, signStageValidationAction, splitPieceAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
+import { cancelReleaseBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, receiveCommercialFolderAction, reopenContractStageAction, requestReleaseBatchDeleteAction, signStageValidationAction, splitPieceAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server-access", () => ({
@@ -17,6 +17,7 @@ const userId = "00000000-0000-4000-8000-000000000004";
 const managerId = "00000000-0000-4000-8000-000000000005";
 const followupId = "00000000-0000-4000-8000-000000000006";
 const pieceId = "00000000-0000-4000-8000-000000000007";
+const releaseId = "00000000-0000-4000-8000-000000000008";
 const originalName = "Amir Rached Abboud";
 const initialState = { ok: false, message: "" };
 
@@ -48,6 +49,7 @@ function setupDatabase() {
     technical_releases: [],
     technical_release_pieces: [],
     technical_release_participants: [],
+    technical_release_change_requests: [],
     technical_prod_batches: [],
     technical_contracts: [{
       id: "technical",
@@ -474,6 +476,39 @@ describe("piece measurement and structural changes", () => {
     return state;
   }
 
+  function prepareReleasedBatch() {
+    const state = prepareMeasuredPiece();
+    Object.assign(state.tables.technical_contract_pieces[0], {
+      measured_width_mm: 2380,
+      measured_height_mm: 2190,
+      status: "liberada",
+      released_at: "2026-09-18T09:00:00.000Z",
+      release_due_date: "2026-10-02",
+      active_prod_batch_id: null,
+    });
+    state.tables.technical_releases.push({
+      id: releaseId,
+      company_id: companyId,
+      contract_id: contractId,
+      batch_number: "Lote 1",
+      release_date: "2026-09-18",
+      default_due_date: "2026-10-02",
+      validation_required: false,
+      status: "validado",
+      validated_at: "2026-09-18T09:00:00.000Z",
+      notes: null,
+    });
+    state.tables.technical_release_pieces.push({
+      id: "release-piece-1",
+      release_id: releaseId,
+      piece_id: pieceId,
+      project_only_at_release: false,
+      due_date: "2026-10-02",
+      created_at: "2026-09-18T09:00:00.000Z",
+    });
+    return state;
+  }
+
   it("updates the field environment with the measurement and records the audit trail", async () => {
     const { tables } = prepareMeasuredPiece();
     const formData = new FormData();
@@ -684,5 +719,47 @@ describe("piece measurement and structural changes", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toContain("resolva a alteração estrutural pendente antes da liberação");
     expect(tables.technical_contract_pieces[0].status).toBe("aguardando_avaliacao");
+  });
+
+  it("creates a pending request to delete a release batch", async () => {
+    const { tables } = prepareReleasedBatch();
+    const formData = new FormData();
+    formData.set("release_id", releaseId);
+    formData.set("reason", "Lote lançado por engano.");
+
+    const result = await requestReleaseBatchDeleteAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_release_change_requests[0]).toMatchObject({
+      release_id: releaseId,
+      request_type: "delete",
+      status: "pendente",
+      reason: "Lote lançado por engano.",
+      requested_by_profile_id: "profile-id",
+    });
+  });
+
+  it("cancels an authorized release batch and returns the piece to measured status", async () => {
+    const { tables } = prepareReleasedBatch();
+    const formData = new FormData();
+    formData.set("release_id", releaseId);
+    formData.set("reason", "Lote criado incorretamente.");
+
+    const result = await cancelReleaseBatchAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_releases[0]).toMatchObject({
+      status: "cancelado",
+      validated_at: null,
+    });
+    expect(tables.technical_contract_pieces[0]).toMatchObject({
+      status: "medida",
+      released_at: null,
+      release_due_date: null,
+    });
+    expect(tables.audit_logs.at(-1)).toMatchObject({
+      entity: "technical_releases",
+      action: "release_batch_cancel",
+    });
   });
 });

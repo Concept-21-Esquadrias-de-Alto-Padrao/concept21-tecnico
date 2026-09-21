@@ -33,6 +33,8 @@ export const TECHNICAL_PERMISSIONS = [
   "technical.measurements.manage",
   "technical.pieces.edit_released",
   "technical.pieces.release",
+  "technical.releases.change_request",
+  "technical.releases.authorize_change",
   "technical.reports.view",
   "technical.reports.generate",
   "technical.corrections.view",

@@ -14,6 +14,7 @@ const entityLabels: Record<string, string> = {
   technical_contract_pieces: "cadastro de peça",
   technical_actions: "ação técnica",
   technical_contracts: "contrato técnico",
+  technical_release_change_requests: "solicitação de alteração de lote",
   technical_release_participants: "assinatura de lote de liberação",
   technical_releases: "lote de liberação",
   technical_stage_validation_participants: "assinatura de etapa",
@@ -177,6 +178,8 @@ function responsiblesDetails(log: TechnicalAuditLog, profiles: AuditProfile[]) {
 function releaseBatchDetails(log: TechnicalAuditLog) {
   const batchNumber = valueAsString(log.after_data?.batch_number);
   const pieceIds = Array.isArray(log.after_data?.piece_ids) ? log.after_data.piece_ids.length : null;
+  const addedPieceIds = Array.isArray(log.after_data?.added_piece_ids) ? log.after_data.added_piece_ids.length : null;
+  const removedPieceIds = Array.isArray(log.after_data?.removed_piece_ids) ? log.after_data.removed_piece_ids.length : null;
   const environmentUpdates = Array.isArray(log.after_data?.environment_updates)
     ? log.after_data.environment_updates
         .map((item) => {
@@ -191,8 +194,33 @@ function releaseBatchDetails(log: TechnicalAuditLog) {
   const details = [
     batchNumber ? `Lote: ${batchNumber}` : null,
     pieceIds !== null ? `${pieceIds} peça(s)` : null,
+    addedPieceIds ? `${addedPieceIds} peça(s) adicionada(s)` : null,
+    removedPieceIds ? `${removedPieceIds} peça(s) removida(s)` : null,
     environmentUpdates.length ? `Ambiente ajustado: ${environmentUpdates.join("; ")}` : null,
     valueAsString(log.notes),
+  ].filter(Boolean);
+
+  return details.length ? details.join(" · ") : null;
+}
+
+function releaseChangeRequestType(value: unknown) {
+  return valueAsString(value) === "delete" ? "exclusão" : "edição";
+}
+
+function releaseChangeRequestDetails(log: TechnicalAuditLog) {
+  const requestData = log.after_data ?? log.before_data ?? {};
+  const type = releaseChangeRequestType(requestData.request_type);
+  const status = valueAsString(requestData.status);
+  const reason = valueAsString(requestData.reason);
+  const notes = valueAsString(requestData.review_notes);
+  const requestedChanges = requestData.requested_changes as Record<string, unknown> | null | undefined;
+  const requestedPieceCount = Array.isArray(requestedChanges?.piece_ids) ? requestedChanges.piece_ids.length : null;
+  const details = [
+    `Tipo: ${type}`,
+    status ? `Status: ${status}` : null,
+    requestedPieceCount !== null ? `${requestedPieceCount} peça(s) selecionada(s)` : null,
+    reason ? `Motivo: ${reason}` : null,
+    notes ? `Observação: ${notes}` : null,
   ].filter(Boolean);
 
   return details.length ? details.join(" · ") : null;
@@ -280,6 +308,33 @@ export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfi
       return {
         title: actedBy(actorName, "criou um lote de liberação de medidas"),
         details: releaseBatchDetails(log),
+      };
+    case "technical_releases:release_batch_update":
+      return {
+        title: actedBy(actorName, "editou um lote de liberação de medidas"),
+        details: releaseBatchDetails(log),
+      };
+    case "technical_releases:release_batch_cancel":
+      return {
+        title: actedBy(actorName, "excluiu um lote de liberação de medidas do fluxo"),
+        details: releaseBatchDetails(log),
+      };
+    case "technical_release_change_requests:insert":
+      return {
+        title: actedBy(actorName, `solicitou ${releaseChangeRequestType(log.after_data?.request_type)} de um lote de liberação`),
+        details: releaseChangeRequestDetails(log),
+      };
+    case "technical_release_change_requests:update":
+      return {
+        title: actedBy(
+          actorName,
+          valueAsString(log.after_data?.status) === "aprovada"
+            ? `autorizou ${releaseChangeRequestType(log.after_data?.request_type)} de um lote de liberação`
+            : valueAsString(log.after_data?.status) === "recusada"
+              ? `recusou ${releaseChangeRequestType(log.after_data?.request_type)} de um lote de liberação`
+              : `atualizou uma solicitação de ${releaseChangeRequestType(log.after_data?.request_type)} de lote`,
+        ),
+        details: releaseChangeRequestDetails(log),
       };
     case "technical_release_participants:release_batch_signature":
       return {

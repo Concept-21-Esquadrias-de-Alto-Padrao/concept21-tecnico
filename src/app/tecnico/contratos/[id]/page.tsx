@@ -18,6 +18,7 @@ import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   cancelVisitAction,
+  cancelReleaseBatchAction,
   checkProdBatchFormAction,
   createDoubtAction,
   createMeetingAction,
@@ -29,11 +30,15 @@ import {
   generateVisitReportFormAction,
   receiveCommercialFolderAction,
   recordVisitResultAction,
+  decideReleaseBatchChangeRequestAction,
   reopenContractStageAction,
+  requestReleaseBatchDeleteAction,
+  requestReleaseBatchEditAction,
   saveStageValidationAction,
   signReleaseBatchAction,
   signStageValidationAction,
   splitPieceAction,
+  updateReleaseBatchAction,
   updateContractWorkDataAction,
   updateContractResponsiblesAction,
   updatePieceCemAction,
@@ -72,6 +77,7 @@ import type {
   TechnicalAction,
   TechnicalPiece,
   TechnicalRelease,
+  TechnicalReleaseChangeRequest,
   TechnicalReleaseParticipant,
   TechnicalReleasePiece,
   TechnicalStageValidation,
@@ -843,20 +849,282 @@ function ReleaseBatchForm({
   );
 }
 
+function releaseChangeTypeLabel(type: TechnicalReleaseChangeRequest["request_type"]) {
+  return type === "edit" ? "edição" : "exclusão";
+}
+
+function releaseChangeStatusLabel(status: TechnicalReleaseChangeRequest["status"]) {
+  const labels: Record<TechnicalReleaseChangeRequest["status"], string> = {
+    pendente: "Pendente",
+    aprovada: "Aprovada",
+    recusada: "Recusada",
+    cancelada: "Cancelada",
+  };
+  return labels[status] ?? status;
+}
+
+function ReleaseBatchPieceChecklist({
+  pieces,
+  currentPieceIds,
+  lockedPieceIds = new Set<string>(),
+}: {
+  pieces: TechnicalPiece[];
+  currentPieceIds: Set<string>;
+  lockedPieceIds?: Set<string>;
+}) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {pieces.map((piece) => {
+        const checked = currentPieceIds.has(piece.id);
+        const locked = lockedPieceIds.has(piece.id);
+        return (
+          <label
+            key={piece.id}
+            className={cn(
+              "flex items-start gap-3 rounded-md border border-border bg-white p-3 text-sm",
+              locked ? "opacity-75" : "cursor-pointer hover:border-accent/60",
+            )}
+          >
+            {checked && locked ? <input type="hidden" name="piece_ids" value={piece.id} /> : null}
+            <input
+              name="piece_ids"
+              type="checkbox"
+              value={piece.id}
+              defaultChecked={checked}
+              disabled={locked}
+              className="mt-1 size-4 accent-orange-600"
+            />
+            <span className="min-w-0">
+              <span className="block font-semibold text-charcoal">{piece.code}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {piece.environment ?? "Sem ambiente"} · {piece.project_only ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}
+              </span>
+              {locked ? (
+                <span className="mt-1 block text-xs font-semibold text-amber-800">
+                  Já vinculada a PROD/entrega. Não pode ser removida deste lote.
+                </span>
+              ) : null}
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReleaseBatchEditFields({
+  release,
+  pieces,
+  currentPieceIds,
+  lockedPieceIds,
+}: {
+  release: TechnicalRelease;
+  pieces: TechnicalPiece[];
+  currentPieceIds: Set<string>;
+  lockedPieceIds: Set<string>;
+}) {
+  return (
+    <>
+      <input type="hidden" name="release_id" value={release.id} />
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Field label="Identificação do lote">
+          <input name="batch_number" className={inputClass} defaultValue={release.batch_number ?? ""} />
+        </Field>
+        <Field label="Prazo da liberação">
+          <input name="default_due_date" type="date" className={inputClass} defaultValue={release.default_due_date ?? ""} />
+        </Field>
+        <Field label="Observações">
+          <textarea name="notes" className={textareaClass} defaultValue={release.notes ?? ""} />
+        </Field>
+      </div>
+      <div className="space-y-2">
+        <p className="text-sm font-semibold text-charcoal">Peças do lote</p>
+        <ReleaseBatchPieceChecklist pieces={pieces} currentPieceIds={currentPieceIds} lockedPieceIds={lockedPieceIds} />
+      </div>
+    </>
+  );
+}
+
+function ReleaseBatchChangeRequests({
+  requests,
+  profiles,
+  canAuthorizeChanges,
+}: {
+  requests: TechnicalReleaseChangeRequest[];
+  profiles: Profile[];
+  canAuthorizeChanges: boolean;
+}) {
+  const pending = requests.find((request) => request.status === "pendente");
+  const recentClosed = requests.filter((request) => request.status !== "pendente").slice(0, 2);
+
+  if (!pending && !recentClosed.length) return null;
+
+  return (
+    <div className="space-y-2">
+      {pending ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="font-semibold">
+                Solicitação de {releaseChangeTypeLabel(pending.request_type)} aguardando autorização
+              </p>
+              <p className="mt-1 text-xs">
+                Solicitado por {profileName(profiles, pending.requested_by_profile_id)} em {formatDateTime(pending.created_at)}.
+              </p>
+            </div>
+            <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold ring-1 ring-amber-200">
+              {releaseChangeStatusLabel(pending.status)}
+            </span>
+          </div>
+          <p className="mt-2 text-sm">Motivo: {pending.reason}</p>
+          {canAuthorizeChanges ? (
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              <ActionForm
+                action={decideReleaseBatchChangeRequestAction}
+                submitLabel="Aprovar solicitação"
+                className="rounded-md border border-green-200 bg-green-50 p-3"
+                confirmMessage="Aprovar e aplicar esta solicitação?"
+              >
+                <input type="hidden" name="request_id" value={pending.id} />
+                <input type="hidden" name="decision" value="approve" />
+                <Field label="Observação da autorização">
+                  <input name="review_notes" className={inputClass} placeholder="Opcional" />
+                </Field>
+              </ActionForm>
+              <ActionForm
+                action={decideReleaseBatchChangeRequestAction}
+                submitLabel="Recusar solicitação"
+                className="rounded-md border border-red-200 bg-red-50 p-3"
+                confirmMessage="Recusar esta solicitação?"
+              >
+                <input type="hidden" name="request_id" value={pending.id} />
+                <input type="hidden" name="decision" value="reject" />
+                <Field label="Motivo da recusa">
+                  <input name="review_notes" className={inputClass} required />
+                </Field>
+              </ActionForm>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {recentClosed.map((request) => (
+        <p key={request.id} className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Solicitação de {releaseChangeTypeLabel(request.request_type)} {releaseChangeStatusLabel(request.status).toLowerCase()} em {formatDateTime(request.reviewed_at ?? request.updated_at)}.
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function ReleaseBatchChangePanel({
+  release,
+  batchPieces,
+  releaseCandidates,
+  requests,
+  profiles,
+  canRequestChanges,
+  canAuthorizeChanges,
+}: {
+  release: TechnicalRelease;
+  batchPieces: TechnicalPiece[];
+  releaseCandidates: TechnicalPiece[];
+  requests: TechnicalReleaseChangeRequest[];
+  profiles: Profile[];
+  canRequestChanges: boolean;
+  canAuthorizeChanges: boolean;
+}) {
+  const currentPieceIds = new Set(batchPieces.map((piece) => piece.id));
+  const lockedPieceIds = new Set(
+    batchPieces
+      .filter((piece) => Boolean(piece.active_prod_batch_id) || ["em_prod", "entregue"].includes(piece.status))
+      .map((piece) => piece.id),
+  );
+  const editablePieces = [
+    ...batchPieces,
+    ...releaseCandidates.filter((piece) => !currentPieceIds.has(piece.id)),
+  ].sort((left, right) => left.code.localeCompare(right.code, "pt-BR", { numeric: true }));
+  const hasPendingRequest = requests.some((request) => request.status === "pendente");
+  const canShowForms = release.status !== "cancelado" && !hasPendingRequest && (canRequestChanges || canAuthorizeChanges);
+
+  return (
+    <div className="space-y-3">
+      <ReleaseBatchChangeRequests requests={requests} profiles={profiles} canAuthorizeChanges={canAuthorizeChanges} />
+      {canShowForms ? (
+        <details className="group rounded-md border border-border bg-muted/20">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-charcoal [&::-webkit-details-marker]:hidden">
+            <span className="inline-flex items-center gap-2">
+              <Pencil className="size-4 text-accent" />
+              {canAuthorizeChanges ? "Editar ou excluir lote" : "Solicitar edição ou exclusão"}
+            </span>
+            <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
+          </summary>
+          <div className="space-y-3 border-t border-border p-3">
+            <ActionForm
+              action={canAuthorizeChanges ? updateReleaseBatchAction : requestReleaseBatchEditAction}
+              submitLabel={canAuthorizeChanges ? "Salvar edição autorizada" : "Solicitar edição"}
+              className="rounded-md border border-border bg-white p-3"
+              confirmMessage={canAuthorizeChanges ? "Salvar a edição deste lote?" : "Enviar solicitação de edição deste lote?"}
+            >
+              <ReleaseBatchEditFields
+                release={release}
+                pieces={editablePieces}
+                currentPieceIds={currentPieceIds}
+                lockedPieceIds={lockedPieceIds}
+              />
+              <Field label={canAuthorizeChanges ? "Motivo da autorização" : "Motivo da solicitação"}>
+                <textarea name="reason" className={textareaClass} required />
+              </Field>
+            </ActionForm>
+            <ActionForm
+              action={canAuthorizeChanges ? cancelReleaseBatchAction : requestReleaseBatchDeleteAction}
+              submitLabel={canAuthorizeChanges ? "Excluir lote" : "Solicitar exclusão"}
+              className="rounded-md border border-red-200 bg-red-50 p-3"
+              confirmMessage={canAuthorizeChanges ? "Excluir este lote do fluxo? Essa ação será registrada no histórico." : "Enviar solicitação de exclusão deste lote?"}
+            >
+              <input type="hidden" name="release_id" value={release.id} />
+              <Field label={canAuthorizeChanges ? "Motivo da exclusão" : "Motivo da solicitação"}>
+                <textarea name="reason" className={textareaClass} required />
+              </Field>
+              {lockedPieceIds.size ? (
+                <p className="text-xs font-semibold text-red-800">
+                  Peças em PROD ou entregues não podem ter o lote excluído.
+                </p>
+              ) : null}
+            </ActionForm>
+          </div>
+        </details>
+      ) : null}
+      {hasPendingRequest && (canRequestChanges || canAuthorizeChanges) ? (
+        <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Enquanto houver solicitação pendente, novas alterações deste lote ficam bloqueadas.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function ReleaseBatchList({
   releases,
   releasePiecesByReleaseId,
   pieces,
   participantsByReleaseId,
+  releaseChangeRequestsByReleaseId,
+  releaseCandidates,
   profiles,
   currentProfileId,
+  canRequestChanges,
+  canAuthorizeChanges,
 }: {
   releases: TechnicalRelease[];
   releasePiecesByReleaseId: Map<string, TechnicalReleasePiece[]>;
   pieces: TechnicalPiece[];
   participantsByReleaseId: Map<string, TechnicalReleaseParticipant[]>;
+  releaseChangeRequestsByReleaseId: Map<string, TechnicalReleaseChangeRequest[]>;
+  releaseCandidates: TechnicalPiece[];
   profiles: Profile[];
   currentProfileId: string;
+  canRequestChanges: boolean;
+  canAuthorizeChanges: boolean;
 }) {
   if (!releases.length) {
     return (
@@ -876,6 +1144,8 @@ function ReleaseBatchList({
         const batchPieces = links
           .map((link) => ({ link, piece: piecesById.get(link.piece_id) }))
           .filter((item): item is { link: TechnicalReleasePiece; piece: TechnicalPiece } => Boolean(item.piece));
+        const batchPieceRows = batchPieces.map(({ piece }) => piece);
+        const requests = releaseChangeRequestsByReleaseId.get(release.id) ?? [];
         const signed = isReleaseBatchSigned(release, participants);
         const currentParticipant = participants.find((participant) => participant.profile_id === currentProfileId);
         const currentCanSign = Boolean(
@@ -984,6 +1254,16 @@ function ReleaseBatchList({
                   <input type="hidden" name="release_id" value={release.id} />
                 </ActionForm>
               ) : null}
+
+              <ReleaseBatchChangePanel
+                release={release}
+                batchPieces={batchPieceRows}
+                releaseCandidates={releaseCandidates}
+                requests={requests}
+                profiles={profiles}
+                canRequestChanges={canRequestChanges}
+                canAuthorizeChanges={canAuthorizeChanges}
+              />
             </div>
           </details>
         );
@@ -1033,6 +1313,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const canCancelVisits = access.isMaster || access.permissions["technical.visits.cancel"];
   const canMeasure = access.isMaster || access.permissions["technical.measurements.manage"];
   const canRelease = access.isMaster || access.permissions["technical.pieces.release"];
+  const canRequestReleaseChanges = access.isMaster || access.permissions["technical.releases.change_request"];
+  const canAuthorizeReleaseChanges = access.isMaster || access.permissions["technical.releases.authorize_change"];
   const canManageProds = access.isMaster || access.permissions["technical.prods.manage"];
   const canCheckProds = access.isMaster || access.permissions["technical.prods.check"];
   const canApproveProds = access.isMaster || access.permissions["technical.prods.approve"];
@@ -1072,11 +1354,20 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const releaseParticipants = snapshot.releaseParticipants.filter((participant) =>
     releaseIds.has(participant.release_id),
   );
+  const releaseChangeRequests = (snapshot.releaseChangeRequests ?? []).filter((request) =>
+    releaseIds.has(request.release_id),
+  );
   const releaseParticipantsByReleaseId = new Map<string, TechnicalReleaseParticipant[]>();
   for (const participant of releaseParticipants) {
     const current = releaseParticipantsByReleaseId.get(participant.release_id) ?? [];
     current.push(participant);
     releaseParticipantsByReleaseId.set(participant.release_id, current);
+  }
+  const releaseChangeRequestsByReleaseId = new Map<string, TechnicalReleaseChangeRequest[]>();
+  for (const request of releaseChangeRequests) {
+    const current = releaseChangeRequestsByReleaseId.get(request.release_id) ?? [];
+    current.push(request);
+    releaseChangeRequestsByReleaseId.set(request.release_id, current);
   }
   const releasePiecesByReleaseId = new Map<string, TechnicalReleasePiece[]>();
   for (const link of releasePieces) {
@@ -1689,8 +1980,12 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             releasePiecesByReleaseId={releasePiecesByReleaseId}
             pieces={pieces}
             participantsByReleaseId={releaseParticipantsByReleaseId}
+            releaseChangeRequestsByReleaseId={releaseChangeRequestsByReleaseId}
+            releaseCandidates={releaseCandidates}
             profiles={snapshot.profiles}
             currentProfileId={authContext.profile.id}
+            canRequestChanges={canRequestReleaseChanges}
+            canAuthorizeChanges={canAuthorizeReleaseChanges}
           />
           <div className="space-y-3">
             {pieces.map((piece) => {
