@@ -26,12 +26,16 @@ import {
   createProdBatchAction,
   createReleaseBatchAction,
   createVisitAction,
+  decidePieceChangeRequestAction,
   deliverDepartmentDocumentAction,
+  deletePieceAction,
   generateVisitReportFormAction,
   receiveCommercialFolderAction,
   recordVisitResultAction,
   decideReleaseBatchChangeRequestAction,
   reopenContractStageAction,
+  requestPieceDeleteAction,
+  requestPieceEditAction,
   requestReleaseBatchDeleteAction,
   requestReleaseBatchEditAction,
   saveStageValidationAction,
@@ -76,6 +80,7 @@ import type {
   TechnicalContractStageKey,
   TechnicalAction,
   TechnicalPiece,
+  TechnicalPieceChangeRequest,
   TechnicalRelease,
   TechnicalReleaseChangeRequest,
   TechnicalReleaseParticipant,
@@ -490,10 +495,9 @@ function ContractResponsiblesForm({
   );
 }
 
-function PieceRegistrationForm({ piece }: { piece: TechnicalPiece }) {
+function PieceEditFields({ piece }: { piece: TechnicalPiece }) {
   return (
-    <ActionForm action={updatePieceRegistrationAction} submitLabel="Salvar cadastro" className="rounded-md border border-border bg-white p-3">
-      <input type="hidden" name="id" value={piece.id} />
+    <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Field label="Código">
           <input name="code" className={inputClass} defaultValue={piece.code} required />
@@ -511,19 +515,177 @@ function PieceRegistrationForm({ piece }: { piece: TechnicalPiece }) {
       <Field label="Tipo / descrição da peça">
         <input name="piece_type" className={inputClass} defaultValue={piece.piece_type ?? ""} />
       </Field>
-      <Field label="Motivo do ajuste">
-        <textarea name="adjustment_reason" className={textareaClass} required />
-      </Field>
-    </ActionForm>
+    </>
+  );
+}
+
+function pieceChangeTypeLabel(type: TechnicalPieceChangeRequest["request_type"]) {
+  return type === "edit" ? "edição" : "exclusão";
+}
+
+function pieceChangeStatusLabel(status: TechnicalPieceChangeRequest["status"]) {
+  const labels: Record<TechnicalPieceChangeRequest["status"], string> = {
+    pendente: "Pendente",
+    aprovada: "Aprovada",
+    recusada: "Recusada",
+    cancelada: "Cancelada",
+  };
+  return labels[status] ?? status;
+}
+
+function PieceChangeRequests({
+  requests,
+  profiles,
+  canAuthorizeChanges,
+}: {
+  requests: TechnicalPieceChangeRequest[];
+  profiles: Profile[];
+  canAuthorizeChanges: boolean;
+}) {
+  const pending = requests.find((request) => request.status === "pendente");
+  const recentClosed = requests.filter((request) => request.status !== "pendente").slice(0, 2);
+
+  if (!pending && !recentClosed.length) return null;
+
+  return (
+    <div className="space-y-2">
+      {pending ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="font-semibold">
+                Solicitação de {pieceChangeTypeLabel(pending.request_type)} aguardando autorização
+              </p>
+              <p className="mt-1 text-xs">
+                Solicitado por {profileName(profiles, pending.requested_by_profile_id)} em {formatDateTime(pending.created_at)}.
+              </p>
+            </div>
+            <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold ring-1 ring-amber-200">
+              {pieceChangeStatusLabel(pending.status)}
+            </span>
+          </div>
+          <p className="mt-2 text-sm">Motivo: {pending.reason}</p>
+          {canAuthorizeChanges ? (
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              <ActionForm
+                action={decidePieceChangeRequestAction}
+                submitLabel="Aprovar solicitação"
+                className="rounded-md border border-green-200 bg-green-50 p-3"
+                confirmMessage="Aprovar e aplicar esta solicitação?"
+              >
+                <input type="hidden" name="request_id" value={pending.id} />
+                <input type="hidden" name="decision" value="approve" />
+                <Field label="Observação da autorização">
+                  <input name="review_notes" className={inputClass} placeholder="Opcional" />
+                </Field>
+              </ActionForm>
+              <ActionForm
+                action={decidePieceChangeRequestAction}
+                submitLabel="Recusar solicitação"
+                className="rounded-md border border-red-200 bg-red-50 p-3"
+                confirmMessage="Recusar esta solicitação?"
+              >
+                <input type="hidden" name="request_id" value={pending.id} />
+                <input type="hidden" name="decision" value="reject" />
+                <Field label="Motivo da recusa">
+                  <input name="review_notes" className={inputClass} required />
+                </Field>
+              </ActionForm>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {recentClosed.map((request) => (
+        <p key={request.id} className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Solicitação de {pieceChangeTypeLabel(request.request_type)} {pieceChangeStatusLabel(request.status).toLowerCase()} em {formatDateTime(request.reviewed_at ?? request.updated_at)}.
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function PieceChangePanel({
+  piece,
+  requests,
+  profiles,
+  canRequestChanges,
+  canAuthorizeChanges,
+}: {
+  piece: TechnicalPiece;
+  requests: TechnicalPieceChangeRequest[];
+  profiles: Profile[];
+  canRequestChanges: boolean;
+  canAuthorizeChanges: boolean;
+}) {
+  const hasPendingRequest = requests.some((request) => request.status === "pendente");
+  const canShowForms = !hasPendingRequest && (canRequestChanges || canAuthorizeChanges);
+  const deleteBlocked = Boolean(piece.released_at || piece.active_prod_batch_id || ["liberada", "em_prod", "entregue"].includes(piece.status));
+
+  return (
+    <div className="space-y-3">
+      <PieceChangeRequests requests={requests} profiles={profiles} canAuthorizeChanges={canAuthorizeChanges} />
+      {canShowForms ? (
+        <details className="group rounded-md border border-border bg-muted/20">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-charcoal [&::-webkit-details-marker]:hidden">
+            <span className="inline-flex items-center gap-2">
+              <Pencil className="size-4 text-accent" />
+              {canAuthorizeChanges ? "Editar ou excluir peça" : "Solicitar edição ou exclusão"}
+            </span>
+            <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
+          </summary>
+          <div className="space-y-3 border-t border-border p-3">
+            <ActionForm
+              action={canAuthorizeChanges ? updatePieceRegistrationAction : requestPieceEditAction}
+              submitLabel={canAuthorizeChanges ? "Salvar edição autorizada" : "Solicitar edição"}
+              className="rounded-md border border-border bg-white p-3"
+              confirmMessage={canAuthorizeChanges ? "Salvar a edição desta peça?" : "Enviar solicitação de edição desta peça?"}
+            >
+              <input type="hidden" name={canAuthorizeChanges ? "id" : "piece_id"} value={piece.id} />
+              <PieceEditFields piece={piece} />
+              <Field label={canAuthorizeChanges ? "Motivo da autorização" : "Motivo da solicitação"}>
+                <textarea name={canAuthorizeChanges ? "adjustment_reason" : "reason"} className={textareaClass} required />
+              </Field>
+            </ActionForm>
+            <ActionForm
+              action={canAuthorizeChanges ? deletePieceAction : requestPieceDeleteAction}
+              submitLabel={canAuthorizeChanges ? "Excluir peça" : "Solicitar exclusão"}
+              className="rounded-md border border-red-200 bg-red-50 p-3"
+              confirmMessage={canAuthorizeChanges ? "Excluir esta peça do fluxo? Essa ação será registrada no histórico." : "Enviar solicitação de exclusão desta peça?"}
+            >
+              <input type="hidden" name="piece_id" value={piece.id} />
+              <Field label={canAuthorizeChanges ? "Motivo da exclusão" : "Motivo da solicitação"}>
+                <textarea name="reason" className={textareaClass} required />
+              </Field>
+              {deleteBlocked ? (
+                <p className="text-xs font-semibold text-red-800">
+                  Peças liberadas, em PROD ou entregues não podem ser excluídas por aqui.
+                </p>
+              ) : null}
+            </ActionForm>
+          </div>
+        </details>
+      ) : null}
+      {hasPendingRequest && (canRequestChanges || canAuthorizeChanges) ? (
+        <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Enquanto houver solicitação pendente, novas alterações desta peça ficam bloqueadas.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
 function ContractPiecesSummary({
   pieces,
-  canEditRegistration,
+  pieceChangeRequestsByPieceId,
+  profiles,
+  canRequestChanges,
+  canAuthorizeChanges,
 }: {
   pieces: TechnicalPiece[];
-  canEditRegistration: boolean;
+  pieceChangeRequestsByPieceId: Map<string, TechnicalPieceChangeRequest[]>;
+  profiles: Profile[];
+  canRequestChanges: boolean;
+  canAuthorizeChanges: boolean;
 }) {
   return (
     <section className="min-w-0 space-y-3 border-t border-border pt-4">
@@ -575,10 +737,13 @@ function ContractPiecesSummary({
         </div>
       )}
 
-      {canEditRegistration && pieces.length ? (
+      {(canRequestChanges || canAuthorizeChanges) && pieces.length ? (
         <details className="group rounded-md border border-border bg-muted/20">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-semibold text-charcoal marker:hidden">
-            <span className="inline-flex items-center gap-2"><Pencil className="size-4 text-accent" /> Corrigir cadastro-base</span>
+            <span className="inline-flex items-center gap-2">
+              <Pencil className="size-4 text-accent" />
+              {canAuthorizeChanges ? "Editar ou excluir cadastro-base" : "Solicitar edição ou exclusão de peças"}
+            </span>
             <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
           </summary>
           <div className="space-y-2 border-t border-border p-3">
@@ -591,7 +756,15 @@ function ContractPiecesSummary({
                   <span><strong className="text-charcoal">{piece.code}</strong> · {piece.environment ?? "Sem ambiente"}</span>
                   <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
                 </summary>
-                <div className="border-t border-border p-3"><PieceRegistrationForm piece={piece} /></div>
+                <div className="border-t border-border p-3">
+                  <PieceChangePanel
+                    piece={piece}
+                    requests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
+                    profiles={profiles}
+                    canRequestChanges={canRequestChanges}
+                    canAuthorizeChanges={canAuthorizeChanges}
+                  />
+                </div>
               </details>
             ))}
           </div>
@@ -655,6 +828,9 @@ function PieceActionForms({
   piece,
   canMeasure,
   canManageProds,
+  pieceChangeRequests,
+  canRequestPieceChanges,
+  canAuthorizePieceChanges,
   profiles,
   structuralActions,
   className,
@@ -662,11 +838,14 @@ function PieceActionForms({
   piece: TechnicalPiece;
   canMeasure: boolean;
   canManageProds: boolean;
+  pieceChangeRequests: TechnicalPieceChangeRequest[];
+  canRequestPieceChanges: boolean;
+  canAuthorizePieceChanges: boolean;
   profiles: Profile[];
   structuralActions: TechnicalAction[];
   className?: string;
 }) {
-  if (!canMeasure && !canManageProds) return null;
+  if (!canMeasure && !canManageProds && !canRequestPieceChanges && !canAuthorizePieceChanges) return null;
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -708,6 +887,13 @@ function PieceActionForms({
       ) : null}
       </div>
       {canMeasure ? <StructuralChangeActionForm piece={piece} profiles={profiles} /> : null}
+      <PieceChangePanel
+        piece={piece}
+        requests={pieceChangeRequests}
+        profiles={profiles}
+        canRequestChanges={canRequestPieceChanges}
+        canAuthorizeChanges={canAuthorizePieceChanges}
+      />
     </div>
   );
 }
@@ -1292,6 +1478,16 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
 
   const client = snapshot.clients.find((item) => item.id === contract.client_id) ?? null;
   const pieces = snapshot.pieces.filter((piece) => piece.contract_id === id && !piece.deleted_at);
+  const pieceIds = new Set(pieces.map((piece) => piece.id));
+  const pieceChangeRequests = (snapshot.pieceChangeRequests ?? []).filter((request) =>
+    request.contract_id === id && pieceIds.has(request.piece_id),
+  );
+  const pieceChangeRequestsByPieceId = new Map<string, TechnicalPieceChangeRequest[]>();
+  for (const request of pieceChangeRequests) {
+    const current = pieceChangeRequestsByPieceId.get(request.piece_id) ?? [];
+    current.push(request);
+    pieceChangeRequestsByPieceId.set(request.piece_id, current);
+  }
   const actions = snapshot.actions.filter((action) => action.contract_id === id && !action.deleted_at);
   const visits = snapshot.visits.filter((visit) => visit.contract_id === id);
   const corrections = snapshot.corrections.filter((correction) => correction.contract_id === id && !correction.deleted_at);
@@ -1323,7 +1519,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const canReopenStages = access.isMaster || access.permissions["technical.contracts.edit"];
   const canCorrectWorkData = access.isMaster || access.permissions["technical.contracts.correct_work_data"];
   const canEditResponsibles = access.isMaster || access.permissions["technical.contracts.edit"];
-  const canEditPieceRegistration = access.isMaster || access.permissions["technical.pieces.edit_released"];
+  const canRequestPieceChanges = access.isMaster || access.permissions["technical.pieces.change_request"];
+  const canAuthorizePieceChanges = access.isMaster || access.permissions["technical.pieces.authorize_change"] || access.permissions["technical.pieces.edit_released"];
   const canDeleteContract = access.isMaster;
   const currentStatus = technical?.technical_status ?? "aguardando_reuniao";
   const hasCommercialFolder = Boolean(technical?.commercial_folder_received);
@@ -1545,11 +1742,17 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         id="dados-obra"
         title="Dados da obra"
         description="Dados gerais da obra e cadastro-base das peças contratadas."
-        status={`${pieces.length} peça(s)${canCorrectWorkData || canEditResponsibles || canEditPieceRegistration ? " · edição autorizada" : ""}`}
-        locked={!canCorrectWorkData && !canEditResponsibles && !canEditPieceRegistration}
+        status={`${pieces.length} peça(s)${canCorrectWorkData || canEditResponsibles || canRequestPieceChanges || canAuthorizePieceChanges ? " · edição controlada" : ""}`}
+        locked={!canCorrectWorkData && !canEditResponsibles && !canRequestPieceChanges && !canAuthorizePieceChanges}
       >
         <div className="space-y-4">
-          <ContractPiecesSummary pieces={pieces} canEditRegistration={canEditPieceRegistration} />
+          <ContractPiecesSummary
+            pieces={pieces}
+            pieceChangeRequestsByPieceId={pieceChangeRequestsByPieceId}
+            profiles={snapshot.profiles}
+            canRequestChanges={canRequestPieceChanges}
+            canAuthorizeChanges={canAuthorizePieceChanges}
+          />
           <div className="grid gap-4 border-t border-border pt-4 xl:grid-cols-[1fr_1.1fr]">
           <div className="rounded-md border border-border bg-white p-3 text-sm">
             <h3 className="font-semibold text-charcoal">Dados atuais</h3>
@@ -2050,6 +2253,9 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     piece={piece}
                     canMeasure={canMeasure && canOperatePieces}
                     canManageProds={canManageProds && canOperatePieces}
+                    pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
+                    canRequestPieceChanges={canRequestPieceChanges}
+                    canAuthorizePieceChanges={canAuthorizePieceChanges}
                     profiles={snapshot.profiles}
                     structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
                   />
@@ -2101,6 +2307,9 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                   piece={piece}
                   canMeasure={canMeasure && canOperatePieces}
                   canManageProds={canManageProds && canOperatePieces}
+                  pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
+                  canRequestPieceChanges={canRequestPieceChanges}
+                  canAuthorizePieceChanges={canAuthorizePieceChanges}
                   profiles={snapshot.profiles}
                   structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
                   className="mt-3 grid gap-2"
@@ -2138,6 +2347,9 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                         piece={piece}
                         canMeasure={canMeasure && canOperatePieces}
                         canManageProds={canManageProds && canOperatePieces}
+                        pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
+                        canRequestPieceChanges={canRequestPieceChanges}
+                        canAuthorizePieceChanges={canAuthorizePieceChanges}
                         profiles={snapshot.profiles}
                         structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
                       />

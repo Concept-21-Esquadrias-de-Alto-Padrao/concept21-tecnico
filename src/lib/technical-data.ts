@@ -14,6 +14,7 @@ import type {
   TechnicalDoubt,
   TechnicalMeeting,
   TechnicalPiece,
+  TechnicalPieceChangeRequest,
   TechnicalProdBatch,
   TechnicalProdBatchPiece,
   TechnicalProdDocument,
@@ -52,6 +53,7 @@ function emptySnapshot(): TechnicalSnapshot {
     contracts: [],
     technicalContracts: [],
     pieces: [],
+    pieceChangeRequests: [],
     meetings: [],
     stageValidations: [],
     stageValidationParticipants: [],
@@ -121,6 +123,9 @@ function filterSnapshotToVisibleContracts(snapshot: TechnicalSnapshot) {
   );
   snapshot.releasePieces = snapshot.releasePieces.filter(
     (link) => visibleReleaseIds.has(link.release_id) && visiblePieceIds.has(link.piece_id),
+  );
+  snapshot.pieceChangeRequests = snapshot.pieceChangeRequests.filter(
+    (request) => visibleContractIds.has(request.contract_id) && visiblePieceIds.has(request.piece_id),
   );
   snapshot.releaseParticipants = snapshot.releaseParticipants.filter((participant) =>
     visibleReleaseIds.has(participant.release_id),
@@ -223,6 +228,19 @@ async function loadTechnicalSnapshot(
       },
       apply: (target, data) => {
         target.pieces = data as TechnicalPiece[];
+      },
+    });
+    addSnapshotQuery(queries, include, {
+      key: "pieceChangeRequests",
+      optionalMissing: true,
+      load: () => {
+        const query = supabase.from("technical_piece_change_requests").select("*");
+        return filters.contractId
+          ? query.eq("contract_id", filters.contractId).order("created_at", { ascending: false })
+          : query.order("created_at", { ascending: false });
+      },
+      apply: (target, data) => {
+        target.pieceChangeRequests = data as TechnicalPieceChangeRequest[];
       },
     });
     addSnapshotQuery(queries, include, {

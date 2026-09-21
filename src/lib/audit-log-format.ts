@@ -12,6 +12,7 @@ const entityLabels: Record<string, string> = {
   profiles: "cadastro de usuário",
   technical_contract_import: "importação de contrato",
   technical_contract_pieces: "cadastro de peça",
+  technical_piece_change_requests: "solicitação de alteração de peça",
   technical_actions: "ação técnica",
   technical_contracts: "contrato técnico",
   technical_release_change_requests: "solicitação de alteração de lote",
@@ -87,6 +88,34 @@ function pieceRegistrationDetails(log: TechnicalAuditLog) {
   ].filter(Boolean);
 
   return changes.length ? changes.join(" · ") : null;
+}
+
+function pieceChangeRequestType(value: unknown) {
+  return valueAsString(value) === "delete" ? "exclusão" : "edição";
+}
+
+function pieceChangeRequestDetails(log: TechnicalAuditLog) {
+  const requestData = log.after_data ?? log.before_data ?? {};
+  const requestedChanges = requestData.requested_changes as Record<string, unknown> | null | undefined;
+  const details = [
+    `Tipo: ${pieceChangeRequestType(requestData.request_type)}`,
+    valueAsString(requestData.status) ? `Status: ${valueAsString(requestData.status)}` : null,
+    valueAsString(requestData.reason) ? `Motivo: ${valueAsString(requestData.reason)}` : null,
+    valueAsString(requestedChanges?.code) ? `Código solicitado: ${valueAsString(requestedChanges?.code)}` : null,
+    valueAsString(requestData.review_notes) ? `Observação: ${valueAsString(requestData.review_notes)}` : null,
+  ].filter(Boolean);
+
+  return details.length ? details.join(" · ") : null;
+}
+
+function pieceDeleteDetails(log: TechnicalAuditLog) {
+  const code = valueAsString(log.after_data?.code) ?? valueAsString(log.before_data?.code);
+  const details = [
+    code ? `Peça: ${code}` : null,
+    valueAsString(log.notes),
+  ].filter(Boolean);
+
+  return details.length ? details.join(" · ") : null;
 }
 
 function pieceMeasurementDetails(log: TechnicalAuditLog) {
@@ -285,6 +314,28 @@ export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfi
       return {
         title: actedBy(actorName, `atualizou o cadastro da peça ${valueAsString(log.after_data?.code) ?? ""}`.trim()),
         details: pieceRegistrationDetails(log),
+      };
+    case "technical_contract_pieces:piece_delete":
+      return {
+        title: actedBy(actorName, `excluiu a peça ${valueAsString(log.after_data?.code) ?? ""} do fluxo`.trim()),
+        details: pieceDeleteDetails(log),
+      };
+    case "technical_piece_change_requests:insert":
+      return {
+        title: actedBy(actorName, `solicitou ${pieceChangeRequestType(log.after_data?.request_type)} de uma peça`),
+        details: pieceChangeRequestDetails(log),
+      };
+    case "technical_piece_change_requests:update":
+      return {
+        title: actedBy(
+          actorName,
+          valueAsString(log.after_data?.status) === "aprovada"
+            ? `autorizou ${pieceChangeRequestType(log.after_data?.request_type)} de uma peça`
+            : valueAsString(log.after_data?.status) === "recusada"
+              ? `recusou ${pieceChangeRequestType(log.after_data?.request_type)} de uma peça`
+              : `atualizou uma solicitação de ${pieceChangeRequestType(log.after_data?.request_type)} de peça`,
+        ),
+        details: pieceChangeRequestDetails(log),
       };
     case "technical_contract_pieces:measurement_update":
       return {

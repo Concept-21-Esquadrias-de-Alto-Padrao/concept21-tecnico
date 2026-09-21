@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { requirePermissionAccess } from "@/lib/server-access";
-import { cancelReleaseBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, receiveCommercialFolderAction, reopenContractStageAction, requestReleaseBatchDeleteAction, signStageValidationAction, splitPieceAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
+import { cancelReleaseBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, deletePieceAction, receiveCommercialFolderAction, reopenContractStageAction, requestPieceDeleteAction, requestPieceEditAction, requestReleaseBatchDeleteAction, signStageValidationAction, splitPieceAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server-access", () => ({
@@ -46,6 +46,7 @@ function setupDatabase() {
     audit_logs: [],
     technical_corrections: [],
     technical_contract_pieces: [],
+    technical_piece_change_requests: [],
     technical_releases: [],
     technical_release_pieces: [],
     technical_release_participants: [],
@@ -69,6 +70,8 @@ function setupDatabase() {
       { id: "permission-contracts-view", key: "technical.contracts.view" },
       { id: "permission-measurements", key: "technical.measurements.manage" },
       { id: "permission-release", key: "technical.pieces.release" },
+      { id: "permission-piece-change-request", key: "technical.pieces.change_request" },
+      { id: "permission-piece-authorize-change", key: "technical.pieces.authorize_change" },
     ],
     roles: [
       { id: "role-technical", company_id: companyId, active: true },
@@ -78,6 +81,7 @@ function setupDatabase() {
     ],
     role_permissions: [
       { id: "grant-measurements", company_id: companyId, role_id: "role-technical", permission_id: "permission-measurements" },
+      { id: "grant-piece-authorize-change", company_id: companyId, role_id: "role-technical", permission_id: "permission-piece-authorize-change" },
     ],
   };
   const database = { tables, rejectClientUpdate: false, clientWrites: 0 };
@@ -719,6 +723,71 @@ describe("piece measurement and structural changes", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toContain("resolva a alteração estrutural pendente antes da liberação");
     expect(tables.technical_contract_pieces[0].status).toBe("aguardando_avaliacao");
+  });
+
+  it("creates a pending request to edit a piece", async () => {
+    const { tables } = prepareMeasuredPiece();
+    const formData = new FormData();
+    formData.set("piece_id", pieceId);
+    formData.set("code", "P1A");
+    formData.set("piece_type", "PORTA AJUSTADA");
+    formData.set("environment", "Sala ajustada");
+    formData.set("sale_width_mm", "2100");
+    formData.set("sale_height_mm", "1250");
+    formData.set("reason", "Corrigir cadastro importado do PDF.");
+
+    const result = await requestPieceEditAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_piece_change_requests[0]).toMatchObject({
+      piece_id: pieceId,
+      request_type: "edit",
+      status: "pendente",
+      requested_by_profile_id: "profile-id",
+      requested_changes: {
+        code: "P1A",
+        piece_type: "PORTA AJUSTADA",
+        environment: "Sala ajustada",
+        sale_width_mm: 2100,
+        sale_height_mm: 1250,
+      },
+    });
+  });
+
+  it("creates a pending request to delete a piece", async () => {
+    const { tables } = prepareMeasuredPiece();
+    const formData = new FormData();
+    formData.set("piece_id", pieceId);
+    formData.set("reason", "Peça lançada em duplicidade.");
+
+    const result = await requestPieceDeleteAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_piece_change_requests[0]).toMatchObject({
+      piece_id: pieceId,
+      request_type: "delete",
+      status: "pendente",
+      reason: "Peça lançada em duplicidade.",
+    });
+  });
+
+  it("soft deletes a piece when authorized", async () => {
+    const { tables } = prepareMeasuredPiece();
+    const formData = new FormData();
+    formData.set("piece_id", pieceId);
+    formData.set("reason", "Peça cadastrada incorretamente.");
+
+    const result = await deletePieceAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_contract_pieces[0]).toMatchObject({
+      status: "cancelada",
+    });
+    expect(tables.technical_contract_pieces[0].deleted_at).toBeTruthy();
+    expect(tables.audit_logs.at(-1)).toMatchObject({
+      entity: "technical_contract_pieces",
+      action: "piece_delete",
+    });
   });
 
   it("creates a pending request to delete a release batch", async () => {

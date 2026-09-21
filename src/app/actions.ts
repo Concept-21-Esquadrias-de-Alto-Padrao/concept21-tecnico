@@ -18,6 +18,10 @@ import {
   manualContractSchema,
   meetingSchema,
   pieceCemSchema,
+  pieceAuthorizedDeleteSchema,
+  pieceChangeDecisionSchema,
+  pieceDeleteRequestSchema,
+  pieceEditRequestSchema,
   pieceMeasurementSchema,
   pieceRegistrationSchema,
   pieceStructuralChangeSchema,
@@ -71,6 +75,7 @@ import type {
   ProductionContract,
   TechnicalContractStageKey,
   TechnicalCorrection,
+  TechnicalPieceChangeRequest,
   TechnicalPiece,
   TechnicalProdBatch,
   TechnicalRelease,
@@ -2028,79 +2033,379 @@ export async function createPieceStructuralChangeAction(_: ActionState, formData
   }
 }
 
+type PieceEditChange = {
+  code: string;
+  piece_type: string | null;
+  environment: string | null;
+  sale_width_mm: number | null;
+  sale_height_mm: number | null;
+};
+
+function pieceEditChangeFromRegistration(parsed: {
+  code: string;
+  piece_type?: string | null;
+  environment?: string | null;
+  sale_width_mm?: number | null;
+  sale_height_mm?: number | null;
+}): PieceEditChange {
+  return {
+    code: parsed.code,
+    piece_type: parsed.piece_type ?? null,
+    environment: parsed.environment ?? null,
+    sale_width_mm: parsed.sale_width_mm ?? null,
+    sale_height_mm: parsed.sale_height_mm ?? null,
+  };
+}
+
+function pieceEditChangeFromRequest(request: TechnicalPieceChangeRequest) {
+  const changes = request.requested_changes ?? {};
+  const code = typeof changes.code === "string" ? changes.code.trim() : "";
+  if (!code) throw new Error("A solicitação de edição está sem o código da peça.");
+
+  return {
+    code,
+    piece_type: typeof changes.piece_type === "string" ? changes.piece_type : null,
+    environment: typeof changes.environment === "string" ? changes.environment : null,
+    sale_width_mm: typeof changes.sale_width_mm === "number" ? changes.sale_width_mm : null,
+    sale_height_mm: typeof changes.sale_height_mm === "number" ? changes.sale_height_mm : null,
+  } satisfies PieceEditChange;
+}
+
+async function canAuthorizePieceChange(context: ActionContext) {
+  return context.isMaster ||
+    await hasContextPermission(context, "technical.pieces.authorize_change") ||
+    await hasContextPermission(context, "technical.pieces.edit_released");
+}
+
+async function loadPieceForChange(context: ActionContext, pieceId: string) {
+  const { data: piece, error } = await context.admin
+    .from("technical_contract_pieces")
+    .select("*")
+    .eq("company_id", context.companyId)
+    .eq("id", pieceId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!piece) throw new Error("Peça não encontrada.");
+  const typedPiece = piece as TechnicalPiece;
+  if (typedPiece.deleted_at) throw new Error("Peça já excluída.");
+  return typedPiece;
+}
+
+async function assertPieceCodeAvailable(
+  context: ActionContext,
+  piece: Pick<TechnicalPiece, "id" | "contract_id" | "code">,
+  nextCode: string,
+) {
+  if (piece.code.toLowerCase() === nextCode.toLowerCase()) return;
+
+  const { data: duplicate, error } = await context.admin
+    .from("technical_contract_pieces")
+    .select("id")
+    .eq("company_id", context.companyId)
+    .eq("contract_id", piece.contract_id)
+    .ilike("code", nextCode)
+    .is("deleted_at", null)
+    .neq("id", piece.id)
+    .limit(1);
+
+  if (error) throw error;
+  if ((duplicate ?? []).length) throw new Error("Já existe outra peça ativa com este código.");
+}
+
+async function applyPieceRegistrationEdit(
+  context: ActionContext,
+  pieceId: string,
+  changes: PieceEditChange,
+  reason: string,
+) {
+  const source = await loadPieceForChange(context, pieceId);
+  await assertPieceCodeAvailable(context, source, changes.code);
+
+  const updatePayload = {
+    code: changes.code,
+    piece_type: changes.piece_type,
+    environment: changes.environment,
+    sale_width_mm: changes.sale_width_mm,
+    sale_height_mm: changes.sale_height_mm,
+  };
+
+  const { error } = await context.admin
+    .from("technical_contract_pieces")
+    .update(updatePayload)
+    .eq("company_id", context.companyId)
+    .eq("id", source.id);
+
+  if (error) throw error;
+
+  const { error: auditError } = await context.admin.from("audit_logs").insert({
+    company_id: context.companyId,
+    entity: "technical_contract_pieces",
+    entity_id: source.id,
+    action: "registration_update",
+    user_id: context.authUserId,
+    before_data: {
+      code: source.code,
+      piece_type: source.piece_type,
+      environment: source.environment,
+      sale_width_mm: source.sale_width_mm,
+      sale_height_mm: source.sale_height_mm,
+    },
+    after_data: updatePayload,
+    notes: `Ajuste cadastral autorizado. Motivo: ${reason}`,
+  });
+
+  if (auditError) throw auditError;
+  return source;
+}
+
+function assertPieceCanBeDeleted(piece: TechnicalPiece) {
+  if (piece.released_at || Boolean(piece.active_prod_batch_id) || ["liberada", "em_prod", "entregue"].includes(piece.status)) {
+    throw new Error(`${piece.code}: esta peça já foi liberada, está em PROD ou foi entregue. Cancele o fluxo vinculado antes de excluí-la.`);
+  }
+}
+
+async function applyPieceDelete(context: ActionContext, pieceId: string, reason: string) {
+  const source = await loadPieceForChange(context, pieceId);
+  assertPieceCanBeDeleted(source);
+
+  const deletedAt = new Date().toISOString();
+  const { error } = await context.admin
+    .from("technical_contract_pieces")
+    .update({
+      status: "cancelada",
+      deleted_at: deletedAt,
+    })
+    .eq("company_id", context.companyId)
+    .eq("id", source.id);
+
+  if (error) throw error;
+
+  const { error: auditError } = await context.admin.from("audit_logs").insert({
+    company_id: context.companyId,
+    entity: "technical_contract_pieces",
+    entity_id: source.id,
+    action: "piece_delete",
+    user_id: context.authUserId,
+    before_data: {
+      code: source.code,
+      piece_type: source.piece_type,
+      environment: source.environment,
+      status: source.status,
+      sale_width_mm: source.sale_width_mm,
+      sale_height_mm: source.sale_height_mm,
+    },
+    after_data: {
+      code: source.code,
+      status: "cancelada",
+      deleted_at: deletedAt,
+      reason,
+    },
+    notes: `Peça excluída com autorização. Motivo: ${reason}`,
+  });
+
+  if (auditError) throw auditError;
+  return source;
+}
+
+async function ensureNoPendingPieceChangeRequest(context: ActionContext, pieceId: string) {
+  const { data, error } = await context.admin
+    .from("technical_piece_change_requests")
+    .select("id")
+    .eq("company_id", context.companyId)
+    .eq("piece_id", pieceId)
+    .eq("status", "pendente")
+    .limit(1);
+
+  if (error && !isMissingRelationError(error)) throw error;
+  if ((data ?? []).length) {
+    throw new Error("Já existe uma solicitação pendente para esta peça. Aguarde a autorização antes de abrir outra.");
+  }
+}
+
+async function closePendingPieceChangeRequests(context: ActionContext, pieceId: string, reviewNotes: string) {
+  const { error } = await context.admin
+    .from("technical_piece_change_requests")
+    .update({
+      status: "cancelada",
+      reviewed_by_profile_id: context.profileId,
+      reviewed_at: new Date().toISOString(),
+      review_notes: reviewNotes,
+    })
+    .eq("company_id", context.companyId)
+    .eq("piece_id", pieceId)
+    .eq("status", "pendente");
+
+  if (error && !isMissingRelationError(error)) throw error;
+}
+
 export async function updatePieceRegistrationAction(_: ActionState, formData: FormData) {
   try {
-    const context = await getActionContext(
-      "technical.pieces.edit_released",
-      "Somente Gestor Técnico ou Administrador pode ajustar o cadastro da peça.",
-    );
+    const context = await getActionContext("technical.contracts.view");
+    if (!(await canAuthorizePieceChange(context))) {
+      throw new Error("Somente usuários autorizados podem ajustar o cadastro da peça.");
+    }
     const parsed = pieceRegistrationSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return invalidForm(parsed.error);
 
-    const { data: piece, error: pieceError } = await context.admin
-      .from("technical_contract_pieces")
-      .select("*")
-      .eq("company_id", context.companyId)
-      .eq("id", parsed.data.id)
-      .maybeSingle();
-
-    if (pieceError) throw pieceError;
-    if (!piece) throw new Error("Peça não encontrada.");
-
-    const source = piece as TechnicalPiece;
-    if (source.code.toLowerCase() !== parsed.data.code.toLowerCase()) {
-      const { data: duplicate, error: duplicateError } = await context.admin
-        .from("technical_contract_pieces")
-        .select("id")
-        .eq("company_id", context.companyId)
-        .eq("contract_id", source.contract_id)
-        .ilike("code", parsed.data.code)
-        .is("deleted_at", null)
-        .neq("id", source.id)
-        .limit(1);
-
-      if (duplicateError) throw duplicateError;
-      if ((duplicate ?? []).length) throw new Error("Já existe outra peça ativa com este código.");
-    }
-
-    const updatePayload = {
-      code: parsed.data.code,
-      piece_type: parsed.data.piece_type,
-      environment: parsed.data.environment,
-      sale_width_mm: parsed.data.sale_width_mm,
-      sale_height_mm: parsed.data.sale_height_mm,
-    };
-
-    const { error } = await context.admin
-      .from("technical_contract_pieces")
-      .update(updatePayload)
-      .eq("company_id", context.companyId)
-      .eq("id", parsed.data.id);
-
-    if (error) throw error;
-
-    const { error: auditError } = await context.admin.from("audit_logs").insert({
-      company_id: context.companyId,
-      entity: "technical_contract_pieces",
-      entity_id: source.id,
-      action: "registration_update",
-      user_id: context.authUserId,
-      before_data: {
-        code: source.code,
-        piece_type: source.piece_type,
-        environment: source.environment,
-        sale_width_mm: source.sale_width_mm,
-        sale_height_mm: source.sale_height_mm,
-      },
-      after_data: updatePayload,
-      notes: `Ajuste cadastral autorizado. Motivo: ${parsed.data.adjustment_reason}`,
-    });
-
-    if (auditError) throw auditError;
+    const source = await applyPieceRegistrationEdit(
+      context,
+      parsed.data.id,
+      pieceEditChangeFromRegistration(parsed.data),
+      parsed.data.adjustment_reason,
+    );
+    await closePendingPieceChangeRequests(context, source.id, "Peça editada diretamente por usuário autorizado.");
     revalidateTechnical(source.contract_id);
     return ok("Cadastro da peça atualizado.");
   } catch (error) {
     return fail(error);
+  }
+}
+
+export async function requestPieceEditAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.pieces.change_request");
+    const parsed = pieceEditRequestSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const source = await loadPieceForChange(context, parsed.data.piece_id);
+    const changes = pieceEditChangeFromRegistration(parsed.data);
+    await assertPieceCodeAvailable(context, source, changes.code);
+    await ensureNoPendingPieceChangeRequest(context, source.id);
+
+    const { error } = await context.admin.from("technical_piece_change_requests").insert({
+      company_id: context.companyId,
+      contract_id: source.contract_id,
+      piece_id: source.id,
+      request_type: "edit",
+      status: "pendente",
+      reason: parsed.data.reason,
+      requested_changes: changes,
+      requested_by_profile_id: context.profileId,
+    });
+
+    if (error) throw error;
+    revalidateTechnical(source.contract_id);
+    return ok("Solicitação de edição enviada para autorização.");
+  } catch (error) {
+    return fail(error, "Não foi possível solicitar a edição da peça.");
+  }
+}
+
+export async function requestPieceDeleteAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.pieces.change_request");
+    const parsed = pieceDeleteRequestSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const source = await loadPieceForChange(context, parsed.data.piece_id);
+    assertPieceCanBeDeleted(source);
+    await ensureNoPendingPieceChangeRequest(context, source.id);
+
+    const { error } = await context.admin.from("technical_piece_change_requests").insert({
+      company_id: context.companyId,
+      contract_id: source.contract_id,
+      piece_id: source.id,
+      request_type: "delete",
+      status: "pendente",
+      reason: parsed.data.reason,
+      requested_changes: null,
+      requested_by_profile_id: context.profileId,
+    });
+
+    if (error) throw error;
+    revalidateTechnical(source.contract_id);
+    return ok("Solicitação de exclusão enviada para autorização.");
+  } catch (error) {
+    return fail(error, "Não foi possível solicitar a exclusão da peça.");
+  }
+}
+
+export async function deletePieceAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.contracts.view");
+    if (!(await canAuthorizePieceChange(context))) {
+      throw new Error("Somente usuários autorizados podem excluir peças.");
+    }
+    const parsed = pieceAuthorizedDeleteSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const source = await applyPieceDelete(context, parsed.data.piece_id, parsed.data.reason);
+    await closePendingPieceChangeRequests(context, source.id, "Peça excluída diretamente por usuário autorizado.");
+
+    revalidateTechnical(source.contract_id);
+    return ok("Peça excluída do fluxo.");
+  } catch (error) {
+    return fail(error, "Não foi possível excluir a peça.");
+  }
+}
+
+export async function decidePieceChangeRequestAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.contracts.view");
+    if (!(await canAuthorizePieceChange(context))) {
+      throw new Error("Somente usuários autorizados podem analisar solicitações de peça.");
+    }
+    const parsed = pieceChangeDecisionSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const { data: request, error: requestError } = await context.admin
+      .from("technical_piece_change_requests")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("id", parsed.data.request_id)
+      .maybeSingle();
+
+    if (requestError) throw requestError;
+    if (!request) throw new Error("Solicitação não encontrada.");
+    const typedRequest = request as TechnicalPieceChangeRequest;
+    if (typedRequest.status !== "pendente") throw new Error("Esta solicitação já foi analisada.");
+
+    const reviewedAt = new Date().toISOString();
+    if (parsed.data.decision === "reject") {
+      const { error } = await context.admin
+        .from("technical_piece_change_requests")
+        .update({
+          status: "recusada",
+          reviewed_by_profile_id: context.profileId,
+          reviewed_at: reviewedAt,
+          review_notes: parsed.data.review_notes,
+        })
+        .eq("company_id", context.companyId)
+        .eq("id", typedRequest.id);
+
+      if (error) throw error;
+      revalidateTechnical(typedRequest.contract_id);
+      return ok("Solicitação recusada.");
+    }
+
+    if (typedRequest.request_type === "edit") {
+      await applyPieceRegistrationEdit(
+        context,
+        typedRequest.piece_id,
+        pieceEditChangeFromRequest(typedRequest),
+        typedRequest.reason,
+      );
+    } else {
+      await applyPieceDelete(context, typedRequest.piece_id, typedRequest.reason);
+    }
+
+    const { error: decisionError } = await context.admin
+      .from("technical_piece_change_requests")
+      .update({
+        status: "aprovada",
+        reviewed_by_profile_id: context.profileId,
+        reviewed_at: reviewedAt,
+        review_notes: parsed.data.review_notes,
+      })
+      .eq("company_id", context.companyId)
+      .eq("id", typedRequest.id);
+
+    if (decisionError) throw decisionError;
+    revalidateTechnical(typedRequest.contract_id);
+    return ok("Solicitação aprovada e aplicada.");
+  } catch (error) {
+    return fail(error, "Não foi possível analisar a solicitação.");
   }
 }
 

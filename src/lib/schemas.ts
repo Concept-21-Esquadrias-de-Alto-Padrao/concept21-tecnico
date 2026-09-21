@@ -204,6 +204,34 @@ export const pieceRegistrationSchema = z.object({
   adjustment_reason: z.string().trim().min(5, "Informe o motivo do ajuste."),
 });
 
+const pieceChangeBaseSchema = z.object({
+  piece_id: z.string().uuid(),
+  reason: z.string().trim().min(5, "Informe o motivo da solicitação."),
+});
+
+export const pieceEditRequestSchema = pieceChangeBaseSchema.extend({
+  code: z.string().trim().min(1, "Informe o código da peça."),
+  piece_type: optionalText,
+  environment: optionalText,
+  sale_width_mm: optionalNumber,
+  sale_height_mm: optionalNumber,
+});
+
+export const pieceDeleteRequestSchema = pieceChangeBaseSchema;
+export const pieceAuthorizedDeleteSchema = pieceDeleteRequestSchema;
+
+export const pieceChangeDecisionSchema = z.object({
+  request_id: z.string().uuid(),
+  decision: z.enum(["approve", "reject"]),
+  review_notes: z
+    .string()
+    .trim()
+    .min(3, "Informe uma observação sobre a decisão.")
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value ? value : null)),
+});
+
 export const splitPieceSchema = z.object({
   id: z.string().uuid(),
   suffix: z.string().trim().min(1, "Informe o sufixo da peça desdobrada."),

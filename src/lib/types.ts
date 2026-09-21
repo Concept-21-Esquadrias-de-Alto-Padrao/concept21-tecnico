@@ -268,6 +268,23 @@ export type TechnicalPiece = {
   updated_at: string;
 };
 
+export type TechnicalPieceChangeRequest = {
+  id: string;
+  company_id: string;
+  contract_id: string;
+  piece_id: string;
+  request_type: "edit" | "delete";
+  status: "pendente" | "aprovada" | "recusada" | "cancelada";
+  reason: string;
+  requested_changes: Record<string, unknown> | null;
+  requested_by_profile_id: string | null;
+  reviewed_by_profile_id: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TechnicalMeeting = {
   id: string;
   company_id: string;
@@ -579,6 +596,7 @@ export type TechnicalSnapshot = {
   contracts: ProductionContract[];
   technicalContracts: TechnicalContract[];
   pieces: TechnicalPiece[];
+  pieceChangeRequests: TechnicalPieceChangeRequest[];
   meetings: TechnicalMeeting[];
   stageValidations: TechnicalStageValidation[];
   stageValidationParticipants: TechnicalStageValidationParticipant[];
