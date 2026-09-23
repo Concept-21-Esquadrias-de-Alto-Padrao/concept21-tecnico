@@ -24,6 +24,7 @@ export const TECHNICAL_PERMISSIONS = [
   "technical.meetings.manage",
   "technical.actions.view",
   "technical.actions.manage",
+  "technical.actions.validate",
   "technical.actions.reopen",
   "technical.followup.view",
   "technical.followup.manage",
@@ -99,7 +100,7 @@ export function getWorkItemPermissions(access: PermissionLookup) {
     canViewActions,
     canViewCorrections,
     canManageActions: canViewActions && allowed("technical.actions.manage"),
-    canValidateActions: canViewActions && allowed("technical.actions.reopen"),
+    canValidateActions: canViewActions && allowed("technical.actions.validate"),
     canManageCorrections: canViewCorrections && allowed("technical.corrections.manage"),
   };
 }

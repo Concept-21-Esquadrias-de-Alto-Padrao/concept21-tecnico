@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { requirePermissionAccess } from "@/lib/server-access";
-import { cancelReleaseBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, deletePieceAction, receiveCommercialFolderAction, reopenContractStageAction, requestPieceDeleteAction, requestPieceEditAction, requestReleaseBatchDeleteAction, signStageValidationAction, splitPieceAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
+import { cancelReleaseBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, deletePieceAction, receiveCommercialFolderAction, reopenContractStageAction, requestPieceDeleteAction, requestPieceEditAction, requestReleaseBatchDeleteAction, signStageValidationAction, splitPieceAction, transitionTechnicalActionAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server-access", () => ({
@@ -68,6 +68,7 @@ function setupDatabase() {
     platform_notifications: [],
     permissions: [
       { id: "permission-contracts-view", key: "technical.contracts.view" },
+      { id: "permission-actions-validate", key: "technical.actions.validate" },
       { id: "permission-measurements", key: "technical.measurements.manage" },
       { id: "permission-release", key: "technical.pieces.release" },
       { id: "permission-piece-change-request", key: "technical.pieces.change_request" },
@@ -80,6 +81,7 @@ function setupDatabase() {
       { id: "user-role-technical", company_id: companyId, profile_id: "profile-id", role_id: "role-technical" },
     ],
     role_permissions: [
+      { id: "grant-actions-validate", company_id: companyId, role_id: "role-technical", permission_id: "permission-actions-validate" },
       { id: "grant-measurements", company_id: companyId, role_id: "role-technical", permission_id: "permission-measurements" },
       { id: "grant-piece-authorize-change", company_id: companyId, role_id: "role-technical", permission_id: "permission-piece-authorize-change" },
     ],
@@ -445,6 +447,35 @@ describe("createCorrectionAction in the actions center", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toContain("não pertence ao contrato selecionado");
     expect(tables.technical_corrections).toHaveLength(0);
+  });
+});
+
+describe("transitionTechnicalActionAction", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("uses the dedicated validation permission when validating an action", async () => {
+    const { tables } = setupDatabase();
+    tables.technical_actions.push({
+      id: pieceId,
+      company_id: companyId,
+      contract_id: contractId,
+      status: "em_andamento",
+      validated_at: null,
+      completed_at: null,
+    });
+    const formData = new FormData();
+    formData.set("id", pieceId);
+    formData.set("next_status", "validada");
+
+    const result = await transitionTechnicalActionAction(initialState, formData);
+
+    expect(result.ok, result.message).toBe(true);
+    expect(requirePermissionAccess).toHaveBeenCalledWith(
+      "technical.actions.validate",
+      "Você não possui permissão para validar ações técnicas.",
+    );
+    expect(tables.technical_actions[0]).toMatchObject({ status: "validada" });
+    expect(tables.technical_actions[0].validated_at).toEqual(expect.any(String));
   });
 });
 

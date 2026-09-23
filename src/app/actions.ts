@@ -1648,20 +1648,24 @@ export async function updateTechnicalActionAction(_: ActionState, formData: Form
 export async function transitionTechnicalActionAction(first: ActionState | FormData, second?: FormData) {
   try {
     const formData = actionFormData(first, second);
-    const context = await getActionContext("technical.actions.manage");
     const parsed = actionTransitionSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return invalidForm(parsed.error);
-
-    if (["aberta", "validada"].includes(parsed.data.next_status)) {
-      const canReopen = await hasContextPermission(context, "technical.actions.reopen");
-      if (!canReopen) {
-        throw new Error(
-          parsed.data.next_status === "validada"
-            ? "Somente Gestor Técnico ou Administrador pode validar ações."
-            : "Você não possui permissão para reabrir ações.",
-        );
-      }
-    }
+    const transitionAccess =
+      parsed.data.next_status === "validada"
+        ? {
+            permission: "technical.actions.validate",
+            message: "Você não possui permissão para validar ações técnicas.",
+          }
+        : parsed.data.next_status === "aberta"
+          ? {
+              permission: "technical.actions.reopen",
+              message: "Você não possui permissão para reabrir ações técnicas.",
+            }
+          : {
+              permission: "technical.actions.manage",
+              message: "Você não possui permissão para gerenciar ações técnicas.",
+            };
+    const context = await getActionContext(transitionAccess.permission, transitionAccess.message);
 
     const now = new Date().toISOString();
     const { data: current, error: currentError } = await context.admin

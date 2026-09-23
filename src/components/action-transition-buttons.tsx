@@ -50,7 +50,7 @@ export function ActionTransitionButtons({
   canValidate,
   className,
 }: ActionTransitionButtonsProps) {
-  if (!canManage) return null;
+  if (!canManage && !canValidate) return null;
 
   const terminal = ["concluida", "cancelada"].includes(action.status);
   const canMoveToProgress = !terminal && !["em_andamento", "validada"].includes(action.status);
@@ -59,26 +59,30 @@ export function ActionTransitionButtons({
 
   return (
     <div className={cn("mt-3 flex flex-wrap gap-2", className)}>
-      <TransitionButton
-        actionId={action.id}
-        disabled={!canMoveToProgress}
-        label="Em andamento"
-        nextStatus="em_andamento"
-      />
+      {canManage ? (
+        <TransitionButton
+          actionId={action.id}
+          disabled={!canMoveToProgress}
+          label="Em andamento"
+          nextStatus="em_andamento"
+        />
+      ) : null}
       <TransitionButton
         actionId={action.id}
         disabled={validateDisabled}
         label="Validar"
         nextStatus="validada"
-        title={!canValidate ? "Somente Gestor Técnico ou Administrador pode validar." : undefined}
+        title={!canValidate ? "Seu nível de acesso não permite validar ações técnicas." : undefined}
       />
-      <TransitionButton
-        actionId={action.id}
-        disabled={!canConclude}
-        label="Concluir"
-        nextStatus="concluida"
-        title={!canConclude ? "A ação precisa ser validada antes da conclusão." : undefined}
-      />
+      {canManage ? (
+        <TransitionButton
+          actionId={action.id}
+          disabled={!canConclude}
+          label="Concluir"
+          nextStatus="concluida"
+          title={!canConclude ? "A ação precisa ser validada antes da conclusão." : undefined}
+        />
+      ) : null}
     </div>
   );
 }

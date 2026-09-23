@@ -81,6 +81,11 @@ describe("actions center permissions", () => {
     expect(getWorkItemPermissions(access)).toMatchObject({ canViewActions: true, canManageActions: true, canValidateActions: false, canViewCorrections: false, canManageCorrections: false });
   });
 
+  it("uses the dedicated action validation permission", () => {
+    const access = { isMaster: false, permissions: { "technical.actions.view": true, "technical.actions.validate": true } };
+    expect(getWorkItemPermissions(access)).toMatchObject({ canViewActions: true, canManageActions: false, canValidateActions: true });
+  });
+
   it("preserves full administrative access", () => {
     expect(Object.values(getWorkItemPermissions({ isMaster: true, permissions: {} })).every(Boolean)).toBe(true);
   });
