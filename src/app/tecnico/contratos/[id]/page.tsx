@@ -19,7 +19,7 @@ import type { ReactNode } from "react";
 import {
   cancelVisitAction,
   cancelReleaseBatchAction,
-  checkProdBatchFormAction,
+  checkProdBatchAction,
   createDoubtAction,
   createMeetingAction,
   createPieceStructuralChangeAction,
@@ -48,7 +48,7 @@ import {
   updatePieceCemAction,
   updatePieceMeasurementAction,
   updatePieceRegistrationAction,
-  approveProdBatchFormAction,
+  approveProdBatchAction,
 } from "@/app/actions";
 import { TechnicalActionsPanel } from "@/components/technical-actions-panel";
 import { buildTechnicalWorkItems, filterTechnicalWorkItems } from "@/lib/technical-work-items";
@@ -57,6 +57,7 @@ import { DeleteTechnicalContractForm } from "@/components/delete-technical-contr
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody } from "@/components/panel";
 import { ProjectMeasurementFields } from "@/components/project-measurement-fields";
+import { ProdManufacturingMeasurements } from "@/components/prod-manufacturing-measurements";
 import { StatusBadge } from "@/components/status-badge";
 import { StatCard } from "@/components/stat-card";
 import { VisitReportPdfButton } from "@/components/visit-report-pdf-button";
@@ -1492,6 +1493,22 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const visits = snapshot.visits.filter((visit) => visit.contract_id === id);
   const corrections = snapshot.corrections.filter((correction) => correction.contract_id === id && !correction.deleted_at);
   const prodBatches = snapshot.prodBatches.filter((prod) => prod.contract_id === id && !prod.deleted_at);
+  const currentManufacturingByPieceId = new Map<
+    string,
+    { width: number; height: number; batchNumber: string; revision: number }
+  >();
+  for (const prod of prodBatches) {
+    if (prod.current_revision < 1) continue;
+    for (const measurement of snapshot.prodManufacturingMeasurements) {
+      if (measurement.prod_batch_id !== prod.id || measurement.prod_revision !== prod.current_revision) continue;
+      currentManufacturingByPieceId.set(measurement.piece_id, {
+        width: measurement.manufacturing_width_mm,
+        height: measurement.manufacturing_height_mm,
+        batchNumber: prod.batch_number,
+        revision: prod.current_revision,
+      });
+    }
+  }
   const doubts = snapshot.doubts.filter((doubt) => doubt.contract_id === id);
   const releaseProgress = calculateReleaseProgress(pieces);
   const nextVisit = visits
@@ -1600,6 +1617,9 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
       !piece.active_prod_batch_id &&
       signedReleasePieceIds.has(piece.id),
   );
+  const activePieces = pieces.filter((piece) => piece.status !== "cancelada");
+  const allActivePiecesLinkedToProd =
+    activePieces.length > 0 && activePieces.every((piece) => Boolean(piece.active_prod_batch_id));
   const pendingReleaseSignatureCount = releases.filter(
     (release) => !isReleaseBatchSigned(release, releaseParticipantsByReleaseId.get(release.id) ?? []),
   ).length;
@@ -1719,8 +1739,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             </div>
           </div>
         </PanelBody>
-        <div className="overflow-x-auto border-t border-border px-4">
-          <nav className="flex min-w-max gap-1">
+        <div className="border-t border-border px-4 py-2">
+          <nav className="flex flex-wrap gap-1">
             {tabLinks.map(([href, label]) => (
               <a key={href} href={href} className="border-b-2 border-transparent px-3 py-3 text-sm font-semibold text-muted-foreground hover:border-accent hover:text-charcoal">
                 {label}
@@ -2230,7 +2250,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 </summary>
 
                 <div className="space-y-4 border-t border-border p-3">
-                  <dl className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
+                  <dl className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-5">
                     <div className="rounded-md bg-muted/50 p-2">
                       <dt className="text-muted-foreground">Venda</dt>
                       <dd className="mt-1 font-semibold text-charcoal">{piece.sale_width_mm ?? "-"} x {piece.sale_height_mm ?? "-"}</dd>
@@ -2238,6 +2258,19 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     <div className="rounded-md bg-muted/50 p-2">
                       <dt className="text-muted-foreground">Medição</dt>
                       <dd className="mt-1 font-semibold text-charcoal">{piece.project_only ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}</dd>
+                    </div>
+                    <div className="rounded-md bg-muted/50 p-2">
+                      <dt className="text-muted-foreground">Fabricação</dt>
+                      <dd className="mt-1 font-semibold text-charcoal">
+                        {currentManufacturingByPieceId.has(piece.id)
+                          ? `${currentManufacturingByPieceId.get(piece.id)?.width} x ${currentManufacturingByPieceId.get(piece.id)?.height} mm`
+                          : "Não informada"}
+                      </dd>
+                      {currentManufacturingByPieceId.has(piece.id) ? (
+                        <dd className="mt-1 text-[11px] text-muted-foreground">
+                          {currentManufacturingByPieceId.get(piece.id)?.batchNumber} · revisão {currentManufacturingByPieceId.get(piece.id)?.revision}
+                        </dd>
+                      ) : null}
                     </div>
                     <div className="rounded-md bg-muted/50 p-2">
                       <dt className="text-muted-foreground">CEM</dt>
@@ -2392,6 +2425,9 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             {prodBatches.map((prod) => {
               const batchPieceIds = snapshot.prodBatchPieces.filter((link) => link.prod_batch_id === prod.id).map((link) => link.piece_id);
               const batchPieces = pieces.filter((piece) => batchPieceIds.includes(piece.id));
+              const manufacturingMeasurements = snapshot.prodManufacturingMeasurements.filter(
+                (measurement) => measurement.prod_batch_id === prod.id,
+              );
               const deliveries = snapshot.deliveries.filter((delivery) => delivery.prod_batch_id === prod.id);
               return (
                 <article key={prod.id} className="rounded-md border border-border bg-white p-3 text-sm">
@@ -2402,18 +2438,23 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     </div>
                     <StatusBadge status={prod.status} type="prod" />
                   </div>
+                  <ProdManufacturingMeasurements
+                    prod={prod}
+                    pieces={batchPieces}
+                    measurements={manufacturingMeasurements}
+                    profiles={snapshot.profiles}
+                    canManage={canManageProds}
+                  />
                   <div className="mt-3 flex flex-wrap gap-2">
                     {canCheckProds && prod.status === "aguardando_conferencia" ? (
-                      <form action={checkProdBatchFormAction}>
+                      <ActionForm action={checkProdBatchAction} submitLabel="Conferir" className="space-y-0">
                         <input type="hidden" name="id" value={prod.id} />
-                        <button className="rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold hover:bg-muted">Conferir</button>
-                      </form>
+                      </ActionForm>
                     ) : null}
                     {canApproveProds && prod.status === "aguardando_aprovacao" ? (
-                      <form action={approveProdBatchFormAction}>
+                      <ActionForm action={approveProdBatchAction} submitLabel="Aprovar" className="space-y-0">
                         <input type="hidden" name="id" value={prod.id} />
-                        <button className="rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-foreground hover:bg-orange-500">Aprovar</button>
-                      </form>
+                      </ActionForm>
                     ) : null}
                   </div>
                   {canManageProds && prod.status === "aprovado" ? (
@@ -2445,7 +2486,9 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           </div>
           {canManageProds && !canCreateProdBatch ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              {pendingReleaseSignatureCount
+              {allActivePiecesLinkedToProd
+                ? "Todas as peças ativas já estão vinculadas a uma PROD. Não há novas peças disponíveis para montar outro PROD."
+                : pendingReleaseSignatureCount
                 ? "Há lote(s) de liberação aguardando assinatura antes de montar PROD."
                 : "Nenhuma peça está pronta para PROD. A peça precisa estar em lote validado e com cadastro/conferência no CEM."}
             </div>

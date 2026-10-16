@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  approveProdBatchFormAction,
-  checkProdBatchFormAction,
+  approveProdBatchAction,
+  checkProdBatchAction,
   confirmDepartmentDeliveryFormAction,
   createProdBatchAction,
   deliverDepartmentDocumentAction,
@@ -10,6 +10,7 @@ import {
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/panel";
+import { ProdManufacturingMeasurements } from "@/components/prod-manufacturing-measurements";
 import { StatusBadge } from "@/components/status-badge";
 import {
   appNavigationPermissionKeys,
@@ -42,6 +43,9 @@ export default async function TechnicalProdsPage() {
               const contract = snapshot.contracts.find((item) => item.id === prod.contract_id);
               const links = snapshot.prodBatchPieces.filter((link) => link.prod_batch_id === prod.id);
               const pieces = snapshot.pieces.filter((piece) => links.some((link) => link.piece_id === piece.id));
+              const manufacturingMeasurements = snapshot.prodManufacturingMeasurements.filter(
+                (measurement) => measurement.prod_batch_id === prod.id,
+              );
               const deliveries = snapshot.deliveries.filter((delivery) => delivery.prod_batch_id === prod.id);
               return (
                 <article key={prod.id} className="rounded-md border border-border bg-white p-3 text-sm">
@@ -54,12 +58,23 @@ export default async function TechnicalProdsPage() {
                     </div>
                     <StatusBadge status={prod.status} type="prod" />
                   </div>
+                  <ProdManufacturingMeasurements
+                    prod={prod}
+                    pieces={pieces}
+                    measurements={manufacturingMeasurements}
+                    profiles={snapshot.profiles}
+                    canManage={canManage}
+                  />
                   <div className="mt-3 flex flex-wrap gap-2">
                     {canCheck && prod.status === "aguardando_conferencia" ? (
-                      <form action={checkProdBatchFormAction}><input type="hidden" name="id" value={prod.id} /><button className="rounded-md border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">Conferir</button></form>
+                      <ActionForm action={checkProdBatchAction} submitLabel="Conferir" className="space-y-0">
+                        <input type="hidden" name="id" value={prod.id} />
+                      </ActionForm>
                     ) : null}
                     {canApprove && prod.status === "aguardando_aprovacao" ? (
-                      <form action={approveProdBatchFormAction}><input type="hidden" name="id" value={prod.id} /><button className="rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-foreground hover:bg-orange-500">Aprovar</button></form>
+                      <ActionForm action={approveProdBatchAction} submitLabel="Aprovar" className="space-y-0">
+                        <input type="hidden" name="id" value={prod.id} />
+                      </ActionForm>
                     ) : null}
                   </div>
                   {canManage && prod.status === "aprovado" ? (

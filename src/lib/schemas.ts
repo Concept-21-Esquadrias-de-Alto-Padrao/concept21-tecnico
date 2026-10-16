@@ -313,6 +313,11 @@ export const prodBatchTransitionSchema = z.object({
   id: z.string().uuid(),
 });
 
+export const prodManufacturingMeasurementsSchema = z.object({
+  prod_batch_id: z.string().uuid(),
+  change_reason: z.string().trim().min(5, "Informe o motivo do registro ou da revisão."),
+});
+
 export const deliverySchema = z.object({
   prod_batch_id: z.string().uuid(),
   department: z.enum(DEPARTMENT_KEYS),

@@ -27,6 +27,7 @@ import {
   pieceStructuralChangeSchema,
   prodBatchSchema,
   prodBatchTransitionSchema,
+  prodManufacturingMeasurementsSchema,
   receiveFolderSchema,
   reopenContractStageSchema,
   releaseBatchAuthorizedDeleteSchema,
@@ -2129,6 +2130,7 @@ async function applyPieceRegistrationEdit(
   const updatePayload = {
     code: changes.code,
     piece_type: changes.piece_type,
+    description: changes.piece_type,
     environment: changes.environment,
     sale_width_mm: changes.sale_width_mm,
     sale_height_mm: changes.sale_height_mm,
@@ -2151,6 +2153,7 @@ async function applyPieceRegistrationEdit(
     before_data: {
       code: source.code,
       piece_type: source.piece_type,
+      description: source.description,
       environment: source.environment,
       sale_width_mm: source.sale_width_mm,
       sale_height_mm: source.sale_height_mm,
@@ -3702,6 +3705,87 @@ export async function createProdBatchAction(_: ActionState, formData: FormData) 
   }
 }
 
+export async function saveProdManufacturingMeasurementsAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.prods.manage");
+    const parsed = prodManufacturingMeasurementsSchema.safeParse(formDataToObject(formData));
+    if (!parsed.success) return invalidForm(parsed.error);
+
+    const { data: prod, error: prodError } = await context.admin
+      .from("technical_prod_batches")
+      .select("id, contract_id, current_revision")
+      .eq("company_id", context.companyId)
+      .eq("id", parsed.data.prod_batch_id)
+      .maybeSingle();
+    if (prodError) throw prodError;
+    if (!prod) throw new Error("PROD não encontrado.");
+
+    const { data: links, error: linksError } = await context.admin
+      .from("technical_prod_batch_pieces")
+      .select("piece_id")
+      .eq("prod_batch_id", parsed.data.prod_batch_id);
+    if (linksError) throw linksError;
+    if (!(links ?? []).length) throw new Error("Esta PROD não possui peças vinculadas.");
+
+    const measurements = (links ?? []).map((link) => {
+      const pieceId = String((link as { piece_id: string }).piece_id);
+      const width = Number(formData.get(`manufacturing_width_mm_${pieceId}`));
+      const height = Number(formData.get(`manufacturing_height_mm_${pieceId}`));
+      if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+        throw new Error("Informe largura e altura de fabricação válidas para todas as peças da PROD.");
+      }
+      return {
+        piece_id: pieceId,
+        manufacturing_width_mm: width,
+        manufacturing_height_mm: height,
+      };
+    });
+
+    const { data: nextRevision, error } = await context.admin.rpc(
+      "save_prod_manufacturing_measurement_revision",
+      {
+        p_company_id: context.companyId,
+        p_prod_batch_id: parsed.data.prod_batch_id,
+        p_recorded_by_profile_id: context.profileId,
+        p_auth_user_id: context.authUserId,
+        p_change_reason: parsed.data.change_reason,
+        p_measurements: measurements,
+      },
+    );
+    if (error) throw error;
+
+    const typedProd = prod as { contract_id: string; current_revision?: number | null };
+    revalidateTechnical(typedProd.contract_id);
+    return ok(`Revisão ${Number(nextRevision ?? (typedProd.current_revision ?? 0) + 1)} das medidas de fabricação registrada. A PROD voltou para conferência.`);
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+async function loadCurrentProdManufacturingMeasurements(
+  context: ActionContext,
+  prodBatchId: string,
+  revision: number,
+) {
+  if (revision <= 0) throw new Error("Registre as medidas efetivas de fabricação antes de conferir a PROD.");
+
+  const [{ data: links, error: linksError }, { data: measurements, error: measurementsError }] = await Promise.all([
+    context.admin.from("technical_prod_batch_pieces").select("piece_id").eq("prod_batch_id", prodBatchId),
+    context.admin
+      .from("technical_prod_piece_manufacturing_measurements")
+      .select("*")
+      .eq("company_id", context.companyId)
+      .eq("prod_batch_id", prodBatchId)
+      .eq("prod_revision", revision),
+  ]);
+  if (linksError) throw linksError;
+  if (measurementsError) throw measurementsError;
+  if (!(links ?? []).length || (measurements ?? []).length !== (links ?? []).length) {
+    throw new Error("A revisão atual não possui medidas de fabricação para todas as peças da PROD.");
+  }
+  return measurements ?? [];
+}
+
 export async function checkProdBatchAction(first: ActionState | FormData, second?: FormData) {
   try {
     const formData = actionFormData(first, second);
@@ -3711,17 +3795,21 @@ export async function checkProdBatchAction(first: ActionState | FormData, second
 
     const { data: prod, error: prodError } = await context.admin
       .from("technical_prod_batches")
-      .select("contract_id")
+      .select("contract_id, current_revision")
       .eq("company_id", context.companyId)
       .eq("id", parsed.data.id)
       .maybeSingle();
     if (prodError) throw prodError;
     if (!prod) throw new Error("PROD não encontrado.");
 
+    const typedProd = prod as { contract_id: string; current_revision: number };
+    await loadCurrentProdManufacturingMeasurements(context, parsed.data.id, typedProd.current_revision ?? 0);
+
     const { error } = await context.admin
       .from("technical_prod_batches")
       .update({
         status: "aguardando_aprovacao",
+        cem_checked: true,
         checked_by_profile_id: context.profileId,
         checked_at: new Date().toISOString(),
       })
@@ -3729,7 +3817,7 @@ export async function checkProdBatchAction(first: ActionState | FormData, second
       .eq("id", parsed.data.id);
     if (error) throw error;
 
-    revalidateTechnical(String((prod as { contract_id: string }).contract_id));
+    revalidateTechnical(typedProd.contract_id);
     return ok("PROD conferido.");
   } catch (error) {
     return fail(error);
@@ -3756,15 +3844,24 @@ export async function approveProdBatchAction(first: ActionState | FormData, seco
     const allowed = canApproveProd({ prod: typedProd, isManager: true });
     if (!allowed.ok) throw new Error(allowed.reason ?? "PROD não pode ser aprovado.");
 
+    const manufacturingMeasurements = await loadCurrentProdManufacturingMeasurements(
+      context,
+      parsed.data.id,
+      typedProd.current_revision ?? 0,
+    );
+
     const { data: pieces } = await context.admin
       .from("technical_prod_batch_pieces")
       .select("*, piece:technical_contract_pieces(*)")
       .eq("prod_batch_id", parsed.data.id);
+    const approvedAt = new Date().toISOString();
     const snapshot = {
       prod: typedProd,
       pieces: pieces ?? [],
+      manufacturing_revision: typedProd.current_revision,
+      manufacturing_measurements: manufacturingMeasurements,
       approved_by_profile_id: context.profileId,
-      approved_at: new Date().toISOString(),
+      approved_at: approvedAt,
     };
 
     const { error } = await context.admin
@@ -3772,7 +3869,7 @@ export async function approveProdBatchAction(first: ActionState | FormData, seco
       .update({
         status: "aprovado",
         approved_by_profile_id: context.profileId,
-        approved_at: new Date().toISOString(),
+        approved_at: approvedAt,
         approved_snapshot: snapshot,
       })
       .eq("company_id", context.companyId)

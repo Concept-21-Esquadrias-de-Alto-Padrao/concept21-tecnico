@@ -470,6 +470,7 @@ export type TechnicalProdBatch = {
   approved_at: string | null;
   approved_snapshot: Record<string, unknown> | null;
   correction_round: number;
+  current_revision: number;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -479,6 +480,20 @@ export type TechnicalProdBatchPiece = {
   id: string;
   prod_batch_id: string;
   piece_id: string;
+};
+
+export type TechnicalProdPieceManufacturingMeasurement = {
+  id: string;
+  company_id: string;
+  contract_id: string;
+  prod_batch_id: string;
+  piece_id: string;
+  prod_revision: number;
+  manufacturing_width_mm: number;
+  manufacturing_height_mm: number;
+  change_reason: string;
+  recorded_by_profile_id: string | null;
+  created_at: string;
 };
 
 export type TechnicalProdDocument = {
@@ -610,6 +625,7 @@ export type TechnicalSnapshot = {
   corrections: TechnicalCorrection[];
   prodBatches: TechnicalProdBatch[];
   prodBatchPieces: TechnicalProdBatchPiece[];
+  prodManufacturingMeasurements: TechnicalProdPieceManufacturingMeasurement[];
   prodDocuments: TechnicalProdDocument[];
   deliveries: TechnicalDepartmentDelivery[];
   doubts: TechnicalDoubt[];

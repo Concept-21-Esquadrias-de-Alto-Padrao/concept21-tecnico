@@ -17,6 +17,7 @@ import type {
   TechnicalPieceChangeRequest,
   TechnicalProdBatch,
   TechnicalProdBatchPiece,
+  TechnicalProdPieceManufacturingMeasurement,
   TechnicalProdDocument,
   TechnicalRelease,
   TechnicalReleaseChangeRequest,
@@ -67,6 +68,7 @@ function emptySnapshot(): TechnicalSnapshot {
     corrections: [],
     prodBatches: [],
     prodBatchPieces: [],
+    prodManufacturingMeasurements: [],
     prodDocuments: [],
     deliveries: [],
     doubts: [],
@@ -132,6 +134,9 @@ function filterSnapshotToVisibleContracts(snapshot: TechnicalSnapshot) {
   );
   snapshot.prodBatchPieces = snapshot.prodBatchPieces.filter(
     (link) => visibleProdBatchIds.has(link.prod_batch_id) && visiblePieceIds.has(link.piece_id),
+  );
+  snapshot.prodManufacturingMeasurements = snapshot.prodManufacturingMeasurements.filter(
+    (measurement) => visibleProdBatchIds.has(measurement.prod_batch_id) && visiblePieceIds.has(measurement.piece_id),
   );
   snapshot.prodDocuments = snapshot.prodDocuments.filter((document) =>
     visibleProdBatchIds.has(document.prod_batch_id),
@@ -381,6 +386,17 @@ async function loadTechnicalSnapshot(
       },
     });
     addSnapshotQuery(queries, include, {
+      key: "prodManufacturingMeasurements",
+      optionalMissing: true,
+      load: () => supabase
+        .from("technical_prod_piece_manufacturing_measurements")
+        .select("*")
+        .order("prod_revision", { ascending: false }),
+      apply: (target, data) => {
+        target.prodManufacturingMeasurements = data as TechnicalProdPieceManufacturingMeasurement[];
+      },
+    });
+    addSnapshotQuery(queries, include, {
       key: "prodDocuments",
       optionalMissing: true,
       load: () => supabase.from("technical_prod_documents").select("*").order("created_at", { ascending: false }),
@@ -499,6 +515,7 @@ export async function getTechnicalContractDetailData(contractId: string) {
       "corrections",
       "prodBatches",
       "prodBatchPieces",
+      "prodManufacturingMeasurements",
       "prodDocuments",
       "deliveries",
       "doubts",
@@ -524,9 +541,23 @@ export async function getTechnicalOperationalData() {
       "corrections",
       "prodBatches",
       "prodBatchPieces",
+      "prodManufacturingMeasurements",
       "prodDocuments",
       "deliveries",
       "doubts",
+    ]),
+  );
+}
+
+export async function getTechnicalPieceChangeRequestsData() {
+  return loadTechnicalSnapshot(
+    includeKeys([
+      "clients",
+      "profiles",
+      "contracts",
+      "technicalContracts",
+      "pieces",
+      "pieceChangeRequests",
     ]),
   );
 }

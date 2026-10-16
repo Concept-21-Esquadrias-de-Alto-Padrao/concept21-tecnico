@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { requirePermissionAccess } from "@/lib/server-access";
-import { cancelReleaseBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, deletePieceAction, receiveCommercialFolderAction, reopenContractStageAction, requestPieceDeleteAction, requestPieceEditAction, requestReleaseBatchDeleteAction, signStageValidationAction, splitPieceAction, transitionTechnicalActionAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
+import { cancelReleaseBatchAction, checkProdBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, deletePieceAction, receiveCommercialFolderAction, reopenContractStageAction, requestPieceDeleteAction, requestPieceEditAction, requestReleaseBatchDeleteAction, saveProdManufacturingMeasurementsAction, signStageValidationAction, splitPieceAction, transitionTechnicalActionAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server-access", () => ({
@@ -18,6 +18,7 @@ const managerId = "00000000-0000-4000-8000-000000000005";
 const followupId = "00000000-0000-4000-8000-000000000006";
 const pieceId = "00000000-0000-4000-8000-000000000007";
 const releaseId = "00000000-0000-4000-8000-000000000008";
+const prodId = "00000000-0000-4000-8000-000000000009";
 const originalName = "Amir Rached Abboud";
 const initialState = { ok: false, message: "" };
 
@@ -52,6 +53,8 @@ function setupDatabase() {
     technical_release_participants: [],
     technical_release_change_requests: [],
     technical_prod_batches: [],
+    technical_prod_batch_pieces: [],
+    technical_prod_piece_manufacturing_measurements: [],
     technical_contracts: [{
       id: "technical",
       company_id: companyId,
@@ -861,5 +864,70 @@ describe("piece measurement and structural changes", () => {
       entity: "technical_releases",
       action: "release_batch_cancel",
     });
+  });
+});
+
+describe("PROD manufacturing measurements", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function prepareProd() {
+    const database = setupDatabase();
+    database.tables.technical_prod_batches.push({
+      id: prodId,
+      company_id: companyId,
+      contract_id: contractId,
+      batch_number: "26-0715_PROD1",
+      status: "aguardando_conferencia",
+      current_revision: 0,
+    });
+    database.tables.technical_prod_batch_pieces.push({
+      id: "prod-piece-link",
+      prod_batch_id: prodId,
+      piece_id: pieceId,
+    });
+    return database;
+  }
+
+  it("requires every manufacturing dimension before creating a revision", async () => {
+    prepareProd();
+    const formData = new FormData();
+    formData.set("prod_batch_id", prodId);
+    formData.set("change_reason", "Registro inicial do CEM.");
+    formData.set(`manufacturing_width_mm_${pieceId}`, "1057");
+
+    const result = await saveProdManufacturingMeasurementsAction(initialState, formData);
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("largura e altura de fabricação válidas");
+  });
+
+  it("blocks PROD conference until the current manufacturing revision is complete", async () => {
+    const { tables } = prepareProd();
+    const formData = new FormData();
+    formData.set("id", prodId);
+
+    const result = await checkProdBatchAction(initialState, formData);
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("Registre as medidas efetivas de fabricação");
+    expect(tables.technical_prod_batches[0].status).toBe("aguardando_conferencia");
+  });
+
+  it("requires PROD management permission to register manufacturing measurements", async () => {
+    setupDatabase();
+    vi.mocked(requirePermissionAccess).mockRejectedValueOnce(
+      new Error("Você não possui permissão para registrar medidas de fabricação."),
+    );
+    const formData = new FormData();
+    formData.set("prod_batch_id", prodId);
+    formData.set("change_reason", "Tentativa sem permissão.");
+    formData.set(`manufacturing_width_mm_${pieceId}`, "1057");
+    formData.set(`manufacturing_height_mm_${pieceId}`, "3450");
+
+    const result = await saveProdManufacturingMeasurementsAction(initialState, formData);
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("não possui permissão");
+    expect(requirePermissionAccess).toHaveBeenCalledWith("technical.prods.manage", undefined);
   });
 });

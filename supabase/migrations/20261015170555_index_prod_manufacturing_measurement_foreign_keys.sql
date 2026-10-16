@@ -1,0 +1,8 @@
+create index if not exists technical_prod_manufacturing_contract_idx
+  on public.technical_prod_piece_manufacturing_measurements(contract_id);
+
+create index if not exists technical_prod_manufacturing_piece_idx
+  on public.technical_prod_piece_manufacturing_measurements(piece_id);
+
+create index if not exists technical_prod_manufacturing_recorded_by_idx
+  on public.technical_prod_piece_manufacturing_measurements(recorded_by_profile_id);

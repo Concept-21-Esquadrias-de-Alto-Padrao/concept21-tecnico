@@ -174,4 +174,20 @@ describe("formatAuditLogEntry", () => {
     expect(entry.details).toContain("P8 ficou com quantidade 2");
     expect(entry.details).toContain("P8_A criada com quantidade 1");
   });
+
+  it("describes a manufacturing measurement revision in business language", () => {
+    const entry = formatAuditLogEntry(
+      auditLog({
+        entity: "technical_prod_batches",
+        action: "prod_manufacturing_measurements_revision",
+        after_data: { batch_number: "26-0715_PROD1", revision: 2 },
+        notes: "Revisão das medidas efetivas de fabricação/CEM registrada.",
+      }),
+      profiles,
+    );
+
+    expect(entry.title).toBe("O usuário Thaís Martins registrou uma revisão das medidas de fabricação/CEM.");
+    expect(entry.details).toContain("PROD: 26-0715_PROD1");
+    expect(entry.details).toContain("Revisão de fabricação: 2");
+  });
 });

@@ -18,6 +18,7 @@ const entityLabels: Record<string, string> = {
   technical_release_change_requests: "solicitação de alteração de lote",
   technical_release_participants: "assinatura de lote de liberação",
   technical_releases: "lote de liberação",
+  technical_prod_batches: "PROD",
   technical_stage_validation_participants: "assinatura de etapa",
   technical_stage_validations: "validação de etapa",
 };
@@ -255,6 +256,18 @@ function releaseChangeRequestDetails(log: TechnicalAuditLog) {
   return details.length ? details.join(" · ") : null;
 }
 
+function prodBatchDetails(log: TechnicalAuditLog) {
+  const batchNumber = valueAsString(log.after_data?.batch_number) ?? valueAsString(log.before_data?.batch_number);
+  const revision = valueAsNumber(log.after_data?.revision ?? log.after_data?.current_revision);
+  const details = [
+    batchNumber ? `PROD: ${batchNumber}` : null,
+    revision !== null ? `Revisão de fabricação: ${revision}` : null,
+    valueAsString(log.notes),
+  ].filter(Boolean);
+
+  return details.length ? details.join(" · ") : null;
+}
+
 export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfile[]): AuditSummary {
   const actorName = profileDisplayName(profiles, log.user_id);
   const actionKey = `${log.entity}:${log.action}`;
@@ -391,6 +404,11 @@ export function formatAuditLogEntry(log: TechnicalAuditLog, profiles: AuditProfi
       return {
         title: actedBy(actorName, "assinou digitalmente um lote de liberação"),
         details: defaultDetails(log),
+      };
+    case "technical_prod_batches:prod_manufacturing_measurements_revision":
+      return {
+        title: actedBy(actorName, "registrou uma revisão das medidas de fabricação/CEM"),
+        details: prodBatchDetails(log),
       };
     case "production_contracts:work_data_update":
       return {

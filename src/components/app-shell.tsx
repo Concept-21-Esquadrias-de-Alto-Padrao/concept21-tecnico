@@ -5,10 +5,12 @@ import {
   BriefcaseBusiness,
   CalendarDays,
   CheckSquare,
+  ChevronDown,
   ClipboardList,
   Factory,
   HelpCircle,
   Home,
+  Menu,
   Settings,
   ShieldCheck,
   UserRoundCheck,
@@ -35,6 +37,7 @@ const navItems = [
   { href: "/tecnico/contratos", label: "Contratos", icon: ClipboardList, permissions: MODULE_ACCESS.contracts },
   { href: "/tecnico/agenda", label: "Agenda Técnica", icon: CalendarDays, permissions: MODULE_ACCESS.agenda },
   { href: "/tecnico/acoes", label: "Ações", icon: CheckSquare, permissions: MODULE_ACCESS.actions },
+  { href: "/tecnico/solicitacoes", label: "Solicitações", icon: ShieldCheck, permissions: MODULE_ACCESS.changeRequests },
   { href: "/tecnico/prods", label: "PRODs", icon: Factory, permissions: MODULE_ACCESS.prods },
   { href: "/tecnico/duvidas", label: "Base de Dúvidas", icon: HelpCircle, permissions: MODULE_ACCESS.doubts },
   { href: "/tecnico/relatorios", label: "Indicadores", icon: BarChart3, permissions: MODULE_ACCESS.reports },
@@ -81,6 +84,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const visibleNavItems = navItems.filter((item) => canShowNavItem(access, item.permissions));
   const currentProfile = access && typeof access === "object" ? access.profile : null;
+  const activeNavItem = visibleNavItems.find((item) =>
+    item.href === "/tecnico" ? pathname === "/tecnico" : pathname.startsWith(item.href),
+  );
 
   return (
     <MyActivitiesProvider key={currentProfile?.id ?? "anonymous"} enabled={Boolean(currentProfile?.status === "active" && canShowNavItem(access, MODULE_ACCESS.myActivities))}>
@@ -130,7 +136,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="min-h-screen md:pl-72">
+      <div className="min-h-screen min-w-0 md:pl-72">
         <header className="sticky top-0 z-20 border-b border-black/5 bg-white/90 px-4 py-3 shadow-sm backdrop-blur sm:px-6 lg:px-8 xl:px-10">
           <div className="flex items-center justify-between gap-4">
             <Link href="/tecnico" className="flex min-w-0 items-center gap-3 md:hidden">
@@ -151,31 +157,40 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <nav className="mt-3 flex gap-2 overflow-x-auto md:hidden">
-            {visibleNavItems.map((item) => {
-              const Icon = item.icon;
-              const active =
-                item.href === "/tecnico" ? pathname === "/tecnico" : pathname.startsWith(item.href);
+          <details className="group mt-3 md:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between rounded-md border border-border bg-white px-3 py-2 text-sm font-semibold text-charcoal marker:hidden">
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <Menu className="size-4 flex-none text-accent" />
+                <span className="truncate">{activeNavItem?.label ?? "Navegação"}</span>
+              </span>
+              <ChevronDown className="size-4 flex-none text-muted-foreground transition group-open:rotate-180" />
+            </summary>
+            <nav className="mt-2 grid gap-2 sm:grid-cols-2">
+              {visibleNavItems.map((item) => {
+                const Icon = item.icon;
+                const active =
+                  item.href === "/tecnico" ? pathname === "/tecnico" : pathname.startsWith(item.href);
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground",
-                    active && "border-charcoal bg-charcoal text-white",
-                  )}
-                >
-                  <Icon className="size-4" />
-                  {item.label}
-                  {item.href === "/tecnico/minhas-atividades" ? <MyActivitiesCount /> : null}
-                </Link>
-              );
-            })}
-          </nav>
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "inline-flex min-w-0 items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground",
+                      active && "border-charcoal bg-charcoal text-white",
+                    )}
+                  >
+                    <Icon className="size-4 flex-none" />
+                    <span className="truncate">{item.label}</span>
+                    {item.href === "/tecnico/minhas-atividades" ? <MyActivitiesCount /> : null}
+                  </Link>
+                );
+              })}
+            </nav>
+          </details>
         </header>
 
-        <main className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
+        <main className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
           <AuthGate>{children}</AuthGate>
         </main>
       </div>

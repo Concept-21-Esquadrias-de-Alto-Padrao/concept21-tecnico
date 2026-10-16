@@ -1,7 +1,8 @@
 "use client";
 
 import { Loader2, Save } from "lucide-react";
-import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useRef } from "react";
 import { ACTIVITIES_CHANGED_EVENT } from "@/lib/my-activities-events";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +16,40 @@ const initialState: ActionState = {
   message: "",
 };
 
+function restoreFormValues(form: HTMLFormElement, formData: FormData) {
+  const controls = Array.from(form.elements);
+  const seenByName = new Map<string, number>();
+  for (const control of controls) {
+    if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) continue;
+    if (!control.name) continue;
+
+    const values = formData.getAll(control.name).map(String);
+    const occurrence = seenByName.get(control.name) ?? 0;
+    seenByName.set(control.name, occurrence + 1);
+    const value = values[occurrence] ?? values.at(-1) ?? "";
+    if (control instanceof HTMLInputElement) {
+      if (["button", "file", "image", "reset", "submit"].includes(control.type)) continue;
+      if (control.type === "checkbox" || control.type === "radio") {
+        control.checked = values.includes(control.value || "on");
+        continue;
+      }
+      control.value = value;
+      continue;
+    }
+
+    if (control instanceof HTMLSelectElement) {
+      if (control.multiple) {
+        for (const option of Array.from(control.options)) option.selected = values.includes(option.value);
+      } else {
+        control.value = values.at(-1) ?? "";
+      }
+      continue;
+    }
+
+    control.value = value;
+  }
+}
+
 export function ActionForm({
   action,
   children,
@@ -23,6 +58,7 @@ export function ActionForm({
   confirmMessage,
   onSuccess,
   onPendingChange,
+  preserveOnError,
 }: {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
   children: React.ReactNode;
@@ -31,26 +67,40 @@ export function ActionForm({
   confirmMessage?: string;
   onSuccess?: (message: string) => void;
   onPendingChange?: (pending: boolean) => void;
+  preserveOnError?: boolean;
 }) {
+  const router = useRouter();
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const lastSubmittedData = useRef<FormData | null>(null);
   const [state, formAction, pending] = useActionState(action, initialState);
   useEffect(() => {
-    if (state.ok) window.dispatchEvent(new Event(ACTIVITIES_CHANGED_EVENT));
-  }, [state]);
+    if (!state.ok) return;
+    lastSubmittedData.current = null;
+    window.dispatchEvent(new Event(ACTIVITIES_CHANGED_EVENT));
+    router.refresh();
+  }, [router, state]);
   useEffect(() => {
     if (state.ok) onSuccess?.(state.message);
   }, [state, onSuccess]);
   useEffect(() => {
     onPendingChange?.(pending);
   }, [pending, onPendingChange]);
+  useEffect(() => {
+    if (!preserveOnError || state.ok || !state.message || !formRef.current || !lastSubmittedData.current) return;
+    restoreFormValues(formRef.current, lastSubmittedData.current);
+  }, [preserveOnError, state]);
 
   return (
     <form
+      ref={formRef}
       action={formAction}
       className={cn("space-y-4", className)}
       onSubmit={(event) => {
         if (confirmMessage && !window.confirm(confirmMessage)) {
           event.preventDefault();
+          return;
         }
+        if (preserveOnError) lastSubmittedData.current = new FormData(event.currentTarget);
       }}
     >
       {children}
