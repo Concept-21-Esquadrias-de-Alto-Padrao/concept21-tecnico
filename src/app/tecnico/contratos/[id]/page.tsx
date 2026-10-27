@@ -828,7 +828,7 @@ function StructuralChangeActionForm({ piece, profiles }: { piece: TechnicalPiece
 function PieceActionForms({
   piece,
   canMeasure,
-  canManageProds,
+  canCheckCem,
   pieceChangeRequests,
   canRequestPieceChanges,
   canAuthorizePieceChanges,
@@ -838,7 +838,7 @@ function PieceActionForms({
 }: {
   piece: TechnicalPiece;
   canMeasure: boolean;
-  canManageProds: boolean;
+  canCheckCem: boolean;
   pieceChangeRequests: TechnicalPieceChangeRequest[];
   canRequestPieceChanges: boolean;
   canAuthorizePieceChanges: boolean;
@@ -846,7 +846,7 @@ function PieceActionForms({
   structuralActions: TechnicalAction[];
   className?: string;
 }) {
-  if (!canMeasure && !canManageProds && !canRequestPieceChanges && !canAuthorizePieceChanges) return null;
+  if (!canMeasure && !canCheckCem && !canRequestPieceChanges && !canAuthorizePieceChanges) return null;
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -867,7 +867,7 @@ function PieceActionForms({
           <textarea name="notes" className={textareaClass} placeholder="Observação da medição (opcional)" defaultValue={piece.notes ?? ""} />
         </ActionForm>
       ) : null}
-      {canManageProds ? (
+      {canCheckCem ? (
         <ActionForm action={updatePieceCemAction} submitLabel="Atualizar CEM" className="rounded-md bg-muted/40 p-3">
           <input type="hidden" name="id" value={piece.id} />
           <label className="flex items-center gap-2 text-xs font-semibold text-charcoal">
@@ -2285,7 +2285,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                   <PieceActionForms
                     piece={piece}
                     canMeasure={canMeasure && canOperatePieces}
-                    canManageProds={canManageProds && canOperatePieces}
+                    canCheckCem={canCheckProds && canOperatePieces}
                     pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
                     canRequestPieceChanges={canRequestPieceChanges}
                     canAuthorizePieceChanges={canAuthorizePieceChanges}
@@ -2339,7 +2339,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 <PieceActionForms
                   piece={piece}
                   canMeasure={canMeasure && canOperatePieces}
-                  canManageProds={canManageProds && canOperatePieces}
+                  canCheckCem={canCheckProds && canOperatePieces}
                   pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
                   canRequestPieceChanges={canRequestPieceChanges}
                   canAuthorizePieceChanges={canAuthorizePieceChanges}
@@ -2379,7 +2379,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                       <PieceActionForms
                         piece={piece}
                         canMeasure={canMeasure && canOperatePieces}
-                        canManageProds={canManageProds && canOperatePieces}
+                        canCheckCem={canCheckProds && canOperatePieces}
                         pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
                         canRequestPieceChanges={canRequestPieceChanges}
                         canAuthorizePieceChanges={canAuthorizePieceChanges}

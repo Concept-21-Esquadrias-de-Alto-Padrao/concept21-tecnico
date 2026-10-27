@@ -3384,7 +3384,7 @@ export async function releasePieceAction(_: ActionState, formData: FormData) {
 
 export async function updatePieceCemAction(_: ActionState, formData: FormData) {
   try {
-    const context = await getActionContext("technical.prods.manage");
+    const context = await getActionContext("technical.prods.check");
     const parsed = pieceCemSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return invalidForm(parsed.error);
 

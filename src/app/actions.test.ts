@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { requirePermissionAccess } from "@/lib/server-access";
-import { cancelReleaseBatchAction, checkProdBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, deletePieceAction, receiveCommercialFolderAction, reopenContractStageAction, requestPieceDeleteAction, requestPieceEditAction, requestReleaseBatchDeleteAction, saveProdManufacturingMeasurementsAction, signStageValidationAction, splitPieceAction, transitionTechnicalActionAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
+import { cancelReleaseBatchAction, checkProdBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, deletePieceAction, receiveCommercialFolderAction, reopenContractStageAction, requestPieceDeleteAction, requestPieceEditAction, requestReleaseBatchDeleteAction, saveProdManufacturingMeasurementsAction, signStageValidationAction, splitPieceAction, transitionTechnicalActionAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction, updatePieceCemAction } from "./actions";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server-access", () => ({
@@ -929,5 +929,48 @@ describe("PROD manufacturing measurements", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toContain("não possui permissão");
     expect(requirePermissionAccess).toHaveBeenCalledWith("technical.prods.manage", undefined);
+  });
+});
+
+describe("updatePieceCemAction authorization", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function cemForm() {
+    const form = new FormData();
+    form.set("id", pieceId);
+    form.set("cem_registered", "on");
+    form.set("cem_checked", "on");
+    return form;
+  }
+
+  it("rejects a PROD operator without technical checking before touching the database", async () => {
+    const { tables, fetchMock } = setupDatabase();
+    tables.technical_contract_pieces.push({ id: pieceId, company_id: companyId, contract_id: contractId, cem_registered: false, cem_checked: false });
+    vi.mocked(requirePermissionAccess).mockImplementation(async (key) => {
+      if (key === "technical.prods.check") throw new Error("Você não possui permissão para conferir CEM.");
+      throw new Error("Unexpected permission: " + key);
+    });
+    const result = await updatePieceCemAction(initialState, cemForm());
+    expect(result.ok).toBe(false);
+    expect(requirePermissionAccess).toHaveBeenCalledWith("technical.prods.check", undefined);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(tables.technical_contract_pieces[0].cem_checked).toBe(false);
+  });
+
+  it("allows a technical checker and preserves field measurements", async () => {
+    const { tables } = setupDatabase();
+    tables.technical_contract_pieces.push({ id: pieceId, company_id: companyId, contract_id: contractId, cem_registered: false, cem_checked: false, measured_width_mm: 1063, measured_height_mm: 3454 });
+    const result = await updatePieceCemAction(initialState, cemForm());
+    expect(result.ok, result.message).toBe(true);
+    expect(requirePermissionAccess).toHaveBeenCalledWith("technical.prods.check", undefined);
+    expect(tables.technical_contract_pieces[0]).toMatchObject({ cem_registered: true, cem_checked: true, measured_width_mm: 1063, measured_height_mm: 3454 });
+  });
+
+  it("does not update a piece belonging to another company", async () => {
+    const { tables } = setupDatabase();
+    tables.technical_contract_pieces.push({ id: pieceId, company_id: "another-company", contract_id: contractId, cem_registered: false, cem_checked: false });
+    const result = await updatePieceCemAction(initialState, cemForm());
+    expect(result.ok).toBe(false);
+    expect(tables.technical_contract_pieces[0].cem_checked).toBe(false);
   });
 });
