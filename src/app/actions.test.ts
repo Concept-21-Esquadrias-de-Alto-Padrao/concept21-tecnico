@@ -881,6 +881,17 @@ describe("cadastro comercial de novas obras", () => {
     expect(tables.technical_contracts.at(-1)).toMatchObject({technical_manager_profile_id:null, followup_profile_id:null, contractual_deadline_value:90, contractual_deadline_unit:"dias_corridos", authorized_contacts:[{name:"Cliente",role:"Proprietário",phone:"62999999999"}]});
     expect(tables.audit_logs.at(-1)).toMatchObject({user_id:userId, after_data:{general_delivery_forecast:"2027-03-10"}});
   });
+  it("usa os contatos conferidos no formulário ao importar novo PDF", async () => {
+    const {tables} = setupDatabase(); const f = form();
+    f.set("contract_json", JSON.stringify({contract_number:"TESTE-PDF-2810",client_name:originalName,work_name:"Teste PDF",work_address:"Rua",contract_date:"2026-10-28",deadline_value:90,deadline_unit:"dias_corridos",description:null,authorized_contacts:[{name:"Texto antigo do PDF"}],commercial_data:{}}));
+    f.set("pieces_json", JSON.stringify([{code:"J1",quantity:2,sale_width_mm:1000,sale_height_mm:1200}]));
+    f.delete("commercial_delivery_date"); f.set("delivery_date_unknown","on");
+    const result = await confirmContractImportAction(initialState, f);
+    expect(result.ok,result.message).toBe(true);
+    expect(tables.technical_contracts.at(-1)).toMatchObject({authorized_contacts:[{name:"Cliente",role:"Proprietário",phone:"62999999999"}],commercial_data:{delivery_date_unknown:true}});
+    expect(tables.production_contracts.at(-1)).toMatchObject({general_delivery_forecast:null});
+    expect(tables.technical_contract_pieces.at(-1)).toMatchObject({code:"J1",quantity:2});
+  });
   it("não grava cadastro quando faltam contatos ou a data é inválida", async () => {
     const {tables} = setupDatabase(); const f = form(); f.set("commercial_delivery_date","2026-02-30");
     expect((await createManualContractAction(initialState, f)).ok).toBe(false);
