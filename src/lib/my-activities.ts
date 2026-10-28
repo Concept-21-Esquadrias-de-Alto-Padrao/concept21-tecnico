@@ -16,6 +16,7 @@ export type MyActivity = {
   href: string;
   linkLabel: string;
   blocking: boolean;
+  pieceLabels?: string[];
 };
 
 export const activityKindLabels: Record<MyActivity["kind"], string> = {
@@ -32,7 +33,7 @@ export const activityStageLabels: Record<TechnicalContractStageKey, string> = {
 export type MyActivitiesSource = {
   contracts: Pick<ProductionContract, "id" | "company_id" | "active" | "contract_number" | "work_name">[];
   technicalContracts: (Pick<TechnicalContract, "company_id" | "contract_id" | "deleted_at" | "commercial_folder_received"> & {commercial_data?:Record<string,unknown>})[];
-  actions: Pick<TechnicalAction, "id" | "company_id" | "contract_id" | "title" | "responsible_profile_id" | "due_date" | "status" | "blocking" | "deleted_at">[];
+  actions: (Pick<TechnicalAction, "id" | "company_id" | "contract_id" | "title" | "responsible_profile_id" | "due_date" | "status" | "blocking" | "deleted_at"> & {meeting_id?:string|null;pieceLabels?:string[]})[];
   corrections: Pick<TechnicalCorrection, "id" | "company_id" | "contract_id" | "type" | "responsible_profile_id" | "due_date" | "status" | "blocking" | "deleted_at">[];
   validations: Pick<TechnicalStageValidation, "company_id" | "contract_id" | "stage" | "validation_required">[];
   stageParticipants: Pick<TechnicalStageValidationParticipant, "id" | "company_id" | "contract_id" | "stage" | "profile_id" | "signed_at">[];
@@ -79,7 +80,7 @@ export function buildMyActivities(source: MyActivitiesSource, identity: { compan
       nextStep: !rights.canManageActions ? "Aguardando permissão para gerenciar ações."
         : action.status === "validada" ? "Validada. Concluir a ação."
           : "Executar ou acompanhar a ação. A conclusão exige validação do gestor.",
-      href: actionHref(action.contract_id, "action", action.id), linkLabel: "Abrir ação",
+      href: action.meeting_id && canViewContracts ? `/tecnico/contratos/${action.contract_id}/reuniao?atividade=${action.id}` : actionHref(action.contract_id, "action", action.id), linkLabel: "Abrir ação", pieceLabels: action.pieceLabels,
     });
   }
   if (rights.canViewCorrections) for (const correction of source.corrections) {

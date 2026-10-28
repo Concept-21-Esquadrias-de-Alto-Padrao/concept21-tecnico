@@ -192,7 +192,7 @@ function revalidateTechnical(contractId?: string) {
   revalidatePath("/tecnico/duvidas");
   revalidatePath("/tecnico/relatorios");
   revalidatePath("/tecnico/configuracoes");
-  if (contractId) revalidatePath(`/tecnico/contratos/${contractId}`);
+  if (contractId) { revalidatePath(`/tecnico/contratos/${contractId}`); revalidatePath(`/tecnico/contratos/${contractId}/reuniao`); }
 }
 
 function splitTextList(value: string) {

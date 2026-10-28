@@ -23,7 +23,7 @@ export function MyActivitiesView({ items, loading, error, refresh }: {
   const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
   const visible = items.filter((item) => (availability === "all" || item.available === (availability === "available"))
     && (kind === "all" || item.kind === kind) && (!overdueOnly || isOverdue(item.dueDate))
-    && normalize(`${item.title} ${item.contractNumber} ${item.workName}`).includes(normalize(query.trim())));
+    && normalize(`${item.title} ${item.contractNumber} ${item.workName} ${(item.pieceLabels??[]).join(" ")}`).includes(normalize(query.trim())));
   const available = items.filter((item) => item.available).length;
 
   return <section className="min-w-0 space-y-5" aria-label="Atividades pendentes">
@@ -61,6 +61,7 @@ export function MyActivitiesView({ items, loading, error, refresh }: {
                     {item.blocking ? <span className="rounded-md bg-red-50 px-2 py-1 text-red-800">Bloqueante</span> : null}
                   </div>
                 </div>
+                {Boolean(item.pieceLabels?.length) && <ul className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{item.pieceLabels!.map(label=><li key={label}>{label}</li>)}</ul>}
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 text-sm">
                   <div className="min-w-0 flex-1 basis-64 break-words"><p className="text-muted-foreground">{item.nextStep}</p>{item.dueDate ? <p className={cn("mt-1 flex items-center gap-1.5 text-xs", overdue ? "text-danger" : "text-muted-foreground")}><Clock3 className="size-3.5" /> Prazo: {item.dueDate.includes("T") ? `${formatDateTime(item.dueDate)} · Brasília` : formatDate(item.dueDate)}</p> : null}</div>
                   <Link href={item.href} className="inline-flex min-h-10 max-w-full items-center justify-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm font-semibold text-charcoal hover:bg-muted"><span>{item.linkLabel}</span><ArrowUpRight className="size-4 flex-none" /></Link>

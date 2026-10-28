@@ -45,12 +45,19 @@ export async function getMyActivities() {
   }
 
   const [actions, corrections, stageParticipants, releaseParticipants, receipts] = await Promise.all([
-    rights.canViewActions ? read<MyActivitiesSource["actions"][number]>("technical_actions", "id,company_id,contract_id,title,responsible_profile_id,due_date,status,blocking,deleted_at", { equal: { responsible_profile_id: profileId }, nulls: ["deleted_at"], exclude: { column: "status", values: ["concluida", "cancelada"] } }) : [],
+    rights.canViewActions ? read<MyActivitiesSource["actions"][number]>("technical_actions", "id,company_id,contract_id,meeting_id,title,responsible_profile_id,due_date,status,blocking,deleted_at", { equal: { responsible_profile_id: profileId }, nulls: ["deleted_at"], exclude: { column: "status", values: ["concluida", "cancelada"] } }) : [],
     rights.canViewCorrections ? read<MyActivitiesSource["corrections"][number]>("technical_corrections", "id,company_id,contract_id,type,responsible_profile_id,due_date,status,blocking,deleted_at", { equal: { responsible_profile_id: profileId }, nulls: ["deleted_at"], exclude: { column: "status", values: ["encerrada", "cancelada"] } }) : [],
     canSign ? read<MyActivitiesSource["stageParticipants"][number]>("technical_stage_validation_participants", "id,company_id,contract_id,stage,profile_id,signed_at", { equal: { profile_id: profileId }, nulls: ["signed_at"], exclude: { column: "stage", values: ["pecas_medicoes_liberacoes"] } }) : [],
     canSign ? read<MyActivitiesSource["releaseParticipants"][number]>("technical_release_participants", "id,company_id,release_id,profile_id,signed_at", { equal: { profile_id: profileId }, nulls: ["signed_at"] }) : [],
     canSign ? read<MyActivitiesSource["technicalContracts"][number]>("technical_contracts", "company_id,contract_id,deleted_at,commercial_folder_received,commercial_data", {equal:{"commercial_data->receipt->>owner":profileId},nulls:["deleted_at"]}) : [],
   ]);
+  const meetingActionIds = actions.filter(a=>a.meeting_id).map(a=>a.id);
+  if (meetingActionIds.length) {
+    const {data: links,error: linkError} = await context.admin.from("technical_action_pieces").select("action_id,piece_id").in("action_id",meetingActionIds);
+    if (linkError) throw linkError;
+    const pieces = await read<{id:string;code:string;environment:string|null;piece_type:string|null;description:string|null}>("technical_contract_pieces","id,code,environment,piece_type,description",{oneOf:{column:"id",values:[...new Set((links??[]).map(l=>l.piece_id))]}});
+    for (const action of actions) action.pieceLabels=(links??[]).filter(l=>l.action_id===action.id).map(l=>pieces.find(p=>p.id===l.piece_id)).filter(p=>Boolean(p)).map(p=>`${p!.environment??"Ambiente não informado"} · ${p!.piece_type??p!.description??"Modelo não informado"} · ${p!.code}`);
+  }
   const releases = await read<MyActivitiesSource["releases"][number]>("technical_releases", "id,company_id,contract_id,batch_number,status,validation_required", { equal: { validation_required: true }, oneOf: { column: "id", values: [...new Set(releaseParticipants.map((row) => row.release_id))] }, exclude: { column: "status", values: ["cancelado"] } });
   const contractIds = [...new Set([...actions, ...corrections, ...stageParticipants, ...releases, ...receipts].map((row) => row.contract_id))];
   const byContract: QueryFilters = { oneOf: { column: "contract_id", values: contractIds } };

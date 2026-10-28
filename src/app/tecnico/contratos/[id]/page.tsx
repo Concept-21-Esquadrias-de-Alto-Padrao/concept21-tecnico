@@ -22,7 +22,6 @@ import {
   cancelReleaseBatchAction,
   checkProdBatchFormAction,
   createDoubtAction,
-  createMeetingAction,
   createPieceStructuralChangeAction,
   createProdBatchAction,
   createReleaseBatchAction,
@@ -1627,7 +1626,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const entradaReadyForNext = hasCommercialFolder && entradaValidation.complete;
   const reuniaoReadyForNext = hasCompletedMeeting && reuniaoValidation.complete;
   const visitasReadyForNext = visitasValidation.complete;
-  const canRegisterCommercialEntry = canReceiveFolder && reuniaoReadyForNext && currentStatus === "aguardando_pasta" && !hasCommercialFolder;
+  const folderBlocked = actions.some(action => action.blocking && action.blocking_stage === "entrada_inicial" && !["concluida", "cancelada"].includes(action.status));
+  const canRegisterCommercialEntry = !folderBlocked && canReceiveFolder && reuniaoReadyForNext && currentStatus === "aguardando_pasta" && !hasCommercialFolder;
   const canRegisterMeeting =
     canManageMeetings &&
     currentStatus === "aguardando_reuniao" &&
@@ -1874,50 +1874,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 {meeting.decisions ? <p className="mt-2 text-muted-foreground">Decisões: {meeting.decisions}</p> : null}
               </article>
             ))}
-            {canRegisterMeeting ? (
-              <ActionForm action={createMeetingAction} submitLabel="Registrar reunião">
-                {hiddenContract(id)}
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Data">
-                    <input name="meeting_date" type="date" className={inputClass} required />
-                  </Field>
-                  <Field label="Horário">
-                    <input name="meeting_time" type="time" className={inputClass} />
-                  </Field>
-                </div>
-                <Field label="Participantes">
-                  <textarea name="participants" className={textareaClass} placeholder="Um por linha ou separados por ;" required />
-                </Field>
-                <Field label="Resumo">
-                  <textarea name="summary" className={textareaClass} />
-                </Field>
-                <Field label="Decisões">
-                  <textarea name="decisions" className={textareaClass} />
-                </Field>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Ação bloqueante inicial">
-                    <input name="create_action_title" className={inputClass} placeholder="Opcional" />
-                  </Field>
-                  <Field label="Prazo da ação">
-                    <input name="create_action_due_date" type="date" className={inputClass} />
-                  </Field>
-                </div>
-                <Field label="Descrição breve da ação">
-                  <textarea name="create_action_description" maxLength={240} className={textareaClass} />
-                </Field>
-                <Field label="Responsável pela ação">
-                  <select name="create_action_responsible_profile_id" className={inputClass} defaultValue="">
-                    <option value="">Selecione</option>
-                    {snapshot.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-                  </select>
-                </Field>
-              </ActionForm>
-            ) : null}
-            {hasCompletedMeeting ? (
-              <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-800">
-                Reunião e ata concluídas. A etapa está travada para alteração direta.
-              </div>
-            ) : null}
+            <Link href={`/tecnico/contratos/${id}/reuniao`} className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground">{canRegisterMeeting ? "Abrir reunião de alinhamento" : "Consultar reunião e encaminhamentos"}</Link>
             {hasCompletedMeeting && canReopenStages ? (
               <ReopenStageForm contractId={id} stage="reuniao_ata" submitLabel="Reabrir reunião e ata" />
             ) : null}
@@ -1948,6 +1905,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 ? "Registre a entrega da pasta para liberar a assinatura dos participantes."
                 : "Conclua a reunião e as assinaturas dos participantes antes da entrega da pasta."}
             />
+            {folderBlocked && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Há atividades bloqueando a entrega da pasta. Consulte os encaminhamentos da reunião.</p>}
             <div className="rounded-md border border-border bg-white p-3 text-sm">
               <p className="font-semibold text-charcoal">
                 Pasta {technical?.commercial_folder_received ? "entregue" : "pendente"}

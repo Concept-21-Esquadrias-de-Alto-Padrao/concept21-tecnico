@@ -126,7 +126,9 @@ describe("meeting-first workflow pages", () => {
     const html = await contractHtml();
     expect(html.indexOf('href="#reuniao"')).toBeLessThan(html.indexOf('href="#entrada"'));
     expect(html.indexOf('id="reuniao"')).toBeLessThan(html.indexOf('id="entrada"'));
-    expect(html).toContain("Registrar reunião");
+    expect(html).toContain("Abrir reunião de alinhamento");
+    expect(html).toContain("/tecnico/contratos/contract/reuniao");
+    expect(html).not.toContain("Ação bloqueante inicial");
     expect(html).toContain("Entrega da pasta");
     expect(html).not.toContain("Entrada comercial");
     expect(html).toContain("Salvar responsáveis");
