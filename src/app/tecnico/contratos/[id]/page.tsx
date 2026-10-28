@@ -1791,6 +1791,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 <dt className="text-xs font-semibold uppercase text-muted-foreground">Telefone</dt>
                 <dd className="mt-1 text-charcoal">{contract.site_contact_phone ?? "-"}</dd>
               </div>
+              {technical?.commercial_data?.delivery_date_meaning !== "instalacao_concluida" && <>
               <div>
                 <dt className="text-xs font-semibold uppercase text-muted-foreground">Técnico</dt>
                 <dd className="mt-1 text-charcoal">{profileName(snapshot.profiles, technical?.technical_manager_profile_id)}</dd>
@@ -1799,6 +1800,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 <dt className="text-xs font-semibold uppercase text-muted-foreground">Acompanhamento</dt>
                 <dd className="mt-1 text-charcoal">{profileName(snapshot.profiles, technical?.followup_profile_id)}</dd>
               </div>
+              </>}
             </dl>
             <div className="mt-4 border-t border-border pt-3">
               <h4 className="text-sm font-semibold">{technical?.commercial_data?.delivery_date_meaning === "instalacao_concluida" ? "Previsão de entrega comercial" : "Previsão de entrega registrada"}</h4>
@@ -1820,7 +1822,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           </div>
 
           <div className="space-y-4">
-            {technical && canEditResponsibles ? (
+            {technical && technical.commercial_data?.delivery_date_meaning !== "instalacao_concluida" && canEditResponsibles ? (
               <ContractResponsiblesForm contract={technical} profiles={snapshot.profiles} />
             ) : null}
             {canCorrectWorkData ? (
@@ -1830,7 +1832,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 A correção dos dados da obra é restrita aos perfis autorizados pelo Administrador.
               </div>
             )}
-            {!canEditResponsibles ? (
+            {technical?.commercial_data?.delivery_date_meaning !== "instalacao_concluida" && !canEditResponsibles ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 A alteração de Técnico e Acompanhamento é restrita aos perfis autorizados pelo Administrador.
               </div>

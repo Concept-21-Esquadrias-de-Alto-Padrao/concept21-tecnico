@@ -31,7 +31,7 @@ export function CommercialEntryFields({ initialContacts = [], onDirtyChange }: {
     <fieldset className="min-w-0 space-y-3 rounded-lg border border-border p-4">
       <legend className="px-2 text-sm font-semibold">Previsão de entrega comercial</legend>
       <p className="text-sm text-muted-foreground">Data em que o cliente precisa das peças instaladas. O prazo contratual após a liberação de medidas continua separado.</p>
-      <Field label="Data de necessidade do cliente"><input type="date" name="commercial_delivery_date" className={inputClass} value={date} required={!unknown} disabled={unknown} onChange={e => { setDate(e.target.value); onDirtyChange(true); }} /></Field>
+      <Field label="Data de necessidade do cliente"><input type="date" name="commercial_delivery_date" className={inputClass} value={date} required={!unknown} disabled={unknown} onBlur={e => { setDate(e.currentTarget.value); }} onChange={e => { setDate(e.target.value); onDirtyChange(true); }} /></Field>
       <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="delivery_date_unknown" checked={unknown} onChange={e => { setUnknown(e.target.checked); onDirtyChange(true); }} />Data de necessidade ainda não informada pelo cliente</label>
       {unknown && <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">Pauta para a primeira visita: Warlley alinha a necessidade com a obra; Anna registra a previsão e acompanha as liberações.</p>}
     </fieldset>
