@@ -17,7 +17,7 @@ export function ManualContractForm({ saving, onDirtyChange, onPendingChange, onS
   saving: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onPendingChange: (pending: boolean) => void;
-  onSuccess: (message: string) => void;
+  onSuccess: (message: string, contractId?: string) => void;
 }) {
   const [values, setValues] = useState(initialValues);
   const [commercialDirty, setCommercialDirty] = useState(false);
@@ -34,7 +34,7 @@ export function ManualContractForm({ saving, onDirtyChange, onPendingChange, onS
   }
 
   return (
-    <ActionForm action={createManualContractAction} submitLabel="Salvar contrato" onPendingChange={onPendingChange} onSuccess={onSuccess}>
+    <ActionForm action={createManualContractAction} submitLabel="Salvar dados e continuar" saveLaterLabel="Guardar e continuar depois" onPendingChange={onPendingChange} onSuccess={onSuccess}>
       <fieldset disabled={saving} className="min-w-0 space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Número do contrato"><input {...field("contract_number")} className={inputClass} required /></Field>
@@ -57,6 +57,7 @@ export function ManualContractForm({ saving, onDirtyChange, onPendingChange, onS
         </div>
         <CommercialEntryFields onDirtyChange={() => { setCommercialDirty(true); onDirtyChange(true); }} />
         <Field label="Descrição / observações"><textarea {...field("description")} className={textareaClass} /></Field>
+        <label className="flex items-center gap-3 rounded-lg bg-muted/40 p-4 text-sm"><input type="checkbox" name="receipt_data_checked" onChange={()=>onDirtyChange(true)}/>Dados do cliente, obra, contatos e prazo conferidos</label>
       </fieldset>
     </ActionForm>
   );

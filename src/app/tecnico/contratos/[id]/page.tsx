@@ -1,3 +1,4 @@
+import { readReceipt } from "@/lib/commercial-receipt";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -1652,6 +1653,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
 
   return (
     <div className="space-y-6">
+      {readReceipt(technical?.commercial_data) && <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm"><strong>{readReceipt(technical?.commercial_data)?.status === "completed" ? "Recebimento comercial conferido" : "Conferência do recebimento pendente"}</strong><p className="mt-1">{readReceipt(technical?.commercial_data)?.draft.notes}</p><Link href={`/tecnico/contratos/${id}/recebimento`} className="mt-2 inline-block font-semibold underline">{readReceipt(technical?.commercial_data)?.status === "completed" ? "Consultar conferência e histórico" : "Continuar conferência"}</Link></div>}
       <PageHeader
         title={`${contract.contract_number} · ${client?.name ?? "Cliente"}`}
         description={`${contract.work_name} · ${contract.full_address}`}

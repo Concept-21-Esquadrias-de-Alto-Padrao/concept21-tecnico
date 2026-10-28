@@ -1,10 +1,11 @@
+import { readReceipt } from "@/lib/commercial-receipt";
 import { getWorkItemPermissions, type PermissionLookup } from "@/lib/module-access";
 import { isOverdue, isStageValidationSatisfied } from "@/lib/technical-rules";
 import type { ProductionContract, TechnicalAction, TechnicalContract, TechnicalContractStageKey, TechnicalCorrection, TechnicalRelease, TechnicalReleaseParticipant, TechnicalStageValidation, TechnicalStageValidationParticipant } from "@/lib/types";
 
 export type MyActivity = {
   id: string;
-  kind: "action" | "correction" | "stage_signature" | "release_signature";
+  kind: "receipt" | "action" | "correction" | "stage_signature" | "release_signature";
   title: string;
   contractId: string;
   contractNumber: string;
@@ -18,7 +19,7 @@ export type MyActivity = {
 };
 
 export const activityKindLabels: Record<MyActivity["kind"], string> = {
-  action: "Ação geral", correction: "Correção técnica",
+  receipt: "Recebimento comercial", action: "Ação geral", correction: "Correção técnica",
   stage_signature: "Assinatura de etapa", release_signature: "Assinatura de lote",
 };
 
@@ -30,7 +31,7 @@ export const activityStageLabels: Record<TechnicalContractStageKey, string> = {
 
 export type MyActivitiesSource = {
   contracts: Pick<ProductionContract, "id" | "company_id" | "active" | "contract_number" | "work_name">[];
-  technicalContracts: Pick<TechnicalContract, "company_id" | "contract_id" | "deleted_at" | "commercial_folder_received">[];
+  technicalContracts: (Pick<TechnicalContract, "company_id" | "contract_id" | "deleted_at" | "commercial_folder_received"> & {commercial_data?:Record<string,unknown>})[];
   actions: Pick<TechnicalAction, "id" | "company_id" | "contract_id" | "title" | "responsible_profile_id" | "due_date" | "status" | "blocking" | "deleted_at">[];
   corrections: Pick<TechnicalCorrection, "id" | "company_id" | "contract_id" | "type" | "responsible_profile_id" | "due_date" | "status" | "blocking" | "deleted_at">[];
   validations: Pick<TechnicalStageValidation, "company_id" | "contract_id" | "stage" | "validation_required">[];
@@ -61,6 +62,13 @@ export function buildMyActivities(source: MyActivitiesSource, identity: { compan
   function actionHref(contractId: string, kind: "action" | "correction", id: string) {
     const base = canViewContracts ? `/tecnico/contratos/${contractId}` : "/tecnico/acoes";
     return `${base}#atividade-${kind}-${id}`;
+  }
+
+  if (canViewContracts) for (const contract of technical) {
+    const receipt = readReceipt(contract.commercial_data);
+    if (!receipt || receipt.owner !== profileId || receipt.status === "completed") continue;
+    const allowed = access.isMaster || Boolean(access.permissions[contract.commercial_data?.origem_cadastro === "pdf" ? "technical.contracts.import_pdf" : "technical.contracts.manual_create"]);
+    add(contract.contract_id,{id:`receipt-${contract.contract_id}`,kind:"receipt",title:"Conferir recebimento comercial do contrato",dueDate:receipt.dueAt,available:allowed,blocking:true,nextStep:"Retomar a conferência dos dados, peças e desenho. Prazo até 17h30 do próximo dia útil.",href:`/tecnico/contratos/${contract.contract_id}/recebimento`,linkLabel:"Continuar conferência"});
   }
 
   if (rights.canViewActions) for (const action of source.actions) {

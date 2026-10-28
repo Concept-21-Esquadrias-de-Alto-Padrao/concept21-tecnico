@@ -1,5 +1,6 @@
 "use client";
 
+import { readReceipt } from "@/lib/commercial-receipt";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -30,7 +31,7 @@ export function TechnicalContractsTable({
             .filter(Boolean)
             .join(" "),
         );
-        return (!normalized || text.includes(normalized)) && (!status || overview.technical?.technical_status === status);
+        return (!normalized || text.includes(normalized)) && (!status || (status === "recebimento_pendente" ? Boolean(readReceipt(overview.technical?.commercial_data) && readReceipt(overview.technical?.commercial_data)?.status !== "completed") : overview.technical?.technical_status === status && !(status === "aguardando_reuniao" && readReceipt(overview.technical?.commercial_data) && readReceipt(overview.technical?.commercial_data)?.status !== "completed")));
       })
       .sort((left, right) => left.contract.contract_number.localeCompare(right.contract.contract_number));
   }, [overviews, query, status]);
@@ -55,6 +56,7 @@ export function TechnicalContractsTable({
           className="min-h-11 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-accent"
         >
           <option value="">Todas as situações</option>
+          <option value="recebimento_pendente">Conferência do recebimento pendente</option>
           <option value="aguardando_reuniao">Aguardando reunião</option>
           <option value="aguardando_pasta">Aguardando pasta</option>
           <option value="em_acompanhamento">Em acompanhamento</option>
@@ -93,10 +95,7 @@ export function TechnicalContractsTable({
                     {overview.client?.name ?? "Cliente não vinculado"}
                   </p>
                 </div>
-                <StatusBadge
-                  status={overview.technical?.technical_status ?? "aguardando_reuniao"}
-                  type="contract"
-                />
+                {readReceipt(overview.technical?.commercial_data) && readReceipt(overview.technical?.commercial_data)?.status !== "completed" ? <span className="inline-block rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Conferência pendente</span> : <StatusBadge status={overview.technical?.technical_status ?? "aguardando_reuniao"} type="contract" />}
               </div>
 
               <p className="mt-2 text-xs text-muted-foreground">{overview.contract.work_name}</p>
@@ -130,10 +129,10 @@ export function TechnicalContractsTable({
                   {risk ? "Em risco" : "Normal"}
                 </span>
                 <Link
-                  href={`/tecnico/contratos/${overview.contract.id}`}
+                  href={readReceipt(overview.technical?.commercial_data)?.status === "pending" || readReceipt(overview.technical?.commercial_data)?.status === "applying" ? `/tecnico/contratos/${overview.contract.id}/recebimento` : `/tecnico/contratos/${overview.contract.id}`}
                   className="inline-flex min-h-10 items-center rounded-md bg-charcoal px-3 text-xs font-semibold text-white hover:bg-black"
                 >
-                  Abrir
+                  {readReceipt(overview.technical?.commercial_data)?.status === "pending" ? "Conferir recebimento" : "Abrir"}
                 </Link>
               </div>
             </article>
@@ -184,10 +183,7 @@ export function TechnicalContractsTable({
                     <p className="mt-1 text-xs text-muted-foreground">{overview.contract.full_address}</p>
                   </td>
                   <td className="border-b border-border px-3 py-3">
-                    <StatusBadge
-                      status={overview.technical?.technical_status ?? "aguardando_reuniao"}
-                      type="contract"
-                    />
+                    {readReceipt(overview.technical?.commercial_data) && readReceipt(overview.technical?.commercial_data)?.status !== "completed" ? <span className="inline-block rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Conferência pendente</span> : <StatusBadge status={overview.technical?.technical_status ?? "aguardando_reuniao"} type="contract" />}
                   </td>
                   <td className="border-b border-border px-3 py-3">
                     {nextVisit ? formatDate(nextVisit.scheduled_date) : "Sem visita"}
@@ -207,10 +203,10 @@ export function TechnicalContractsTable({
                   </td>
                   <td className="border-b border-border px-3 py-3">
                     <Link
-                      href={`/tecnico/contratos/${overview.contract.id}`}
+                      href={readReceipt(overview.technical?.commercial_data)?.status === "pending" || readReceipt(overview.technical?.commercial_data)?.status === "applying" ? `/tecnico/contratos/${overview.contract.id}/recebimento` : `/tecnico/contratos/${overview.contract.id}`}
                       className="inline-flex rounded-md bg-charcoal px-3 py-2 text-xs font-semibold text-white hover:bg-black"
                     >
-                      Abrir
+                      {readReceipt(overview.technical?.commercial_data)?.status === "pending" ? "Conferir recebimento" : "Abrir"}
                     </Link>
                   </td>
                 </tr>

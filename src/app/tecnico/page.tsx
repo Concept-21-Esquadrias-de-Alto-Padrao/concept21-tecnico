@@ -1,3 +1,4 @@
+import { readReceipt } from "@/lib/commercial-receipt";
 import {
   AlertTriangle,
   CalendarDays,
@@ -60,6 +61,7 @@ export default async function TechnicalDashboardPage() {
   const metrics = {
     waitingMeeting: overviews.filter(
       (item) =>
+        (!readReceipt(item.technical?.commercial_data) || readReceipt(item.technical?.commercial_data)?.status === "completed") &&
         !["concluido", "cancelado"].includes(item.technical?.technical_status ?? "") &&
         !snapshot.meetings.some((meeting) => meeting.contract_id === item.contract.id && meeting.status === "concluida"),
     ).length,

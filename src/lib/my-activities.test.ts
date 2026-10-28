@@ -129,3 +129,12 @@ describe("personal activity projection", () => {
     expect(buildMyActivities(data, identity, access)).toEqual([]);
   });
 });
+
+it("projects a single receipt obligation for its receiver and removes it on completion",()=>{
+ const data=source();data.actions=[];
+ const receipt={status:"pending",version:1,owner:"me",dueAt:"2026-10-29T17:30:00-03:00",draft:{}};
+ data.technicalContracts[0].commercial_data={origem_cadastro:"manual",receipt};
+ expect(buildMyActivities(data,identity,access)).toMatchObject([{id:"receipt-contract",kind:"receipt",href:"/tecnico/contratos/contract/recebimento"}]);
+ expect(buildMyActivities(data,{...identity,profileId:"other"},access)).toHaveLength(0);
+ receipt.status="completed";expect(buildMyActivities(data,identity,access)).toHaveLength(0);
+});

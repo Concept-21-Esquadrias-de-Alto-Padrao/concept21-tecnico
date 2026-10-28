@@ -44,14 +44,15 @@ export async function getMyActivities() {
     return rows;
   }
 
-  const [actions, corrections, stageParticipants, releaseParticipants] = await Promise.all([
+  const [actions, corrections, stageParticipants, releaseParticipants, receipts] = await Promise.all([
     rights.canViewActions ? read<MyActivitiesSource["actions"][number]>("technical_actions", "id,company_id,contract_id,title,responsible_profile_id,due_date,status,blocking,deleted_at", { equal: { responsible_profile_id: profileId }, nulls: ["deleted_at"], exclude: { column: "status", values: ["concluida", "cancelada"] } }) : [],
     rights.canViewCorrections ? read<MyActivitiesSource["corrections"][number]>("technical_corrections", "id,company_id,contract_id,type,responsible_profile_id,due_date,status,blocking,deleted_at", { equal: { responsible_profile_id: profileId }, nulls: ["deleted_at"], exclude: { column: "status", values: ["encerrada", "cancelada"] } }) : [],
     canSign ? read<MyActivitiesSource["stageParticipants"][number]>("technical_stage_validation_participants", "id,company_id,contract_id,stage,profile_id,signed_at", { equal: { profile_id: profileId }, nulls: ["signed_at"], exclude: { column: "stage", values: ["pecas_medicoes_liberacoes"] } }) : [],
     canSign ? read<MyActivitiesSource["releaseParticipants"][number]>("technical_release_participants", "id,company_id,release_id,profile_id,signed_at", { equal: { profile_id: profileId }, nulls: ["signed_at"] }) : [],
+    canSign ? read<MyActivitiesSource["technicalContracts"][number]>("technical_contracts", "company_id,contract_id,deleted_at,commercial_folder_received,commercial_data", {equal:{"commercial_data->receipt->>owner":profileId},nulls:["deleted_at"]}) : [],
   ]);
   const releases = await read<MyActivitiesSource["releases"][number]>("technical_releases", "id,company_id,contract_id,batch_number,status,validation_required", { equal: { validation_required: true }, oneOf: { column: "id", values: [...new Set(releaseParticipants.map((row) => row.release_id))] }, exclude: { column: "status", values: ["cancelado"] } });
-  const contractIds = [...new Set([...actions, ...corrections, ...stageParticipants, ...releases].map((row) => row.contract_id))];
+  const contractIds = [...new Set([...actions, ...corrections, ...stageParticipants, ...releases, ...receipts].map((row) => row.contract_id))];
   const byContract: QueryFilters = { oneOf: { column: "contract_id", values: contractIds } };
 
   // Read prerequisites for every participant in the assigned stage, not only this user's work.
@@ -61,7 +62,7 @@ export async function getMyActivities() {
   }
   const [contracts, technicalContracts, validations, completedMeetings, performedVisits, openActions, openCorrections, approvedProds, openDoubts, meetingSignatures] = await Promise.all([
     read<MyActivitiesSource["contracts"][number]>("production_contracts", "id,company_id,active,contract_number,work_name", { equal: { active: true }, oneOf: { column: "id", values: contractIds } }),
-    read<MyActivitiesSource["technicalContracts"][number]>("technical_contracts", "company_id,contract_id,deleted_at,commercial_folder_received", byContract),
+    read<MyActivitiesSource["technicalContracts"][number]>("technical_contracts", "company_id,contract_id,deleted_at,commercial_folder_received,commercial_data", byContract),
     read<MyActivitiesSource["validations"][number]>("technical_stage_validations", "company_id,contract_id,stage,validation_required", { oneOf: { column: "contract_id", values: [...new Set(stageParticipants.map((row) => row.contract_id))] }, equal: { validation_required: true } }),
     fact(["reuniao_ata", "entrada_comercial"], "technical_closing_meetings", { equal: { status: "concluida" } }),
     fact(["visitas"], "technical_visits", { include: { status: ["realizada", "aguardando_relatorio", "relatorio_emitido"] } }),

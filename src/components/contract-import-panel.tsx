@@ -265,7 +265,7 @@ function PieceCard({
 export function ContractImportPanel({ onDirtyChange, onPendingChange, onSuccess }: {
   onDirtyChange?: (dirty: boolean) => void;
   onPendingChange?: (pending: boolean) => void;
-  onSuccess?: (message: string) => void;
+  onSuccess?: (message: string, contractId?: string) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewPayload | null>(null);
@@ -615,11 +615,12 @@ export function ContractImportPanel({ onDirtyChange, onPendingChange, onSuccess 
           <ActionForm
             action={confirmContractImportAction}
             onSuccess={onSuccess}
+            saveLaterLabel={!reprocessExisting ? "Guardar e continuar depois" : undefined}
             onPendingChange={handlePendingChange}
             submitLabel={
               preview.duplicateContract && reprocessExisting
                 ? "Confirmar reprocessamento"
-                : "Confirmar e gravar contrato"
+                : "Salvar importação e conferir recebimento"
             }
             confirmMessage={
               preview.duplicateContract && reprocessExisting

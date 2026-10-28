@@ -27,7 +27,7 @@ export function CommercialEntryPage({ mode, canImport, canManualCreate }: { mode
     document.addEventListener("click", beforeNavigate, true);
     return () => { window.removeEventListener("beforeunload", beforeUnload); document.removeEventListener("click", beforeNavigate, true); };
   }, [dirty, saving, success]);
-  function saved(message: string) { setDirty(false); setSuccess(message); router.refresh(); }
+  function saved(message: string, contractId?: string) { setDirty(false); if (contractId) { setSuccess("Abrindo conferência..."); router.push(`/tecnico/contratos/${contractId}/recebimento`); } else { setSuccess(message); router.refresh(); } }
   return <div className="space-y-6">
     <nav aria-label="Localização" className="flex items-center gap-2 text-sm text-muted-foreground"><Link href="/tecnico/contratos" className="hover:text-charcoal">Obras</Link><span aria-hidden="true">/</span><span>Entrada comercial</span></nav>
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -35,6 +35,7 @@ export function CommercialEntryPage({ mode, canImport, canManualCreate }: { mode
       <Link href="/tecnico/contratos" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium"><ArrowLeft className="size-4" />Voltar para Obras</Link>
     </div>
     {!success && <CommercialEntryOptions canImport={canImport} canManualCreate={canManualCreate} mode={mode} />}
+    {!success && <ol aria-label="Etapas do recebimento" className="grid gap-3 sm:grid-cols-3">{["Dados da obra", "Peças e desenhos", "Concluir conferência"].map((label,i)=><li key={label} aria-current={i===0?"step":undefined} className={`rounded-xl border p-4 text-sm font-semibold ${i===0?"border-orange-400 bg-orange-50 text-orange-900":"border-border bg-white text-muted-foreground"}`}>{i+1} · {label}</li>)}</ol>}
     {success ? <section className="rounded-2xl border border-green-200 bg-white p-8" role="status"><CheckCircle2 className="mb-4 size-9 text-green-700" /><h2 className="text-xl font-semibold">Cadastro salvo</h2><p className="mt-2 text-muted-foreground">{success}</p><Link href="/tecnico/contratos" className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-charcoal px-5 text-sm font-semibold text-white">Ver obras cadastradas</Link></section> :
     <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
       <section aria-label="Cadastro comercial" className="min-w-0 rounded-2xl border border-border/80 bg-white shadow-sm">

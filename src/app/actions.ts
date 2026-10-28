@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+import { receiptDueAt, readReceipt, type CommercialReceipt } from "@/lib/commercial-receipt";
 import { parseCommercialEntry, mergeReimportCommercialData } from "@/lib/commercial-entry";
 import { revalidatePath } from "next/cache";
 import {
@@ -629,12 +631,14 @@ async function insertTechnicalPiecesFromImport({
   pieces,
   source,
   skipExisting,
+  pieceIds,
 }: {
   context: ActionContext;
   contractId: string;
   pieces: ParsedTechnicalPiece[];
   source: "manual" | "pdf";
   skipExisting: boolean;
+  pieceIds?: string[];
 }) {
   const safePieces = ensureUniqueTechnicalPieceCodes(pieces).pieces;
   if (!safePieces.length) return { insertedCount: 0, skippedDuplicateCodes: [] as string[] };
@@ -659,6 +663,7 @@ async function insertTechnicalPiecesFromImport({
       return !exists || !skipExisting;
     })
     .map((piece, index) => ({
+      ...(pieceIds ? {id: pieceIds[index]} : {}),
       company_id: context.companyId,
       contract_id: contractId,
       code: piece.code,
@@ -702,6 +707,8 @@ async function createTechnicalContract({
   technicalManagerProfileId,
   followupProfileId,
   deliveryDate = null,
+  receiptDataChecked = false,
+  receiptReference = "",
   authorizedContacts = [],
   commercialData = {},
   pieces = [],
@@ -721,12 +728,26 @@ async function createTechnicalContract({
   technicalManagerProfileId?: string | null;
   followupProfileId?: string | null;
   deliveryDate?: string | null;
+  receiptDataChecked?: boolean;
+  receiptReference?: string;
   authorizedContacts?: Array<Record<string, unknown>>;
   commercialData?: Record<string, unknown>;
   pieces?: ParsedTechnicalPiece[];
   source: "manual" | "pdf";
 }) {
   await assertContractNotDuplicated(context, contractNumber);
+  const {data: holidays, error: holidayError} = await context.admin.from("technical_holidays").select("holiday_date").eq("company_id", context.companyId);
+  if (holidayError) throw holidayError;
+  const startedAt = new Date().toISOString();
+  const pieceIds = pieces.map(() => randomUUID());
+  const receipt: CommercialReceipt = {
+    status: "pending", version: 0, owner: context.profileId, ownerName: "Responsável pelo recebimento",
+    startedAt, updatedAt: startedAt, dueAt: receiptDueAt(new Date(startedAt), (holidays ?? []).map(h => String(h.holiday_date))),
+    draft: {step: receiptDataChecked ? 1 : 0, data: {contract_number:contractNumber, client_name:clientName, work_name:workName, full_address:fullAddress, city, state, contract_date:contractDate ?? "", contractual_deadline_value:String(deadlineValue ?? ""), contractual_deadline_unit:deadlineUnit, description:description ?? "", contacts:authorizedContacts.map(c=>({name:String(c.name ?? ""),role:String(c.role ?? ""),phone:String(c.phone ?? "")})), deliveryDate:deliveryDate ?? "", dateUnknown:Boolean(commercialData.delivery_date_unknown)},
+      pieces: pieces.map((piece,index)=>({id:pieceIds[index],code:piece.code,environment:piece.environment ?? "",piece_type:piece.piece_type ?? "",quantity:piece.quantity,sale_width_mm:piece.sale_width_mm,sale_height_mm:piece.sale_height_mm,description:piece.description ?? "",glass:piece.glass ?? "",color:piece.color ?? "",line:piece.line ?? ""})),
+      checkedIds:[], dataChecked:receiptDataChecked, drawingChecked:false, reference:receiptReference, notes:""},
+    history:[{at:startedAt,by:context.profileId,event:"Recebimento iniciado",version:0}],
+  };
   const clientId = await findOrCreateClient(context, clientName);
 
   const { data: contract, error: contractError } = await context.admin
@@ -764,6 +785,7 @@ async function createTechnicalContract({
     commercial_data: {
       ...commercialData,
       origem_cadastro: source,
+      receipt,
     },
     authorized_contacts: authorizedContacts,
     technical_notes: description,
@@ -777,6 +799,7 @@ async function createTechnicalContract({
     pieces,
     source,
     skipExisting: false,
+    pieceIds,
   });
 
   const { error: auditError } = await context.admin.from("audit_logs").insert({
@@ -905,6 +928,8 @@ export async function createManualContractAction(_: ActionState, formData: FormD
     if (!parsed.success) return invalidForm(parsed.error);
 
     const entry = parseCommercialEntry(formData);
+    const continueReceipt = formData.get("receipt_intent") === "continue";
+    if (continueReceipt && formData.get("receipt_data_checked") !== "on") throw new Error("Confira e marque os dados da obra antes de continuar, ou use Guardar e continuar depois.");
 
     const contractId = await createTechnicalContract({
       context,
@@ -920,12 +945,14 @@ export async function createManualContractAction(_: ActionState, formData: FormD
       description: parsed.data.description ?? null,
       authorizedContacts: entry.contacts,
       deliveryDate: entry.deliveryDate,
+      receiptDataChecked: continueReceipt,
+      receiptReference: String(formData.get("receipt_reference") ?? "").slice(0,2000),
       commercialData: { delivery_date_unknown: entry.dateUnknown, delivery_date_meaning: "instalacao_concluida" },
       source: "manual",
     });
 
     revalidateTechnical(contractId);
-    return ok("Contrato técnico cadastrado.");
+    return {...ok("Dados guardados. Continue a conferência do recebimento."), contractId};
   } catch (error) {
     return fail(error);
   }
@@ -977,6 +1004,8 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
     }
 
     const entry = parseCommercialEntry(formData);
+    const continueReceipt = formData.get("receipt_intent") === "continue";
+    if (continueReceipt && formData.get("receipt_data_checked") !== "on") throw new Error("Confira e marque os dados da obra antes de continuar, ou use Guardar e continuar depois.");
 
     const contractId = await createTechnicalContract({
       context,
@@ -990,6 +1019,8 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
       description: contract.description,
       authorizedContacts: entry.contacts,
       deliveryDate: entry.deliveryDate,
+      receiptDataChecked: continueReceipt,
+      receiptReference: String(formData.get("receipt_reference") ?? "").slice(0,2000),
       commercialData: { ...contract.commercial_data, delivery_date_unknown: entry.dateUnknown, delivery_date_meaning: "instalacao_concluida" },
       pieces: preparedPieces.pieces,
       source: "pdf",
@@ -997,11 +1028,9 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
 
     revalidateTechnical(contractId);
     if (preparedPieces.adjustedCount > 0) {
-      return ok(
-        `Importação confirmada. ${preparedPieces.adjustedCount} código(s) repetido(s) de peça foram ajustados automaticamente.`,
-      );
+      return {...ok(`Importação guardada. ${preparedPieces.adjustedCount} código(s) repetido(s) ajustados. Continue a conferência.`), contractId};
     }
-    return ok("Importação confirmada e gravada.");
+    return {...ok("Importação guardada. Continue a conferência do recebimento."), contractId};
   } catch (error) {
     return fail(error);
   }
@@ -1015,12 +1044,14 @@ export async function receiveCommercialFolderAction(_: ActionState, formData: Fo
 
     const { data: current, error: currentError } = await context.admin
       .from("technical_contracts")
-      .select("commercial_folder_received, technical_status")
+      .select("commercial_folder_received, technical_status, commercial_data")
       .eq("company_id", context.companyId)
       .eq("contract_id", parsed.data.contract_id)
       .maybeSingle();
 
     if (currentError) throw currentError;
+    const receipt = readReceipt((current as {commercial_data?:Record<string,unknown>} | null)?.commercial_data);
+    if (receipt && receipt.status !== "completed") throw new Error("Conclua a conferência do recebimento antes de entregar a pasta.");
     if (!current) throw new Error("Contrato técnico não encontrado.");
     if ((current as { commercial_folder_received: boolean }).commercial_folder_received) {
       throw new Error("Entrega da pasta já concluída. Reabra a etapa com motivo para alterar.");
@@ -1061,13 +1092,15 @@ export async function createMeetingAction(_: ActionState, formData: FormData) {
 
     const { data: technical, error: technicalError } = await context.admin
       .from("technical_contracts")
-      .select("commercial_folder_received, technical_status")
+      .select("commercial_folder_received, technical_status, commercial_data")
       .eq("company_id", context.companyId)
       .eq("contract_id", parsed.data.contract_id)
       .maybeSingle();
 
     if (technicalError) throw technicalError;
     if (!technical) throw new Error("Contrato técnico não encontrado.");
+    const receipt = readReceipt((technical as {commercial_data?:Record<string,unknown>}).commercial_data);
+    if (receipt && receipt.status !== "completed") throw new Error("Conclua a conferência do recebimento antes da reunião de alinhamento.");
     if ((technical as { technical_status: string }).technical_status !== "aguardando_reuniao") {
       throw new Error("Reunião e ata já foram concluídas ou a etapa ainda não está liberada.");
     }

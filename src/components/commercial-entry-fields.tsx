@@ -3,15 +3,17 @@
 import { useId, useState } from "react";
 import { Field, inputClass } from "@/components/action-form";
 
-export function CommercialEntryFields({ initialContacts = [], onDirtyChange }: {
+export function CommercialEntryFields({ initialContacts = [], initialDate = "", initialUnknown = false, onDirtyChange }: {
+  initialDate?: string;
+  initialUnknown?: boolean;
   initialContacts?: Array<{ name: string; role?: string | null; phone?: string | null }>;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const prefix = useId();
   const [contacts, setContacts] = useState(() => (initialContacts.length ? initialContacts : [{ name: "", role: "", phone: "" }]).map((c, index) => ({ id: index, name: c.name, role: c.role ?? "", phone: c.phone ?? "" })));
   const [nextId, setNextId] = useState(contacts.length);
-  const [unknown, setUnknown] = useState(false);
-  const [date, setDate] = useState("");
+  const [unknown, setUnknown] = useState(initialUnknown);
+  const [date, setDate] = useState(initialDate);
   function update(id: number, field: "name" | "role" | "phone", value: string) {
     setContacts(current => current.map(c => c.id === id ? { ...c, [field]: value } : c));
     onDirtyChange(true);

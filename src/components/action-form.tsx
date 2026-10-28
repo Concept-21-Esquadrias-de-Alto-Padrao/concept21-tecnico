@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 export type ActionState = {
   ok: boolean;
   message: string;
+  contractId?: string;
 };
 
 const initialState: ActionState = {
@@ -23,13 +24,15 @@ export function ActionForm({
   confirmMessage,
   onSuccess,
   onPendingChange,
+  saveLaterLabel,
 }: {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
   children: React.ReactNode;
   submitLabel: string;
   className?: string;
   confirmMessage?: string;
-  onSuccess?: (message: string) => void;
+  onSuccess?: (message: string, contractId?: string) => void;
+  saveLaterLabel?: string;
   onPendingChange?: (pending: boolean) => void;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
@@ -37,7 +40,7 @@ export function ActionForm({
     if (state.ok) window.dispatchEvent(new Event(ACTIVITIES_CHANGED_EVENT));
   }, [state]);
   useEffect(() => {
-    if (state.ok) onSuccess?.(state.message);
+    if (state.ok) onSuccess?.(state.message, state.contractId);
   }, [state, onSuccess]);
   useEffect(() => {
     onPendingChange?.(pending);
@@ -57,12 +60,14 @@ export function ActionForm({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button
           type="submit"
+          name="receipt_intent" value="continue"
           disabled={pending}
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
           {pending ? "Salvando..." : submitLabel}
         </button>
+        {saveLaterLabel && <button type="submit" name="receipt_intent" value="save" disabled={pending} className="min-h-11 rounded-lg border border-border bg-white px-4 text-sm font-semibold disabled:opacity-50">{saveLaterLabel}</button>}
         {state.message ? (
           <p
             role={state.ok ? "status" : "alert"}

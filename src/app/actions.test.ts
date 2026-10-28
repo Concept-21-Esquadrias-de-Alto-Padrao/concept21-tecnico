@@ -1,3 +1,5 @@
+import { saveCommercialReceiptAction } from "./commercial-receipt-actions";
+import type { CommercialReceipt } from "@/lib/commercial-receipt";
 import { createClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -43,6 +45,7 @@ function setupDatabase() {
       state: "GO",
       active: true,
     }],
+    technical_holidays: [],
     audit_logs: [],
     technical_corrections: [],
     technical_contract_pieces: [],
@@ -86,7 +89,7 @@ function setupDatabase() {
       { id: "grant-piece-authorize-change", company_id: companyId, role_id: "role-technical", permission_id: "permission-piece-authorize-change" },
     ],
   };
-  const database = { tables, rejectClientUpdate: false, clientWrites: 0 };
+  const database = { tables, rejectClientUpdate: false, clientWrites: 0, rejectPieceInsertOnce: false };
 
   // Exercise the real Supabase query serialization against an in-memory HTTP response.
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
@@ -95,7 +98,7 @@ function setupDatabase() {
     const rows = tables[table];
     if (!rows) throw new Error(`Unexpected table: ${table}`);
     let selected = rows.filter((row) => Array.from(url.searchParams).every(([key, value]) => {
-      if (value.startsWith("eq.")) return String(row[key]) === value.slice(3);
+      if (value.startsWith("eq.")) { const actual = key === "commercial_data->receipt->>version" ? (row.commercial_data as {receipt?:{version:number}})?.receipt?.version : row[key]; return String(actual) === value.slice(3); }
       if (value === "is.null") return row[key] == null;
       if (value.startsWith("ilike.")) {
         return String(row[key]).toLowerCase() === value.slice(6).toLowerCase();
@@ -104,6 +107,7 @@ function setupDatabase() {
     }));
 
     const method = init?.method ?? "GET";
+    if (table === "technical_contract_pieces" && method === "POST" && database.rejectPieceInsertOnce) { database.rejectPieceInsertOnce=false; return Response.json({message:"Falha simulada"},{status:500}); }
     if (method === "PATCH") {
       if (table === "clients") {
         database.clientWrites += 1;
@@ -913,4 +917,51 @@ describe("cadastro comercial de novas obras", () => {
     expect(tables.technical_contracts[0].authorized_contacts).toEqual([{name:"Atual",role:"Engenheiro",phone:"123"}]);
     expect(tables.technical_contracts[0].commercial_data).toMatchObject({delivery_date_unknown:false});
   });
+});
+
+
+describe("commercial receipt persistence and conclusion",()=>{
+ function seed(tables:Record<string,Row[]>) {
+   const receipt: CommercialReceipt = {status:"pending",version:0,owner:"profile-id",ownerName:"Teste",dueAt:"2026-10-29T17:30:00-03:00",startedAt:"2026-10-28T10:00:00Z",updatedAt:"2026-10-28T10:00:00Z",history:[],draft:{step:2,data:{contract_number:"26-0001",client_name:originalName,work_name:"Obra",full_address:"Rua teste",city:"Goiânia",state:"GO",contract_date:"2026-10-28",contractual_deadline_value:"90",contractual_deadline_unit:"dias_corridos",description:"",contacts:[{name:"Cliente",role:"Proprietário",phone:"123"}],deliveryDate:"2027-03-10",dateUnknown:false},pieces:[{id:pieceId,code:"J1",environment:"Sala",piece_type:"Janela",quantity:2,sale_width_mm:1000,sale_height_mm:1200,description:"",glass:"",color:"",line:""}],checkedIds:[pieceId],dataChecked:true,drawingChecked:true,reference:"Desenho RV01 no servidor",notes:"Fechadura do cliente"}};
+   tables.technical_contracts[0].commercial_data={origem_cadastro:"manual",receipt};
+   return receipt;
+ }
+ it("saves draft without changing piece records and rejects stale versions",async()=>{
+   const {tables}=setupDatabase();const r=seed(tables);r.draft.data.client_name="";r.draft.dataChecked=false;
+   const result=await saveCommercialReceiptAction({contractId,version:0,intent:"save",draft:r.draft});
+   expect(result.ok,result.message).toBe(true);expect(result.receipt?.version).toBe(1);expect(tables.technical_contract_pieces).toHaveLength(0);
+   expect((await saveCommercialReceiptAction({contractId,version:0,intent:"save",draft:r.draft})).ok).toBe(false);
+ });
+ it("rejects incomplete and forged completion without closing receipt",async()=>{
+   const {tables}=setupDatabase();const r=seed(tables);r.draft.checkedIds=[];
+   expect((await saveCommercialReceiptAction({contractId,version:0,intent:"finish",draft:r.draft})).ok).toBe(false);
+   expect((tables.technical_contracts[0].commercial_data as {receipt:CommercialReceipt}).receipt.status).toBe("pending");
+   r.draft.checkedIds=[pieceId];r.draft.pieces=[];
+   expect((await saveCommercialReceiptAction({contractId,version:0,intent:"finish",draft:r.draft})).ok).toBe(false);
+ });
+ it("concludes once, preserves separate technical measures and audits actor",async()=>{
+   const {tables}=setupDatabase();const r=seed(tables);
+   const result=await saveCommercialReceiptAction({contractId,version:0,intent:"finish",draft:r.draft});
+   expect(result.ok,result.message).toBe(true);expect(result.receipt?.status).toBe("completed");expect(result.receipt?.completedBy).toBe("profile-id");
+   expect(tables.technical_contract_pieces).toHaveLength(1);expect(tables.technical_contract_pieces[0]).toMatchObject({sale_width_mm:1000,quantity:2});
+   expect(tables.technical_contract_pieces[0].measured_width_mm).toBeUndefined();
+   expect((await saveCommercialReceiptAction({contractId,version:0,intent:"finish",draft:r.draft})).ok).toBe(true);expect(tables.technical_contract_pieces).toHaveLength(1);
+ });
+ it("recovers a partial completion using stable IDs",async()=>{
+   const {tables,database}=setupDatabase();const r=seed(tables);database.rejectPieceInsertOnce=true;
+   const first=await saveCommercialReceiptAction({contractId,version:0,intent:"finish",draft:r.draft});
+   expect(first.ok).toBe(false);expect(first.receipt?.status).toBe("applying");
+   const retry=await saveCommercialReceiptAction({contractId,version:first.receipt!.version,intent:"finish",draft:r.draft});
+   expect(retry.ok,retry.message).toBe(true);expect(tables.technical_contract_pieces).toHaveLength(1);
+ });
+ it("does not access another company or overwrite pieces already measured",async()=>{
+   const {tables}=setupDatabase();const r=seed(tables);tables.technical_contracts[0].company_id="another";
+   expect((await saveCommercialReceiptAction({contractId,version:0,intent:"finish",draft:r.draft})).ok).toBe(false);
+   tables.technical_contracts[0].company_id=companyId;tables.technical_contract_pieces.push({id:pieceId,company_id:companyId,contract_id:contractId,measured_width_mm:1000});
+   expect((await saveCommercialReceiptAction({contractId,version:0,intent:"finish",draft:r.draft})).ok).toBe(false);
+ });
+ it("blocks meeting while receipt is open",async()=>{
+   const {tables}=setupDatabase();seed(tables);const f=new FormData();f.set("contract_id",contractId);f.set("meeting_date","2026-10-28");f.set("participants","Comercial");
+   const result=await createMeetingAction(initialState,f);expect(result.ok).toBe(false);expect(tables.technical_closing_meetings).toHaveLength(0);
+ });
 });
