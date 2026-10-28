@@ -2,7 +2,8 @@
 
 import {
   BarChart3,
-  BriefcaseBusiness,
+  MoreHorizontal,
+  Menu,
   CalendarDays,
   CheckSquare,
   ClipboardList,
@@ -10,7 +11,6 @@ import {
   HelpCircle,
   Home,
   Settings,
-  ShieldCheck,
   UserRoundCheck,
 } from "lucide-react";
 import Link from "next/link";
@@ -30,10 +30,10 @@ import { hasSupabaseBrowserEnv } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/tecnico", label: "Painel Técnico", icon: Home, permissions: MODULE_ACCESS.dashboard },
-  { href: "/tecnico/minhas-atividades", label: "Minhas atividades", icon: UserRoundCheck, permissions: MODULE_ACCESS.myActivities },
-  { href: "/tecnico/contratos", label: "Contratos", icon: ClipboardList, permissions: MODULE_ACCESS.contracts },
-  { href: "/tecnico/agenda", label: "Agenda Técnica", icon: CalendarDays, permissions: MODULE_ACCESS.agenda },
+  { href: "/tecnico", label: "Painel", icon: Home, permissions: MODULE_ACCESS.dashboard },
+  { href: "/tecnico/minhas-atividades", label: "Meu trabalho", icon: UserRoundCheck, permissions: MODULE_ACCESS.myActivities },
+  { href: "/tecnico/contratos", label: "Obras", icon: ClipboardList, permissions: MODULE_ACCESS.contracts },
+  { href: "/tecnico/agenda", label: "Agenda", icon: CalendarDays, permissions: MODULE_ACCESS.agenda },
   { href: "/tecnico/acoes", label: "Ações", icon: CheckSquare, permissions: MODULE_ACCESS.actions },
   { href: "/tecnico/prods", label: "PRODs", icon: Factory, permissions: MODULE_ACCESS.prods },
   { href: "/tecnico/duvidas", label: "Base de Dúvidas", icon: HelpCircle, permissions: MODULE_ACCESS.doubts },
@@ -53,6 +53,7 @@ function canShowNavItem(access: AccessState, permissions: readonly string[]) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [access, setAccess] = useState<AccessState>(() =>
     hasSupabaseBrowserEnv() ? "loading" : "empty-env",
   );
@@ -82,104 +83,43 @@ export function AppShell({ children }: { children: ReactNode }) {
   const visibleNavItems = navItems.filter((item) => canShowNavItem(access, item.permissions));
   const currentProfile = access && typeof access === "object" ? access.profile : null;
 
+  const primaryPaths = ["/tecnico", "/tecnico/minhas-atividades", "/tecnico/contratos", "/tecnico/agenda", "/tecnico/prods"];
+  const primaryItems = primaryPaths.flatMap(href => visibleNavItems.filter(item => item.href === href));
+  const secondaryItems = visibleNavItems.filter(item => !primaryPaths.includes(item.href));
+  const isActive = (href: string) => href === "/tecnico" ? pathname === href : pathname.startsWith(href);
+  const navLink = (item: typeof navItems[number]) => {
+    const Icon = item.icon;
+    return <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}
+      onClick={event => { setMobileOpen(false); const more = event.currentTarget.closest("details"); if (more) more.open = false; }}
+      className={cn("inline-flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-accent", isActive(item.href) ? "bg-orange-50 text-orange-800 ring-1 ring-orange-100" : "text-muted-foreground hover:bg-muted/60 hover:text-charcoal")}>
+      <Icon className="size-4 shrink-0" aria-hidden="true" />{item.label}
+      {item.href === "/tecnico/minhas-atividades" && <MyActivitiesCount />}
+    </Link>;
+  };
   return (
     <MyActivitiesProvider key={currentProfile?.id ?? "anonymous"} enabled={Boolean(currentProfile?.status === "active" && canShowNavItem(access, MODULE_ACCESS.myActivities))}>
-    <div className="min-h-screen bg-background text-foreground">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 flex-col border-r border-white/10 bg-charcoal p-4 text-white shadow-2xl md:flex">
-        <Link href="/tecnico" className="mb-8 flex items-center gap-3">
-          <span className="flex size-11 items-center justify-center rounded-md bg-accent text-base font-black text-accent-foreground">
-            C21
-          </span>
-          <span>
-            <span className="block text-sm font-semibold">Concept21 Aluminium</span>
-            <span className="block text-xs text-white/55">Módulo Técnico</span>
-          </span>
-        </Link>
-
-        <nav className="space-y-1">
-          {visibleNavItems.map((item) => {
-            const Icon = item.icon;
-            const active =
-              item.href === "/tecnico" ? pathname === "/tecnico" : pathname.startsWith(item.href);
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white",
-                  active && "bg-white text-charcoal hover:bg-white hover:text-charcoal",
-                )}
-              >
-                <Icon className="size-4" />
-                {item.label}
-                {item.href === "/tecnico/minhas-atividades" ? <MyActivitiesCount /> : null}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="mt-auto rounded-md border border-white/10 bg-white/[0.04] p-4 text-xs text-white/65">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <ShieldCheck className="size-4 text-accent" />
-            Contrato como centro
-          </div>
-          <p className="mt-2 leading-5">
-            Recebimento, visitas, medições, liberações e repasse técnico no mesmo fluxo.
-          </p>
-        </div>
-      </aside>
-
-      <div className="min-h-screen md:pl-72">
-        <header className="sticky top-0 z-20 border-b border-black/5 bg-white/90 px-4 py-3 shadow-sm backdrop-blur sm:px-6 lg:px-8 xl:px-10">
-          <div className="flex items-center justify-between gap-4">
-            <Link href="/tecnico" className="flex min-w-0 items-center gap-3 md:hidden">
-              <span className="flex size-10 flex-none items-center justify-center rounded-md bg-charcoal text-sm font-black text-white">
-                C21
-              </span>
-              <span className="truncate text-sm font-semibold">Técnico</span>
+      <div className="min-h-screen bg-[#f5f6f8] text-foreground">
+        <header className="sticky top-0 z-30 border-b border-border/70 bg-white/95 backdrop-blur">
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:px-8">
+            <Link href="/tecnico" className="flex min-h-11 shrink-0 items-center gap-3" aria-label="Concept21 · Painel Técnico">
+              <span className="grid size-10 place-items-center rounded-xl bg-accent text-sm font-black text-charcoal">C21</span>
+              <span className="text-sm font-semibold leading-tight">Concept21<span className="block text-xs font-normal text-muted-foreground">Técnico</span></span>
             </Link>
-
-            <div className="hidden items-center gap-2 text-sm text-muted-foreground md:flex">
-              <BriefcaseBusiness className="size-4 text-accent" />
-              Plataforma interna Concept21 Aluminium
+            <div className="ml-auto flex items-center gap-2 lg:order-3 lg:ml-0">
+              <NotificationsBell /><CurrentUserMenu />
+              <button type="button" onClick={() => setMobileOpen(!mobileOpen)} aria-expanded={mobileOpen} aria-controls="technical-main-navigation" aria-label="Menu principal" className="grid size-11 place-items-center rounded-lg border border-border md:hidden"><Menu className="size-5" /></button>
             </div>
-
-            <div className="flex min-w-0 items-center gap-2">
-              <NotificationsBell />
-              <CurrentUserMenu />
-            </div>
+            <nav id="technical-main-navigation" aria-label="Navegação principal" className={cn("order-last w-full flex-wrap items-center gap-1 md:flex lg:order-2 lg:w-auto", mobileOpen ? "flex" : "hidden")}>
+              {primaryItems.map(navLink)}
+              {secondaryItems.length > 0 && <details className="relative">
+                <summary className={cn("flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg px-3 text-sm font-medium [&::-webkit-details-marker]:hidden", secondaryItems.some(item => isActive(item.href)) ? "bg-orange-50 text-orange-800" : "text-muted-foreground hover:bg-muted/60")}><MoreHorizontal className="size-4" />Mais</summary>
+                <nav aria-label="Outras opções" className="absolute right-0 top-full z-40 mt-2 grid min-w-52 rounded-xl border border-border bg-white p-2 shadow-lg">{secondaryItems.map(navLink)}</nav>
+              </details>}
+            </nav>
           </div>
-
-          <nav className="mt-3 flex gap-2 overflow-x-auto md:hidden">
-            {visibleNavItems.map((item) => {
-              const Icon = item.icon;
-              const active =
-                item.href === "/tecnico" ? pathname === "/tecnico" : pathname.startsWith(item.href);
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground",
-                    active && "border-charcoal bg-charcoal text-white",
-                  )}
-                >
-                  <Icon className="size-4" />
-                  {item.label}
-                  {item.href === "/tecnico/minhas-atividades" ? <MyActivitiesCount /> : null}
-                </Link>
-              );
-            })}
-          </nav>
         </header>
-
-        <main className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
-          <AuthGate>{children}</AuthGate>
-        </main>
+        <main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"><AuthGate>{children}</AuthGate></main>
       </div>
-    </div>
     </MyActivitiesProvider>
   );
 }

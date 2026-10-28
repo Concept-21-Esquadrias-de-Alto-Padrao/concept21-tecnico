@@ -31,7 +31,8 @@ export default async function TechnicalContractsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Contratos Técnicos"
+        title="Obras"
+        description="Contratos, peças e andamento técnico em um só lugar."
         actions={canImport || canManualCreate ? (
           <ContractCreateActions
             canImport={canImport}
