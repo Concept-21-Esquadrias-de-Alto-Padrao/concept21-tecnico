@@ -1,38 +1,24 @@
-# Entrada comercial — primeira entrega de cadastro
+# Recebimento comercial — três etapas em homologação
 
-28/10/2026. Branch codex/recebimento-comercial, baseada no oficial 2f08a15. Destino: somente Preview.
+28/10/2026. Branch codex/recebimento-comercial. Somente Preview e banco TESTE. Não publicar no oficial sem aceite.
 
-## Implementado nesta entrega
-- Cadastro manual e confirmação de novo PDF: múltiplos responsáveis autorizados com nome, função e contato.
-- Sem os campos autorização registrada/referência da autorização.
-- Sem seleção de técnico do orçamento ou responsável genérico pelo acompanhamento no cadastro novo. Os valores legados não são apagados.
-- Previsão de entrega comercial: data de necessidade de instalação concluída. Não modifica prazo contratual.
-- Alternativa explícita de data desconhecida, com orientação para pauta da primeira visita.
-- Dados visíveis em Dados da obra; autoria e dados iniciais registrados na auditoria.
-- Reprocessamento de PDF preserva contatos e planejamento já registrados.
-- Validação no servidor de contatos completos, alinhamento dos campos repetidos e datas reais.
-- Nenhuma migration, alteração de permissão ou escrita em banco oficial necessária para preparar este Preview.
+## Fluxo implementado
+1. Adicionar obra: escolher Importar PDF ou Cadastrar manualmente. Preencher os dados aprovados, contatos e previsão de entrega comercial; dias corridos como padrão manual. PDF com dias úteis explícitos preserva a informação.
+2. Dados da obra: confirmar os dados para continuar. Guardar e continuar depois cria/preserva o recebimento pendente, sem declarar a conferência concluída. O primeiro registro exige os dados cadastrais obrigatórios.
+3. Peças e desenhos: revisar código, ambiente, modelo, quantidade e medidas comerciais, informar a referência externa do desenho e conferir peças/desenho. O cadastro manual permite acrescentar peças; o PDF aproveita as importadas.
+4. Concluir conferência: revisar resumo, incluir observações para alinhamento e concluir explicitamente. A conclusão encerra a atividade e disponibiliza a reunião; não libera fabricação.
 
-## Limites e próximos incrementos
-Esta entrega é o cadastro, não o fluxo completo de recebimento. A obrigação automática de conferir recebimento, sua deduplicação, prazo do próximo dia útil às 17h30, checklist de conclusão e encaminhamento à pauta ainda precisam de implementação/integração e homologação específicas. Não afirmar que essa obrigação foi criada só porque o contrato foi salvo.
-Também ficam para sequência: edição da previsão por Anna com histórico antes/depois, atividade de planejamento sem data, integração Comercial, análise inicial de Igor em 5 dias úteis, reunião e pasta. Texto orientativo não equivale a atividade automática.
+## Guardar e retomar
+O progresso fica no banco, incluindo etapa, peças, marcações e observações. Retomar por Meu trabalho ou Obras. Uma atividade por recebimento, atribuída ao cadastrador/importador, vence às 17h30 do próximo dia útil conforme calendário cadastrado. Obra pendente aparece como Conferência pendente; reunião e pasta são bloqueadas no servidor até a conclusão. Registros legados sem recebimento não são reinterpretados.
 
-## Como usar — roteiro para Comercial
-1. Somente em homologação, abrir Contratos e escolher Importar PDF ou Novo contrato (conforme acesso).
-2. Conferir número, cliente, obra, endereço e prazo do contrato. No PDF, revisar as peças da prévia.
-3. Incluir cada responsável autorizado pela obra: nome, função e telefone/contato. Usar Acrescentar responsável quando necessário.
-4. Informar quando o cliente precisa das peças instaladas. Caso não saiba, marcar Data de necessidade ainda não informada pelo cliente.
-5. Salvar. Reabrir a obra e conferir a previsão e a relação de responsáveis em Dados da obra.
-6. Havendo erro, corrigir o campo indicado. Não criar outro número de contrato para contornar erro.
+## Segurança e recuperação
+Versão do rascunho impede sobrescrever outra sessão. Conclusão repetida é idempotente; IDs estáveis preservam peças. Falha durante aplicação deixa estado explícito e permite repetir a mesma conclusão. Permissões e empresa são verificadas no servidor; peças que já avançaram para medição/CEM/liberação/PROD não são regravadas por este fluxo. Não há nova migration.
 
-## Conferência com Eduardo e Comercial (10–15 minutos)
-- Obra fictícia com dois responsáveis e data conhecida; reabrir e verificar dados.
-- Obra fictícia sem data, explicitamente marcada; verificar aviso da primeira visita.
-- Tentar salvar um responsável incompleto; deve impedir a gravação.
-- Incluir/remover pessoa e confirmar que os demais dados permanecem.
-- Reenviar PDF de cenário existente; contatos e previsão precisam permanecer.
-- Verificar tela estreita, nomes compridos, campos e fechamento com dados não salvos.
-- Não usar obras reais como teste; a publicação oficial será tratada após aceite.
+## Validação realizada
+- Cadastro manual fictício TESTE-REC-2810-C: guardar dados, tentar avançar sem confirmação (recusado), cadastrar J1/Sala/Janela de correr, quantidade 2, 1000 x 1200 mm.
+- Guardar etapa 2, sair para Meu trabalho e retomar: valores e etapa preservados.
+- Guardar etapa 3, recarregar, concluir: observação preservada no contrato, atividade encerrada e reunião disponível.
+- Testes automatizados: conclusão incompleta, empresa divergente, peças avançadas, concorrência, repetição, recuperação de falha, bloqueios, proprietário da atividade e prazo às 17h30.
 
-## Validação técnica
-Testes cobrem contatos múltiplos, ausência de contato, data inválida/bissexta, desconhecida, conflito de opções, gravação das ações e preservação de dados no reprocessamento. Compilação local usa --webpack por incompatibilidade do Turbopack com junction local de dependências; Vercel deve validar build padrão com dependências próprias.
+## Próximas etapas fora desta entrega
+Edição de previsão pela Anna com histórico antes/depois; atividade de planejamento sem data; integração com Comercial; análise inicial de Igor; automatização da pauta/reunião/pasta. Orientação de primeira visita não significa atividade automática dessas etapas. Os documentos continuam no servidor; a tela guarda sua referência.

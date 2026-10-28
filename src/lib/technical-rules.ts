@@ -240,6 +240,6 @@ export function calculateReleaseProgress(pieces: Array<Pick<TechnicalPiece, "sta
 
 export function isOverdue(date: string | null | undefined, now = new Date()) {
   if (!date) return false;
-  const target = new Date(`${date}T23:59:59`);
+  const target = new Date(date.includes("T") ? date : `${date}T23:59:59`);
   return Number.isFinite(target.getTime()) && target.getTime() < now.getTime();
 }

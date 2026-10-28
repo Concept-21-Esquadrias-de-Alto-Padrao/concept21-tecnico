@@ -7,7 +7,7 @@ import { Field, inputClass } from "@/components/action-form";
 import { useMyActivities } from "@/components/my-activities-provider";
 import { activityKindLabels, type MyActivity } from "@/lib/my-activities";
 import { isOverdue } from "@/lib/technical-rules";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, formatDateTime } from "@/lib/utils";
 
 export function MyActivities() {
   return <MyActivitiesView {...useMyActivities()} />;
@@ -62,7 +62,7 @@ export function MyActivitiesView({ items, loading, error, refresh }: {
                   </div>
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 text-sm">
-                  <div className="min-w-0 flex-1 basis-64 break-words"><p className="text-muted-foreground">{item.nextStep}</p>{item.dueDate ? <p className={cn("mt-1 flex items-center gap-1.5 text-xs", overdue ? "text-danger" : "text-muted-foreground")}><Clock3 className="size-3.5" /> Prazo: {formatDate(item.dueDate)}</p> : null}</div>
+                  <div className="min-w-0 flex-1 basis-64 break-words"><p className="text-muted-foreground">{item.nextStep}</p>{item.dueDate ? <p className={cn("mt-1 flex items-center gap-1.5 text-xs", overdue ? "text-danger" : "text-muted-foreground")}><Clock3 className="size-3.5" /> Prazo: {item.dueDate.includes("T") ? `${formatDateTime(item.dueDate)} · Brasília` : formatDate(item.dueDate)}</p> : null}</div>
                   <Link href={item.href} className="inline-flex min-h-10 max-w-full items-center justify-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm font-semibold text-charcoal hover:bg-muted"><span>{item.linkLabel}</span><ArrowUpRight className="size-4 flex-none" /></Link>
                 </div>
               </article>;

@@ -11,6 +11,7 @@ import {
   getTechnicalContractProcessOrder,
   getInitialContractStatus,
   isStageValidationSatisfied,
+  isOverdue,
 } from "./technical-rules";
 
 describe("technical deadline rules", () => {
@@ -284,5 +285,14 @@ describe("release progress", () => {
         { status: "liberada", deleted_at: "2026-07-30T12:00:00Z" },
       ]),
     ).toEqual({ total: 2, released: 1, balance: 1, percent: 50 });
+  });
+});
+
+
+describe("activity timestamp deadline", () => {
+  it("uses the exact timestamp for receipt deadlines", () => {
+    const due = "2026-10-29T17:30:00-03:00";
+    expect(isOverdue(due, new Date("2026-10-29T17:29:59-03:00"))).toBe(false);
+    expect(isOverdue(due, new Date("2026-10-29T17:30:01-03:00"))).toBe(true);
   });
 });
