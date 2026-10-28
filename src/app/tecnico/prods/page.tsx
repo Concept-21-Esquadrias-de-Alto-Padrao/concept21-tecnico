@@ -4,10 +4,10 @@ import {
   approveProdBatchFormAction,
   checkProdBatchFormAction,
   confirmDepartmentDeliveryFormAction,
-  createProdBatchAction,
   deliverDepartmentDocumentAction,
 } from "@/app/actions";
-import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
+import { ActionForm } from "@/components/action-form";
+import { ProdCreationForm } from "@/components/prod-creation-form";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/panel";
 import { StatusBadge } from "@/components/status-badge";
@@ -48,7 +48,7 @@ export default async function TechnicalProdsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <Link href={`/tecnico/contratos/${prod.contract_id}`} className="font-semibold text-charcoal hover:text-accent">
-                        PROD {prod.batch_number} · {contract?.contract_number ?? "Contrato"}
+                        PROD {prod.batch_number} · {contract?.contract_number ?? "Contrato"} · {snapshot.clients.find((client) => client.id === contract?.client_id)?.name ?? "Cliente não vinculado"}
                       </Link>
                       <p className="mt-1 text-muted-foreground">{pieces.map((piece) => piece.code).join(", ") || "Sem peças"}</p>
                     </div>
@@ -106,23 +106,17 @@ export default async function TechnicalProdsPage() {
           <Panel>
             <PanelHeader title="Montar PROD" />
             <PanelBody>
-              <ActionForm action={createProdBatchAction} submitLabel="Montar PROD">
-                <Field label="Contrato">
-                  <select name="contract_id" className={inputClass} required>
-                    <option value="">Selecione</option>
-                    {snapshot.contracts.map((contract) => <option key={contract.id} value={contract.id}>{contract.contract_number}</option>)}
-                  </select>
-                </Field>
-                <Field label="Número do PROD"><input name="batch_number" className={inputClass} required /></Field>
-                <Field label="Descrição"><textarea name="description" className={textareaClass} /></Field>
-                <Field label="Peças liberadas e conferidas">
-                  <select name="piece_ids" multiple className="min-h-56 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-charcoal outline-none focus:border-accent">
-                    {snapshot.pieces
-                      .filter((piece) => piece.status === "liberada" && piece.cem_registered && piece.cem_checked && !piece.active_prod_batch_id)
-                      .map((piece) => <option key={piece.id} value={piece.id}>{piece.code} · {piece.environment ?? "Sem ambiente"}</option>)}
-                  </select>
-                </Field>
-              </ActionForm>
+              <ProdCreationForm
+                contracts={snapshot.contracts.map((contract) => ({
+                  id: contract.id,
+                  number: contract.contract_number,
+                  client: snapshot.clients.find((client) => client.id === contract.client_id)?.name ?? "Cliente não vinculado",
+                  work: contract.work_name,
+                }))}
+                pieces={snapshot.pieces
+                  .filter((piece) => piece.status === "liberada" && piece.cem_registered && piece.cem_checked && !piece.active_prod_batch_id && !piece.deleted_at)
+                  .map((piece) => ({ id: piece.id, contractId: piece.contract_id, code: piece.code, environment: piece.environment ?? "Sem ambiente", model: piece.piece_type ?? piece.description ?? "Modelo não informado" }))}
+              />
             </PanelBody>
           </Panel>
         ) : null}
