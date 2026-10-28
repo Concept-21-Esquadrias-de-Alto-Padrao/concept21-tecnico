@@ -629,6 +629,8 @@ export function ContractImportPanel({ onDirtyChange, onPendingChange, onSuccess 
             }
           >
             {!reprocessExisting && <CommercialEntryFields key={preview.fileName} initialContacts={preview.contract.authorized_contacts} onDirtyChange={onDirtyChange ?? (() => {})} />}
+            {!reprocessExisting && <label className="flex items-center gap-3 rounded-lg bg-muted/40 p-4 text-sm"><input type="checkbox" name="receipt_data_checked" onChange={()=>onDirtyChange?.(true)}/>Dados do cliente, obra, contatos e prazo conferidos</label>}
+            <input type="hidden" name="receipt_reference" value={preview.fileName} />
             {reprocessExisting && <p className="text-sm text-muted-foreground">Os responsáveis e a previsão de entrega já registrados serão preservados no reprocessamento.</p>}
             <input type="hidden" name="contract_json" value={hiddenPayloads?.contract ?? ""} />
             <input type="hidden" name="pieces_json" value={hiddenPayloads?.pieces ?? "[]"} />
