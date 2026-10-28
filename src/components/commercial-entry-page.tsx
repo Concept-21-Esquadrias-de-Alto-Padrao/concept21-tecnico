@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { CommercialEntryOptions } from "@/components/commercial-entry-options";
 import { ArrowLeft, CheckCircle2, ClipboardCheck, FileUp, UsersRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ManualContractForm } from "@/components/manual-contract-form";
 import { ContractImportPanel } from "@/components/contract-import-panel";
 
-export function CommercialEntryPage({ mode }: { mode: "manual" | "pdf" }) {
+export function CommercialEntryPage({ mode, canImport, canManualCreate }: { mode: "manual" | "pdf"; canImport: boolean; canManualCreate: boolean }) {
   const router = useRouter();
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -30,9 +31,10 @@ export function CommercialEntryPage({ mode }: { mode: "manual" | "pdf" }) {
   return <div className="space-y-6">
     <nav aria-label="Localização" className="flex items-center gap-2 text-sm text-muted-foreground"><Link href="/tecnico/contratos" className="hover:text-charcoal">Obras</Link><span aria-hidden="true">/</span><span>Entrada comercial</span></nav>
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><p className="mb-2 text-xs font-semibold uppercase tracking-widest text-orange-700">Recebimento do contrato</p><h1 className="text-2xl font-semibold tracking-tight text-charcoal sm:text-3xl">{mode === "pdf" ? "Importar obra por PDF" : "Cadastrar nova obra"}</h1><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Organize os dados comerciais, as pessoas autorizadas e a necessidade de entrega do cliente.</p></div>
+      <div><p className="mb-2 text-xs font-semibold uppercase tracking-widest text-orange-700">Recebimento do contrato</p><h1 className="text-2xl font-semibold tracking-tight text-charcoal sm:text-3xl">Adicionar obra</h1><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Organize os dados comerciais, as pessoas autorizadas e a necessidade de entrega do cliente.</p></div>
       <Link href="/tecnico/contratos" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium"><ArrowLeft className="size-4" />Voltar para Obras</Link>
     </div>
+    {!success && <CommercialEntryOptions canImport={canImport} canManualCreate={canManualCreate} mode={mode} />}
     {success ? <section className="rounded-2xl border border-green-200 bg-white p-8" role="status"><CheckCircle2 className="mb-4 size-9 text-green-700" /><h2 className="text-xl font-semibold">Cadastro salvo</h2><p className="mt-2 text-muted-foreground">{success}</p><Link href="/tecnico/contratos" className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-charcoal px-5 text-sm font-semibold text-white">Ver obras cadastradas</Link></section> :
     <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
       <section aria-label="Cadastro comercial" className="min-w-0 rounded-2xl border border-border/80 bg-white shadow-sm">

@@ -48,8 +48,8 @@ beforeEach(() => {
 describe("contracts list as the primary screen", () => {
   it("renders the list and launch buttons without either creation form", async () => {
     const html = renderToStaticMarkup(await ContractsPage());
-    expect(html).toContain("Importar PDF");
-    expect(html).toContain("Novo contrato");
+    expect(html).toContain("Adicionar obra");
+    expect(html).toContain("/tecnico/contratos/adicionar");
     expect(html).toContain("Buscar contratos");
     expect(html).toContain("Situação do contrato");
     expect(html).toContain("26-0001");
@@ -66,8 +66,7 @@ describe("contracts list as the primary screen", () => {
       "technical.contracts.manual_create": canManualCreate,
     } });
     const html = renderToStaticMarkup(await ContractsPage());
-    expect(html.includes("Importar PDF")).toBe(canImport);
-    expect(html.includes("Novo contrato")).toBe(canManualCreate);
+    expect(html.includes("Adicionar obra")).toBe(canImport || canManualCreate);
     expect(html).toContain("26-0001");
   });
 });
