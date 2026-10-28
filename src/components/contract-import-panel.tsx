@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirmContractImportAction } from "@/app/actions";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
+import { CommercialEntryFields } from "@/components/commercial-entry-fields";
 import { normalizeContractNumberKey } from "@/lib/contract-number";
 import type { ParsedTechnicalContract, ParsedTechnicalPiece } from "@/lib/technical-pdf";
 import { cn } from "@/lib/utils";
@@ -626,6 +627,8 @@ export function ContractImportPanel({ onDirtyChange, onPendingChange, onSuccess 
                 : undefined
             }
           >
+            {!preview.duplicateContract && <CommercialEntryFields key={preview.fileName} initialContacts={preview.contract.authorized_contacts} onDirtyChange={onDirtyChange ?? (() => {})} />}
+            {preview.duplicateContract && <p className="text-sm text-muted-foreground">Os responsáveis e a previsão de entrega já registrados serão preservados no reprocessamento.</p>}
             <input type="hidden" name="contract_json" value={hiddenPayloads?.contract ?? ""} />
             <input type="hidden" name="pieces_json" value={hiddenPayloads?.pieces ?? "[]"} />
             <input type="hidden" name="reprocess_existing" value={reprocessExisting ? "true" : "false"} />

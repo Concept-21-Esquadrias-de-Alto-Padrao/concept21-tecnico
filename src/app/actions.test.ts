@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { requirePermissionAccess } from "@/lib/server-access";
-import { cancelReleaseBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, deletePieceAction, receiveCommercialFolderAction, reopenContractStageAction, requestPieceDeleteAction, requestPieceEditAction, requestReleaseBatchDeleteAction, signStageValidationAction, splitPieceAction, transitionTechnicalActionAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
+import { createManualContractAction, confirmContractImportAction, cancelReleaseBatchAction, createCorrectionAction, createMeetingAction, createPieceStructuralChangeAction, createReleaseBatchAction, deletePieceAction, receiveCommercialFolderAction, reopenContractStageAction, requestPieceDeleteAction, requestPieceEditAction, requestReleaseBatchDeleteAction, signStageValidationAction, splitPieceAction, transitionTechnicalActionAction, updateContractResponsiblesAction, updateContractWorkDataAction, updatePieceMeasurementAction } from "./actions";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server-access", () => ({
@@ -861,5 +861,45 @@ describe("piece measurement and structural changes", () => {
       entity: "technical_releases",
       action: "release_batch_cancel",
     });
+  });
+});
+
+
+describe("cadastro comercial de novas obras", () => {
+  beforeEach(() => vi.clearAllMocks());
+  function form() {
+    const f = new FormData();
+    Object.entries({contract_number:"TESTE-COMERCIAL-2026", client_name:originalName, work_name:"Obra teste", full_address:"Rua de teste", city:"Goiânia", state:"GO", contract_date:"2026-10-28", contractual_deadline_value:"90", contractual_deadline_unit:"dias_corridos", work_contact_name:"Cliente", work_contact_role:"Proprietário", work_contact_phone:"62999999999", commercial_delivery_date:"2027-03-10"}).forEach(([key,value]) => f.set(key,value));
+    return f;
+  }
+  it("grava contatos, necessidade e autor sem atribuir antigos responsáveis", async () => {
+    const {tables} = setupDatabase();
+    const f = form(); f.set("technical_manager_profile_id", managerId); f.set("followup_profile_id", followupId);
+    const result = await createManualContractAction(initialState, f);
+    expect(result.ok, result.message).toBe(true);
+    expect(tables.production_contracts.at(-1)).toMatchObject({general_delivery_forecast:"2027-03-10", created_by:userId});
+    expect(tables.technical_contracts.at(-1)).toMatchObject({technical_manager_profile_id:null, followup_profile_id:null, contractual_deadline_value:90, contractual_deadline_unit:"dias_corridos", authorized_contacts:[{name:"Cliente",role:"Proprietário",phone:"62999999999"}]});
+    expect(tables.audit_logs.at(-1)).toMatchObject({user_id:userId, after_data:{general_delivery_forecast:"2027-03-10"}});
+  });
+  it("não grava cadastro quando faltam contatos ou a data é inválida", async () => {
+    const {tables} = setupDatabase(); const f = form(); f.set("commercial_delivery_date","2026-02-30");
+    expect((await createManualContractAction(initialState, f)).ok).toBe(false);
+    expect(tables.production_contracts).toHaveLength(1); expect(tables.audit_logs).toHaveLength(0);
+  });
+  it("reprocessa peças sem sobrescrever contatos e planejamento já registrados", async () => {
+    const {tables} = setupDatabase();
+    tables.production_contracts[0].contract_number = "26-9999";
+    tables.production_contracts[0].general_delivery_forecast = "2027-03-10";
+    tables.technical_contracts[0].authorized_contacts = [{name:"Atual",role:"Engenheiro",phone:"123"}];
+    tables.technical_contracts[0].commercial_data = {delivery_date_unknown:false};
+    const f = new FormData();
+    f.set("reprocess_existing","true");
+    f.set("contract_json",JSON.stringify({contract_number:"26-9999",client_name:originalName,work_name:"Teste",work_address:"Rua",contract_date:"2026-10-28",deadline_value:90,deadline_unit:"dias_corridos",description:null,authorized_contacts:[{name:"Antigo"}],commercial_data:{delivery_date_unknown:true}}));
+    f.set("pieces_json",JSON.stringify([{code:"P1",quantity:1,sale_width_mm:1000,sale_height_mm:2000}]));
+    const result = await confirmContractImportAction(initialState,f);
+    expect(result.ok,result.message).toBe(true);
+    expect(tables.production_contracts[0].general_delivery_forecast).toBe("2027-03-10");
+    expect(tables.technical_contracts[0].authorized_contacts).toEqual([{name:"Atual",role:"Engenheiro",phone:"123"}]);
+    expect(tables.technical_contracts[0].commercial_data).toMatchObject({delivery_date_unknown:false});
   });
 });

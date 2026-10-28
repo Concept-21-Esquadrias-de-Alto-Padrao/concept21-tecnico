@@ -1800,6 +1800,18 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 <dd className="mt-1 text-charcoal">{profileName(snapshot.profiles, technical?.followup_profile_id)}</dd>
               </div>
             </dl>
+            <div className="mt-4 border-t border-border pt-3">
+              <h4 className="text-sm font-semibold">{technical?.commercial_data?.delivery_date_meaning === "instalacao_concluida" ? "Previsão de entrega comercial" : "Previsão de entrega registrada"}</h4>
+              <p className="mt-1 text-sm">{contract.general_delivery_forecast ? formatDate(contract.general_delivery_forecast) : technical?.commercial_data?.delivery_date_unknown === true ? "Ainda não informada pelo cliente · alinhar na primeira visita" : "Não registrada"}</p>
+              {technical?.commercial_data?.delivery_date_meaning === "instalacao_concluida" && <p className="mt-1 text-xs text-muted-foreground">Necessidade do cliente para as peças instaladas.</p>}
+            </div>
+            {Boolean(technical?.authorized_contacts?.length) && <div className="mt-4 border-t border-border pt-3">
+              <h4 className="text-sm font-semibold">Responsáveis autorizados pela obra</h4>
+              <ul className="mt-2 space-y-2">{technical?.authorized_contacts.map((contact, index) => <li key={index} className="rounded-md bg-muted/40 p-2 text-sm">
+                <span className="font-semibold">{String(contact.name ?? "Não informado")}</span>
+                <span className="block text-muted-foreground">{String(contact.role ?? "Função não informada")} · {String(contact.phone ?? "Contato não informado")}</span>
+              </li>)}</ul>
+            </div>}
             {contract.notes ? (
               <p className="mt-3 border-t border-border pt-3 text-muted-foreground">
                 <span className="font-semibold text-charcoal">Observações:</span> {contract.notes}

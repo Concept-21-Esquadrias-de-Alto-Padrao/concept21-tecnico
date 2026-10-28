@@ -1,5 +1,6 @@
 "use server";
 
+import { parseCommercialEntry, mergeReimportCommercialData } from "@/lib/commercial-entry";
 import { revalidatePath } from "next/cache";
 import {
   actionSchema,
@@ -700,6 +701,7 @@ async function createTechnicalContract({
   description,
   technicalManagerProfileId,
   followupProfileId,
+  deliveryDate = null,
   authorizedContacts = [],
   commercialData = {},
   pieces = [],
@@ -718,6 +720,7 @@ async function createTechnicalContract({
   description: string | null;
   technicalManagerProfileId?: string | null;
   followupProfileId?: string | null;
+  deliveryDate?: string | null;
   authorizedContacts?: Array<Record<string, unknown>>;
   commercialData?: Record<string, unknown>;
   pieces?: ParsedTechnicalPiece[];
@@ -737,6 +740,7 @@ async function createTechnicalContract({
       city,
       state,
       notes: description,
+      general_delivery_forecast: deliveryDate,
       status: "ativo",
       active: true,
       created_by: context.authUserId,
@@ -781,7 +785,7 @@ async function createTechnicalContract({
     entity_id: contractId,
     action: source === "pdf" ? "confirm_pdf_import" : "manual_create",
     user_id: context.authUserId,
-    after_data: { contractNumber, pieces: pieceImportResult.insertedCount },
+    after_data: { contractNumber, pieces: pieceImportResult.insertedCount, authorized_contacts: authorizedContacts, general_delivery_forecast: deliveryDate },
     notes: source === "pdf" ? "Contrato gravado após conferência humana." : "Contrato cadastrado manualmente.",
   });
 
@@ -832,12 +836,7 @@ async function reprocessExistingTechnicalContractFromPdf({
 
   const existingCommercialData =
     ((existingTechnical as { commercial_data?: Record<string, unknown> | null } | null)?.commercial_data ?? {});
-  const commercialData = {
-    ...existingCommercialData,
-    ...contract.commercial_data,
-    origem_cadastro: "pdf",
-    ultima_reimportacao_pdf_em: now,
-  };
+  const commercialData = mergeReimportCommercialData(existingCommercialData, contract.commercial_data, now);
 
   if (existingTechnical) {
     const { error: technicalError } = await context.admin
@@ -847,7 +846,6 @@ async function reprocessExistingTechnicalContractFromPdf({
         contractual_deadline_value: contract.deadline_value,
         contractual_deadline_unit: contract.deadline_unit,
         commercial_data: commercialData,
-        authorized_contacts: contract.authorized_contacts,
         technical_notes: contract.description,
       })
       .eq("company_id", context.companyId)
@@ -906,6 +904,8 @@ export async function createManualContractAction(_: ActionState, formData: FormD
     const parsed = manualContractSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return invalidForm(parsed.error);
 
+    const entry = parseCommercialEntry(formData);
+
     const contractId = await createTechnicalContract({
       context,
       contractNumber: parsed.data.contract_number,
@@ -918,8 +918,9 @@ export async function createManualContractAction(_: ActionState, formData: FormD
       deadlineValue: parsed.data.contractual_deadline_value,
       deadlineUnit: parsed.data.contractual_deadline_unit,
       description: parsed.data.description ?? null,
-      technicalManagerProfileId: parsed.data.technical_manager_profile_id ?? null,
-      followupProfileId: parsed.data.followup_profile_id ?? null,
+      authorizedContacts: entry.contacts,
+      deliveryDate: entry.deliveryDate,
+      commercialData: { delivery_date_unknown: entry.dateUnknown, delivery_date_meaning: "instalacao_concluida" },
       source: "manual",
     });
 
@@ -975,6 +976,8 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
       );
     }
 
+    const entry = parseCommercialEntry(formData);
+
     const contractId = await createTechnicalContract({
       context,
       contractNumber: contract.contract_number,
@@ -985,8 +988,9 @@ export async function confirmContractImportAction(_: ActionState, formData: Form
       deadlineValue: contract.deadline_value,
       deadlineUnit: contract.deadline_unit,
       description: contract.description,
-      authorizedContacts: contract.authorized_contacts,
-      commercialData: contract.commercial_data,
+      authorizedContacts: entry.contacts,
+      deliveryDate: entry.deliveryDate,
+      commercialData: { ...contract.commercial_data, delivery_date_unknown: entry.dateUnknown, delivery_date_meaning: "instalacao_concluida" },
       pieces: preparedPieces.pieces,
       source: "pdf",
     });

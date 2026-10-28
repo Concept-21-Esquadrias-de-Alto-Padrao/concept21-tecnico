@@ -3,15 +3,16 @@
 import { useState, type ChangeEvent } from "react";
 import { createManualContractAction } from "@/app/actions";
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
+import { CommercialEntryFields } from "@/components/commercial-entry-fields";
 import type { Profile } from "@/lib/types";
 
 const initialValues = {
   contract_number: "", client_name: "", contract_date: "", contractual_deadline_value: "",
   contractual_deadline_unit: "dias_uteis", work_name: "", full_address: "", city: "Goiânia", state: "GO",
-  technical_manager_profile_id: "", followup_profile_id: "", description: "",
+  description: "",
 };
 
-export function ManualContractForm({ profiles, saving, onDirtyChange, onPendingChange, onSuccess }: {
+export function ManualContractForm({ saving, onDirtyChange, onPendingChange, onSuccess }: {
   profiles: Pick<Profile, "id" | "name">[];
   saving: boolean;
   onDirtyChange: (dirty: boolean) => void;
@@ -19,6 +20,7 @@ export function ManualContractForm({ profiles, saving, onDirtyChange, onPendingC
   onSuccess: (message: string) => void;
 }) {
   const [values, setValues] = useState(initialValues);
+  const [commercialDirty, setCommercialDirty] = useState(false);
   function field(name: keyof typeof initialValues) {
     return {
       name,
@@ -26,7 +28,7 @@ export function ManualContractForm({ profiles, saving, onDirtyChange, onPendingC
       onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const next = { ...values, [name]: event.target.value };
         setValues(next);
-        onDirtyChange(Object.entries(initialValues).some(([key, value]) => next[key as keyof typeof next] !== value));
+        onDirtyChange(commercialDirty || Object.entries(initialValues).some(([key, value]) => next[key as keyof typeof next] !== value));
       },
     };
   }
@@ -52,19 +54,8 @@ export function ManualContractForm({ profiles, saving, onDirtyChange, onPendingC
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Cidade"><input {...field("city")} className={inputClass} /></Field>
           <Field label="UF"><input {...field("state")} className={inputClass} maxLength={2} /></Field>
-          <Field label="Técnico responsável">
-            <select {...field("technical_manager_profile_id")} className={inputClass}>
-              <option value="">A definir</option>
-              {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Acompanhamento">
-            <select {...field("followup_profile_id")} className={inputClass}>
-              <option value="">A definir</option>
-              {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-            </select>
-          </Field>
         </div>
+        <CommercialEntryFields onDirtyChange={() => { setCommercialDirty(true); onDirtyChange(true); }} />
         <Field label="Descrição / observações"><textarea {...field("description")} className={textareaClass} /></Field>
       </fieldset>
     </ActionForm>
