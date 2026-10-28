@@ -13,3 +13,12 @@ describe('alignment meeting requirements',()=>{
  it('allows concluding a meeting without corrections',()=>{const d=draft();d.tasks=[];expect(validateAlignment(d)).toBe(d);});
  it('rejects invalid dates and does not silently normalize them',()=>{expect(validDate('2026-02-30')).toBe(false);expect(validDate('2026-10-30')).toBe(true);});
 });
+
+it('uses visible section numbering when corrections and general actions are interleaved',()=>{
+ const d=draft();
+ d.tasks.push({...task,id:two,kind:'general',pieceIds:[],description:'Contato da obra'});
+ d.tasks.push({...task,id:'00000000-0000-4000-8000-000000000003',description:''});
+ expect(()=>validateAlignment(d)).toThrow('Correção 2: preencha o campo “O que deve ser feito”.');
+ d.tasks[2].description='Outro ajuste';d.tasks[1].due='';
+ expect(()=>validateAlignment(d)).toThrow('Ação geral 1: informe o prazo de conclusão.');
+});
