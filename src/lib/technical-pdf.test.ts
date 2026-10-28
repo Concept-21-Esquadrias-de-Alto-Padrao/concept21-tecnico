@@ -806,3 +806,7 @@ describe("parseTechnicalContractText", () => {
     expect(result.warnings).toContain("Nenhuma peça foi identificada nos desenhos anexados.");
   });
 });
+
+ it("defaults to calendar days when no deadline is found", () => {
+ expect(parseTechnicalContractText("Contrato: TESTE-PRAZO").contract.deadline_unit).toBe("dias_corridos");
+});

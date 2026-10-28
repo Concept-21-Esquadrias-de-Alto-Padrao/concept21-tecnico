@@ -48,7 +48,7 @@ export const manualContractSchema = z.object({
   state: z.string().trim().default("GO"),
   contract_date: optionalDate,
   contractual_deadline_value: optionalNumber,
-  contractual_deadline_unit: z.enum(DEADLINE_UNITS).default("dias_uteis"),
+  contractual_deadline_unit: z.enum(DEADLINE_UNITS).default("dias_corridos"),
   technical_manager_profile_id: optionalText,
   followup_profile_id: optionalText,
   description: optionalText,

@@ -8,7 +8,7 @@ import type { Profile } from "@/lib/types";
 
 const initialValues = {
   contract_number: "", client_name: "", contract_date: "", contractual_deadline_value: "",
-  contractual_deadline_unit: "dias_uteis", work_name: "", full_address: "", city: "Goiânia", state: "GO",
+  contractual_deadline_unit: "dias_corridos", work_name: "", full_address: "", city: "Goiânia", state: "GO",
   description: "",
 };
 

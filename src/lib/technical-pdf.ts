@@ -508,7 +508,7 @@ function inferDeadline(lines: string[]) {
     }
   }
 
-  return { value: null, unit: "dias_uteis" as const };
+  return { value: null, unit: "dias_corridos" as const };
 }
 
 function parseAuthorizedContactLine(line: string) {
