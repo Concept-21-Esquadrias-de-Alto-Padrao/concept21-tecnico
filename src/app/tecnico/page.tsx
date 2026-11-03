@@ -25,9 +25,8 @@ import {
 } from "@/lib/module-access";
 import { getCurrentPermissionFlags } from "@/lib/server-access";
 import {
+  addDeadlineDays,
   calculateReleaseProgress,
-
-
   visitRequiresReport,
 } from "@/lib/technical-rules";
 import { formatDate } from "@/lib/utils";
@@ -90,21 +89,25 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
   ).map((overview) => {
     const { contract, technical, pieces, visits, prodBatches } = overview;
     const progress = calculateReleaseProgress(pieces);
-    const nextVisit = visits.filter(v => v.status === "agendada" && v.scheduled_date >= today)
-      .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))[0];
-    const unscheduled = Boolean(technical?.commercial_folder_received && progress.balance && !nextVisit);
-    const due = workItems.filter(i => i.contract_id === contract.id && !i.closed && i.status !== "validada" &&
-      i.due_date && i.due_date.slice(0, 10) < today).sort((a,b) => a.due_date!.localeCompare(b.due_date!))[0];
+    const upcoming = visits.filter(v => v.status === "agendada" && v.scheduled_date >= today)
+      .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || (a.scheduled_time ?? "24").localeCompare(b.scheduled_time ?? "24"));
+    const nextVisit = upcoming[0];
+    const measurement = upcoming.find(v => /\b(medicao|medicoes|medir|liberacao de medidas)\b/.test(
+      (v.visit_type ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()));
+    const unscheduled = Boolean(technical?.commercial_folder_received && progress.balance && !measurement);
+    const work = workItems.filter(i => i.contract_id === contract.id && !i.closed && i.status !== "validada")
+      .sort((a,b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") || Number(b.blocking) - Number(a.blocking))[0];
+    const due = work?.due_date && work.due_date.slice(0,10) < today ? work : undefined;
     const ready = pieces.filter(p => !p.deleted_at && p.status === "liberada" && !p.active_prod_batch_id).length;
     const prods = prodBatches.filter(p => !p.deleted_at && p.status !== "cancelado");
-    return { overview, progress, nextVisit, unscheduled, due, ready, prods };
+    return { overview, progress, nextVisit, measurement, unscheduled, work, due, ready, prods };
   }).sort((a,b) => Number(Boolean(b.due)) - Number(Boolean(a.due)) ||
     (a.due?.due_date ?? "").localeCompare(b.due?.due_date ?? "") ||
     Number(b.unscheduled) - Number(a.unscheduled) || b.ready - a.ready ||
     a.overview.contract.contract_number.localeCompare(b.overview.contract.contract_number, "pt-BR", { numeric: true }));
   const queues = [
     { key: "todas", label: "Obras em andamento", hint: "Todas as etapas", items: rows },
-    { key: "agendar", label: "Sem visita agendada", hint: "Pasta recebida e saldo a liberar", items: rows.filter(r => r.unscheduled) },
+    { key: "agendar", label: "Agendar medição", hint: "Peças a liberar e nenhuma medição agendada", items: rows.filter(r => r.unscheduled) },
     { key: "prod", label: "A emitir PROD", hint: "Obras com peças liberadas sem PROD", items: rows.filter(r => r.ready > 0) },
     { key: "atrasos", label: "Com atividade vencida", hint: "Ações e correções em aberto", items: rows.filter(r => r.due) },
   ];
@@ -116,16 +119,57 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     const { contract, client, technical } = overview;
     const title = contract.contract_number + " · " + (client?.name ?? contract.work_name ?? "Cliente não informado");
     const base = "/tecnico/contratos/" + contract.id;
-    const target = queue.key === "prod" ? "#prods" : queue.key === "agendar" ? "#visitas" :
-      due ? "#acoes" : unscheduled ? "#visitas" : ready ? "#prods" : "";
+    const profileName = (id?: string | null) => snapshot.profiles.find(p => p.id === id)?.name;
+    const action = (title: string, owner: string, target: string, date?: string | null) => ({title, owner, target, date: date?.slice(0,10)});
+    const schedule = action("Agendar medição", "Obras · Agendamento", "#visitas");
+    const holidays = snapshot.dashboardHolidays?.filter(h => h.company_id === technical?.company_id).map(h => ({ date: h.holiday_date }));
+    const release = overview.pieces.filter(p => !p.deleted_at && p.status === "liberada" && !p.active_prod_batch_id && p.released_at)
+      .map(p => p.released_at!).sort()[0];
+    const issueDate = release && holidays ? addDeadlineDays({startDate: release.slice(0,10), days: 5, unit: "dias_uteis", holidays}) : null;
+    const issue = action("Emitir PROD das peças liberadas", profileName(technical?.technical_manager_profile_id) ?? "Técnico · Emissão", "#prods", issueDate);
+    function nextAction() {
+      if (queue.key === "agendar") return schedule;
+      if (queue.key === "prod") return issue;
+      if (row.work) return action(row.work.title, profileName(row.work.responsible_profile_id) ?? "A atribuir", "#acoes", row.work.due_date);
+      const receipt = readReceipt(technical?.commercial_data);
+      if (receipt && receipt.status !== "completed") return action("Conferir recebimento do contrato", receipt.ownerName || "Comercial", "/recebimento", receipt.dueAt);
+      if (!technical?.commercial_folder_received) {
+        const meetingDone = snapshot.meetings.some(m => m.contract_id === contract.id && m.status === "concluida");
+        return meetingDone ? action("Conferir pendências para entrega da pasta", "Comercial", "#entrada") :
+          action("Realizar reunião de alinhamento", "Comercial", "/reuniao");
+      }
+      const report = overview.visits.find(visitRequiresReport);
+      if (report) {
+        const reportDate = report.performed_at && holidays ? addDeadlineDays({
+          startDate: report.performed_at.slice(0,10), days: 3, unit: "dias_uteis", holidays,
+        }) : null;
+        return action("Registrar retorno da visita", report.technicians?.join(", ") || "Obras", "#visitas", reportDate);
+      }
+      if (unscheduled) return schedule;
+      if (ready) return issue;
+      if (nextVisit) return action("Realizar visita de " + nextVisit.visit_type, nextVisit.technicians?.join(", ") || "Obras", "#visitas", nextVisit.scheduled_date);
+      const pendingDelivery = snapshot.deliveries.filter(d => d.status === "entregue" && prods.some(p => p.id === d.prod_batch_id))
+        .sort((a,b) => (a.confirmation_due_at ?? "9999").localeCompare(b.confirmation_due_at ?? "9999"))[0];
+      if (pendingDelivery) return action("Confirmar recebimento " + (pendingDelivery.delivery_type === "lista_materiais" ? "das listas" : "da ordem"),
+        pendingDelivery.department === "suprimentos" ? "Suprimentos" : "Produção", "#prods", pendingDelivery.confirmation_due_at);
+      if (prods.length) return action("Consultar andamento das PRODs", "Técnico", "#prods");
+      return action("Revisar situação da obra", "A atribuir", "");
+    }
+    const next = nextAction();
     const inProd = overview.pieces.filter(p => !p.deleted_at && p.status !== "cancelada" && p.active_prod_batch_id).length;
     return <article key={contract.id} className="space-y-2 border-t border-border py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        {canOpen ? <Link href={base + target} className="font-semibold text-charcoal hover:underline">{title} ↗</Link> : <strong>{title}</strong>}
+        {canOpen ? <Link href={base + next.target} className="font-semibold text-charcoal hover:underline">{title} ↗</Link> : <strong>{title}</strong>}
         <StatusBadge status={technical?.technical_status ?? "aguardando_reuniao"} type="contract" />
       </div>
+      <div className="rounded-lg border-l-4 border-orange-400 bg-orange-50 px-3 py-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Próxima ação</p>
+        {canOpen ? <Link href={base + next.target} className="font-semibold text-charcoal hover:underline">{next.title} ↗</Link> : <strong>{next.title}</strong>}
+        <p className="mt-1 text-sm">Responsável: {next.owner} · Prazo: {next.date ? formatDate(next.date) : "A definir"}</p>
+      </div>
       {due && <p className="text-sm font-medium text-red-800">Vencida em {formatDate(due.due_date)} · {due.title}</p>}
-      {unscheduled && <p className="text-sm font-medium text-amber-800">Agendar visita · {progress.balance} peça(s) a liberar</p>}
+      {unscheduled && <p className="text-sm font-medium text-amber-800">Sem medição agendada · {progress.balance} peça(s) a liberar</p>}
+      {row.measurement && progress.balance > 0 && <p className="text-sm font-medium text-green-800">Medição agendada · {formatDate(row.measurement.scheduled_date)}</p>}
       {nextVisit && <p className="text-sm">Próxima visita · {formatDate(nextVisit.scheduled_date)} · {nextVisit.visit_type}</p>}
       {ready > 0 && <p className="text-sm font-medium text-blue-800">{ready} peça(s) liberada(s) aguardando PROD</p>}
       <p className="text-xs text-muted-foreground">{progress.released} de {progress.total} peças liberadas ({progress.percent}%) · {inProd} com PROD{prods.length > 0 && " · " + prods.map(p => p.batch_number).join(", ")}</p>

@@ -183,6 +183,12 @@ async function loadTechnicalSnapshot(
     const queries: SnapshotQuery[] = [];
 
     addSnapshotQuery(queries, include, {
+      key: "dashboardHolidays",
+      optionalMissing: true,
+      load: () => supabase.from("technical_holidays").select("company_id,holiday_date").eq("active", true),
+      apply: (target, data) => { target.dashboardHolidays = data as TechnicalSnapshot["dashboardHolidays"]; },
+    });
+    addSnapshotQuery(queries, include, {
       key: "clients",
       load: () => supabase.from("clients").select("*").order("name"),
       apply: (target, data) => {
@@ -454,6 +460,7 @@ async function loadTechnicalSnapshot(
 export async function getTechnicalDashboardData() {
   return loadTechnicalSnapshot(
     includeKeys([
+      "dashboardHolidays",
       "clients",
       "profiles",
       "contracts",

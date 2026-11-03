@@ -590,6 +590,7 @@ export type TechnicalContractOverview = {
 };
 
 export type TechnicalSnapshot = {
+  dashboardHolidays?: Pick<TechnicalHoliday, "company_id" | "holiday_date">[];
   source: "supabase" | "empty";
   clients: Client[];
   profiles: Profile[];

@@ -107,9 +107,28 @@ describe("meeting-first workflow pages", () => {
     snapshot.pieces = [{ contract_id: "contract", status: "medida", deleted_at: null }] as TechnicalSnapshot["pieces"];
     snapshot.visits = [{ contract_id: "contract", status: "cancelada", scheduled_date: "2099-01-01" }] as TechnicalSnapshot["visits"];
     const renderQueue = async () => renderToStaticMarkup(await DashboardPage({ searchParams: Promise.resolve({ fila: "agendar" }) }));
-    expect(await renderQueue()).toContain("Agendar visita · 1 peça(s) a liberar");
+    expect(await renderQueue()).toContain("Sem medição agendada · 1 peça(s) a liberar");
     snapshot.visits[0].status = "agendada";
+    snapshot.visits[0].visit_type = "Orientação";
+    expect(await renderQueue()).toContain("Agendar medição ↗");
+    snapshot.visits[0].visit_type = "Orientação e Medição";
     expect(await renderQueue()).toContain("Nenhuma obra nesta fila.");
+  });
+  it("shows the assigned person and actual deadline for the next open action", async () => {
+    snapshot.actions = [{contract_id: "contract", title: "Confirmar acabamento", responsible_profile_id: "me", status: "aberta", due_date: "2026-11-06"}] as TechnicalSnapshot["actions"];
+    const html = renderToStaticMarkup(await DashboardPage({}));
+    expect(html).toContain("Confirmar acabamento");
+    expect(html).toContain("Responsável: Participante de teste · Prazo: 06/11/2026");
+  });
+  it("uses the oldest eligible release and skips a holiday for the PROD deadline", async () => {
+    snapshot.technicalContracts[0].company_id = "company";
+    snapshot.dashboardHolidays = [{company_id: "company", holiday_date: "2026-11-02"}];
+    snapshot.pieces = [
+      {contract_id: "contract", status: "liberada", released_at: "2026-10-28"},
+      {contract_id: "contract", status: "liberada", released_at: "2026-10-30"},
+    ] as TechnicalSnapshot["pieces"];
+    const html = renderToStaticMarkup(await DashboardPage({ searchParams: Promise.resolve({ fila: "prod" }) }));
+    expect(html).toContain("Prazo: 05/11/2026");
   });
   it("shows visit time and work name in the upcoming agenda", async () => {
     const scheduled = new Date();
