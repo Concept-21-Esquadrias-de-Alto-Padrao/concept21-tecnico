@@ -81,7 +81,7 @@ async function preview(name: string, html: string) {
 
 describe("meeting-first workflow pages", () => {
   it("shows the dashboard counters in the new order without counting a new contract as waiting for a folder", async () => {
-    const html = renderToStaticMarkup(await DashboardPage());
+    const html = renderToStaticMarkup(await DashboardPage({}));
     expect(html.indexOf("Aguardando reunião")).toBeLessThan(html.indexOf("Aguardando pasta"));
     expect(html).toMatch(/Aguardando reunião<[^>]+>[\s\S]*?>1<\/p>/);
     expect(html).toMatch(/Aguardando pasta<[^>]+>[\s\S]*?>0<\/p>/);
@@ -98,9 +98,18 @@ describe("meeting-first workflow pages", () => {
       status: "aberta", deleted_at: null,
     }] as unknown as TechnicalSnapshot["corrections"];
 
-    const html = renderToStaticMarkup(await DashboardPage());
+    const html = renderToStaticMarkup(await DashboardPage({}));
     expect(html).toMatch(/Ações abertas<[^>]+>[\s\S]*?>2<\/p>/);
     expect(html).not.toContain("Correções abertas");
+  });
+  it("keeps a cancelled visit from hiding an unscheduled work with remaining pieces", async () => {
+    snapshot.technicalContracts[0].commercial_folder_received = true;
+    snapshot.pieces = [{ contract_id: "contract", status: "medida", deleted_at: null }] as TechnicalSnapshot["pieces"];
+    snapshot.visits = [{ contract_id: "contract", status: "cancelada", scheduled_date: "2099-01-01" }] as TechnicalSnapshot["visits"];
+    const renderQueue = async () => renderToStaticMarkup(await DashboardPage({ searchParams: Promise.resolve({ fila: "agendar" }) }));
+    expect(await renderQueue()).toContain("Agendar visita · 1 peça(s) a liberar");
+    snapshot.visits[0].status = "agendada";
+    expect(await renderQueue()).toContain("Nenhuma obra nesta fila.");
   });
   it("shows visit time and work name in the upcoming agenda", async () => {
     const scheduled = new Date();
@@ -115,7 +124,7 @@ describe("meeting-first workflow pages", () => {
       status: "agendada",
     }] as unknown as TechnicalSnapshot["visits"];
 
-    const html = renderToStaticMarkup(await DashboardPage());
+    const html = renderToStaticMarkup(await DashboardPage({}));
     expect(html).toContain("14:30 · Medição");
     expect(html).toContain("26-0001 · Obra de teste");
     expect(html).toContain("Técnico:");
