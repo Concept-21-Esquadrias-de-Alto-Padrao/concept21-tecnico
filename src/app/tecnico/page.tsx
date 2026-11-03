@@ -98,41 +98,25 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     const nextVisit = upcoming[0];
     const measurement = upcoming.find(v => /\b(medicao|medicoes|medir|liberacao de medidas)\b/.test(
       (v.visit_type ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()));
-    const unscheduled = Boolean(technical?.commercial_folder_received && progress.balance && !measurement);
+    const unscheduled = Boolean(technical?.commercial_folder_received && released === 0 && progress.balance && !measurement);
     const work = workItems.filter(i => i.contract_id === contract.id && !i.closed && i.status !== "validada")
       .sort((a,b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") || Number(b.blocking) - Number(a.blocking))[0];
     const due = work?.due_date && work.due_date.slice(0,10) < today ? work : undefined;
     const ready = units(plan.filter(i=>i.released && !i.emitted));
     const prods = prodBatches.filter(p => !p.deleted_at && p.status !== "cancelado");
-    return { overview, progress, nextVisit, measurement, unscheduled, work, due, ready, prods };
+    return { plan, overview, progress, nextVisit, measurement, unscheduled, work, due, ready, prods };
   }).sort((a,b) => Number(Boolean(b.due)) - Number(Boolean(a.due)) ||
     (a.due?.due_date ?? "").localeCompare(b.due?.due_date ?? "") ||
     Number(b.unscheduled) - Number(a.unscheduled) || b.ready - a.ready ||
     a.overview.contract.contract_number.localeCompare(b.overview.contract.contract_number, "pt-BR", { numeric: true }));
   const queues = [
     { key: "todas", label: "Obras em andamento", hint: "Todas as etapas", items: rows },
-    { key: "agendar", label: "Agendar medição", hint: "Peças a liberar e nenhuma medição agendada", items: rows.filter(r => r.unscheduled) },
-    { key: "parcial", label: "Liberação parcial", hint: "Obras já liberadas em parte e com saldo", items: rows.filter(r=>r.progress.released>0 && r.progress.balance>0) },
+    { key: "agendar", label: "Agendar medição", hint: "Obras sem liberação e sem medição marcada", items: rows.filter(r => r.unscheduled) },
+    { key: "parcial", label: "Saldo a liberar", hint: "Obras já liberadas em parte e com saldo", items: rows.filter(r=>r.progress.released>0 && r.progress.balance>0) },
     { key: "prod", label: "A emitir PROD", hint: "Obras com peças liberadas sem PROD", items: rows.filter(r => r.ready > 0) },
     { key: "atrasos", label: "Com atividade vencida", hint: "Ações e correções em aberto", items: rows.filter(r => r.due) },
   ];
-  const planning = rows.map(({overview}) => {
-    const calendar = snapshot.dashboardHolidays?.filter(h=>h.company_id===overview.technical?.company_id).map(h=>({date:h.holiday_date}));
-    const items = releasePlan(overview.pieces, today, calendar);
-    return {overview,items};
-  });
   function units(items: ReturnType<typeof releasePlan>) { return items.reduce((sum,i)=>sum+i.units,0); }
-  const allItems = planning.flatMap(p=>p.items);
-  const weeks = new Map<string,{forecast:number;effective:number}>();
-  for (const i of allItems) {
-    if (!i.prodDue || i.emitted) continue;
-    const monday = new Date(i.prodDue+"T12:00:00Z");
-    monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);
-    const key = monday.toISOString().slice(0,10);
-    const week = weeks.get(key) ?? {forecast:0,effective:0};
-    week[i.released ? "effective" : "forecast"] += i.units;
-    weeks.set(key,week);
-  }
   const requested = (await searchParams)?.fila;
   const queue = queues.find(q => q.key === requested) ?? queues[0];
   const canOpen = canAccessModule(access, MODULE_ACCESS.contracts);
@@ -178,17 +162,30 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
       return action("Revisar situação da obra", "A atribuir", "");
     }
     const next = nextAction();
-    const inProd = units(releasePlan(overview.pieces,today).filter(i=>i.emitted));
+    const inProd = units(row.plan.filter(i=>i.emitted));
+    const partial = progress.released > 0 && progress.balance > 0;
+    const pending = row.plan.filter(i=>!i.released);
+    const dates = pending.flatMap(i=>i.piece.forecast_date && !i.replan ? [i.piece.forecast_date] : []).sort();
+    const missing = units(pending.filter(i=>!i.piece.forecast_date));
+    const revise = units(pending.filter(i=>i.replan));
     return <article key={contract.id} className="space-y-2 border-t border-border py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         {canOpen ? <Link href={base + next.target} className="font-semibold text-charcoal hover:underline">{title} ↗</Link> : <strong>{title}</strong>}
         <StatusBadge status={technical?.technical_status ?? "aguardando_reuniao"} type="contract" />
       </div>
-      <div className="rounded-lg border-l-4 border-orange-400 bg-orange-50 px-3 py-2">
+      {queue.key !== "parcial" && <div className="rounded-lg border-l-4 border-orange-400 bg-orange-50 px-3 py-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Próxima ação</p>
         {canOpen ? <Link href={base + next.target} className="font-semibold text-charcoal hover:underline">{next.title} ↗</Link> : <strong>{next.title}</strong>}
         <p className="mt-1 text-sm">Responsável: {next.owner} · Prazo: {next.date ? formatDate(next.date) : "A definir"}</p>
-      </div>
+      </div>}
+      {partial && <section className="rounded-lg border bg-white p-3 text-sm">
+        <p className="font-semibold">Saldo a liberar · {progress.balance} de {progress.total} peças</p>
+        <p>Já liberadas: {progress.released} · Próxima previsão: {dates.length ? formatDate(dates[0]) : "A definir"}</p>
+        {missing>0 && <p className="text-amber-800">Sem previsão: {missing} peça(s)</p>}
+        {revise>0 && <p className="text-amber-800">Previsão a revisar: {revise} peça(s)</p>}
+        {(access.isMaster || access.permissions["technical.visits.manage"]) && <PieceForecastForm contractId={contract.id} today={today}
+          options={pending.map(i=>({id:i.piece.id,label:[i.piece.code,i.piece.environment,i.piece.piece_type].filter(Boolean).join(" · "),group:i.piece.forecast_group ?? null,date:i.piece.forecast_date ?? null,replan:i.replan}))}/>}
+      </section>}
       {due && <p className="text-sm font-medium text-red-800">Vencida em {formatDate(due.due_date)} · {due.title}</p>}
       {unscheduled && <p className="text-sm font-medium text-amber-800">Sem medição agendada · {progress.balance} peça(s) a liberar</p>}
       {row.measurement && progress.balance > 0 && <p className="text-sm font-medium text-green-800">Medição agendada · {formatDate(row.measurement.scheduled_date)}</p>}
@@ -223,33 +220,6 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
           <span className="text-xs">{q.hint}</span>
         </Link>)}
       </nav>
-      <Panel>
-        <PanelHeader title="Planejamento das liberações e PRODs" description="Saldo por obra e carga de emissão por semana. A previsão pode ser registrada antes de marcar a visita."/>
-        <PanelBody>
-          <p className="text-sm font-semibold">{units(allItems)} peças em obras ativas · {units(allItems.filter(i=>i.released))} liberadas · {units(allItems.filter(i=>!i.released))} a liberar · {units(allItems.filter(i=>i.emitted))} com PROD</p>
-          <p className="mt-1 text-sm text-amber-800">{units(allItems.filter(i=>!i.released && !i.piece.forecast_date))} sem previsão · {units(allItems.filter(i=>i.replan))} a reprogramar</p>
-          <details className="mt-3"><summary className="cursor-pointer font-semibold">Abrir planejamento por obra e semana</summary>
-            <h3 className="mb-1 mt-4 font-semibold">Carga do Igor · semana prevista para emissão</h3>
-            {[...weeks].sort(([a],[b])=>a.localeCompare(b)).map(([week,load])=><p className="text-sm" key={week}>Semana de {formatDate(week)} · {load.forecast} peças previstas · {load.effective} já liberadas a emitir</p>)}
-            {!weeks.size && <p className="text-sm">Ainda sem datas para projetar a carga semanal.</p>}
-            {planning.filter(p=>queue.key!=="parcial" || (p.items.some(i=>i.released) && p.items.some(i=>!i.released))).map(({overview,items})=>{
-              const pending=items.filter(i=>!i.released);
-              return <details key={overview.contract.id} className="mt-3 border-t pt-2"><summary className="cursor-pointer text-sm font-semibold">
-                {overview.contract.contract_number} · {overview.client?.name ?? overview.contract.work_name} · {units(items.filter(i=>i.released))}/{units(items)} liberadas · saldo {units(pending)}
-              </summary>
-                <p className="mt-2 text-sm">{units(pending.filter(i=>i.piece.forecast_date && !i.replan))} com previsão · {units(pending.filter(i=>!i.piece.forecast_date))} sem previsão · {units(pending.filter(i=>i.replan))} a reprogramar · {units(items.filter(i=>i.released && !i.emitted))} liberadas a emitir · {units(items.filter(i=>i.emitted))} com PROD</p>
-                <ul className="my-2 space-y-1 text-sm">{items.map(i=><li key={i.piece.id}>{i.piece.code} · {i.piece.environment} · {i.piece.piece_type} · {i.units} un. · {i.emitted ? "Com PROD" : i.released ? "Liberada, a emitir" : i.replan ? "Reprogramar" : i.piece.forecast_date ? "Prevista" : "Sem previsão"}
-                  {i.piece.forecast_date && " · Previsão de liberação "+formatDate(i.piece.forecast_date)}
-                  {i.released && i.piece.released_at && " · Liberada em "+formatDate(i.piece.released_at.slice(0,10))}
-                  {i.prodDue && !i.emitted && (i.released ? " · Prazo de emissão " : " · Emissão estimada ")+formatDate(i.prodDue)}
-                </li>)}</ul>
-                {!!pending.length && (access.isMaster || access.permissions["technical.visits.manage"]) && <PieceForecastForm contractId={overview.contract.id} today={today}
-                  options={pending.map(i=>({id:i.piece.id,label:[i.piece.code,i.piece.environment,i.piece.piece_type].filter(Boolean).join(" · "),group:i.piece.forecast_group ?? null,date:i.piece.forecast_date ?? null,replan:i.replan}))}/>}
-              </details>;
-            })}
-          </details>
-        </PanelBody>
-      </Panel>
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <Panel>
           <PanelHeader title={queue.label} description="Abra a obra para consultar as peças ou seguir com a próxima ação." />

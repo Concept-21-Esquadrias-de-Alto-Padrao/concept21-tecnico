@@ -120,6 +120,21 @@ describe("meeting-first workflow pages", () => {
     expect(html).toContain("Confirmar acabamento");
     expect(html).toContain("Responsável: Participante de teste · Prazo: 06/11/2026");
   });
+  it("shows partial works only in the remaining balance queue even with no appointment", async () => {
+    snapshot.technicalContracts[0].commercial_folder_received = true;
+    snapshot.pieces = [
+      {id:"released",contract_id:"contract",status:"liberada",quantity:2},
+      {id:"next",contract_id:"contract",status:"medida",quantity:3,forecast_date:"2099-01-02"},
+      {id:"missing",contract_id:"contract",status:"medida",quantity:1},
+    ] as TechnicalSnapshot["pieces"];
+    const queue = async (fila:string) => renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({fila})}));
+    expect(await queue("agendar")).toContain("Nenhuma obra nesta fila.");
+    const partial = await queue("parcial");
+    expect(partial).toContain("Saldo a liberar · 4 de 6 peças");
+    expect(partial).toContain("02/01/2099");
+    expect(partial).toContain("Sem previsão: 1 peça(s)");
+    expect(partial).not.toContain("Carga do Igor");
+  });
   it("uses the oldest eligible release and skips a holiday for the PROD deadline", async () => {
     snapshot.technicalContracts[0].company_id = "company";
     snapshot.dashboardHolidays = [{company_id: "company", holiday_date: "2026-11-02"}];
