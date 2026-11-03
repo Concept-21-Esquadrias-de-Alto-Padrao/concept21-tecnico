@@ -235,6 +235,8 @@ export type TechnicalContract = {
 };
 
 export type TechnicalPiece = {
+  forecast_date?: string | null;
+  forecast_group?: string | null;
   id: string;
   company_id: string;
   contract_id: string;

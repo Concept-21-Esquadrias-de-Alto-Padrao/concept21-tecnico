@@ -1750,6 +1750,22 @@ export async function transitionTechnicalActionAction(first: ActionState | FormD
   }
 }
 
+export async function planReleaseAction(_: ActionState, formData: FormData) {
+  try {
+    const context = await getActionContext("technical.visits.manage");
+    const cid = String(formData.get("contract_id"));
+    const selected = idsFromForm(formData, "piece_ids");
+    if (!selected.length) throw new Error("Selecione ao menos uma peça.");
+    const {error} = await context.admin.rpc("technical_plan_release", {
+      co: context.companyId, cid, actor: context.authUserId, selected,
+      planned: String(formData.get("forecast_date")), seen: JSON.parse(String(formData.get("seen"))),
+    });
+    if (error) throw error;
+    revalidateTechnical(cid);
+    return ok("Previsão registrada. O planejamento do Igor foi atualizado.");
+  } catch (err) { return fail(err); }
+}
+
 export async function createVisitAction(_: ActionState, formData: FormData) {
   try {
     const context = await getActionContext("technical.visits.manage");

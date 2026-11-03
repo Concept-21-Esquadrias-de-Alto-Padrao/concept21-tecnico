@@ -1,4 +1,6 @@
 import { readReceipt } from "@/lib/commercial-receipt";
+import { releasePlan } from "@/lib/release-planning";
+import { PieceForecastForm } from "@/components/piece-forecast-form";
 import {
   AlertTriangle,
   CalendarDays,
@@ -26,7 +28,6 @@ import {
 import { getCurrentPermissionFlags } from "@/lib/server-access";
 import {
   addDeadlineDays,
-  calculateReleaseProgress,
   visitRequiresReport,
 } from "@/lib/technical-rules";
 import { formatDate } from "@/lib/utils";
@@ -88,7 +89,10 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     !["concluido", "cancelado"].includes(technical?.technical_status ?? "")
   ).map((overview) => {
     const { contract, technical, pieces, visits, prodBatches } = overview;
-    const progress = calculateReleaseProgress(pieces);
+    const plan = releasePlan(pieces, today);
+    const total = units(plan);
+    const released = units(plan.filter(i=>i.released));
+    const progress = {total, released, balance:total-released, percent:total ? Math.round(100*released/total) : 0};
     const upcoming = visits.filter(v => v.status === "agendada" && v.scheduled_date >= today)
       .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || (a.scheduled_time ?? "24").localeCompare(b.scheduled_time ?? "24"));
     const nextVisit = upcoming[0];
@@ -98,7 +102,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     const work = workItems.filter(i => i.contract_id === contract.id && !i.closed && i.status !== "validada")
       .sort((a,b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") || Number(b.blocking) - Number(a.blocking))[0];
     const due = work?.due_date && work.due_date.slice(0,10) < today ? work : undefined;
-    const ready = pieces.filter(p => !p.deleted_at && p.status === "liberada" && !p.active_prod_batch_id).length;
+    const ready = units(plan.filter(i=>i.released && !i.emitted));
     const prods = prodBatches.filter(p => !p.deleted_at && p.status !== "cancelado");
     return { overview, progress, nextVisit, measurement, unscheduled, work, due, ready, prods };
   }).sort((a,b) => Number(Boolean(b.due)) - Number(Boolean(a.due)) ||
@@ -108,9 +112,27 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
   const queues = [
     { key: "todas", label: "Obras em andamento", hint: "Todas as etapas", items: rows },
     { key: "agendar", label: "Agendar medição", hint: "Peças a liberar e nenhuma medição agendada", items: rows.filter(r => r.unscheduled) },
+    { key: "parcial", label: "Liberação parcial", hint: "Obras já liberadas em parte e com saldo", items: rows.filter(r=>r.progress.released>0 && r.progress.balance>0) },
     { key: "prod", label: "A emitir PROD", hint: "Obras com peças liberadas sem PROD", items: rows.filter(r => r.ready > 0) },
     { key: "atrasos", label: "Com atividade vencida", hint: "Ações e correções em aberto", items: rows.filter(r => r.due) },
   ];
+  const planning = rows.map(({overview}) => {
+    const calendar = snapshot.dashboardHolidays?.filter(h=>h.company_id===overview.technical?.company_id).map(h=>({date:h.holiday_date}));
+    const items = releasePlan(overview.pieces, today, calendar);
+    return {overview,items};
+  });
+  function units(items: ReturnType<typeof releasePlan>) { return items.reduce((sum,i)=>sum+i.units,0); }
+  const allItems = planning.flatMap(p=>p.items);
+  const weeks = new Map<string,{forecast:number;effective:number}>();
+  for (const i of allItems) {
+    if (!i.prodDue || i.emitted) continue;
+    const monday = new Date(i.prodDue+"T12:00:00Z");
+    monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);
+    const key = monday.toISOString().slice(0,10);
+    const week = weeks.get(key) ?? {forecast:0,effective:0};
+    week[i.released ? "effective" : "forecast"] += i.units;
+    weeks.set(key,week);
+  }
   const requested = (await searchParams)?.fila;
   const queue = queues.find(q => q.key === requested) ?? queues[0];
   const canOpen = canAccessModule(access, MODULE_ACCESS.contracts);
@@ -156,7 +178,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
       return action("Revisar situação da obra", "A atribuir", "");
     }
     const next = nextAction();
-    const inProd = overview.pieces.filter(p => !p.deleted_at && p.status !== "cancelada" && p.active_prod_batch_id).length;
+    const inProd = units(releasePlan(overview.pieces,today).filter(i=>i.emitted));
     return <article key={contract.id} className="space-y-2 border-t border-border py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         {canOpen ? <Link href={base + next.target} className="font-semibold text-charcoal hover:underline">{title} ↗</Link> : <strong>{title}</strong>}
@@ -191,7 +213,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
         }
       />
 
-      <nav aria-label="Filtrar obras por situação" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <nav aria-label="Filtrar obras por situação" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {queues.map(q => <Link key={q.key} href={"/tecnico?fila=" + q.key} scroll={false}
           aria-current={q.key === queue.key ? "page" : undefined}
           className={"rounded-xl border p-4 transition hover:border-orange-500 focus-visible:outline-2 " +
@@ -201,6 +223,33 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
           <span className="text-xs">{q.hint}</span>
         </Link>)}
       </nav>
+      <Panel>
+        <PanelHeader title="Planejamento das liberações e PRODs" description="Saldo por obra e carga de emissão por semana. A previsão pode ser registrada antes de marcar a visita."/>
+        <PanelBody>
+          <p className="text-sm font-semibold">{units(allItems)} peças em obras ativas · {units(allItems.filter(i=>i.released))} liberadas · {units(allItems.filter(i=>!i.released))} a liberar · {units(allItems.filter(i=>i.emitted))} com PROD</p>
+          <p className="mt-1 text-sm text-amber-800">{units(allItems.filter(i=>!i.released && !i.piece.forecast_date))} sem previsão · {units(allItems.filter(i=>i.replan))} a reprogramar</p>
+          <details className="mt-3"><summary className="cursor-pointer font-semibold">Abrir planejamento por obra e semana</summary>
+            <h3 className="mb-1 mt-4 font-semibold">Carga do Igor · semana prevista para emissão</h3>
+            {[...weeks].sort(([a],[b])=>a.localeCompare(b)).map(([week,load])=><p className="text-sm" key={week}>Semana de {formatDate(week)} · {load.forecast} peças previstas · {load.effective} já liberadas a emitir</p>)}
+            {!weeks.size && <p className="text-sm">Ainda sem datas para projetar a carga semanal.</p>}
+            {planning.filter(p=>queue.key!=="parcial" || (p.items.some(i=>i.released) && p.items.some(i=>!i.released))).map(({overview,items})=>{
+              const pending=items.filter(i=>!i.released);
+              return <details key={overview.contract.id} className="mt-3 border-t pt-2"><summary className="cursor-pointer text-sm font-semibold">
+                {overview.contract.contract_number} · {overview.client?.name ?? overview.contract.work_name} · {units(items.filter(i=>i.released))}/{units(items)} liberadas · saldo {units(pending)}
+              </summary>
+                <p className="mt-2 text-sm">{units(pending.filter(i=>i.piece.forecast_date && !i.replan))} com previsão · {units(pending.filter(i=>!i.piece.forecast_date))} sem previsão · {units(pending.filter(i=>i.replan))} a reprogramar · {units(items.filter(i=>i.released && !i.emitted))} liberadas a emitir · {units(items.filter(i=>i.emitted))} com PROD</p>
+                <ul className="my-2 space-y-1 text-sm">{items.map(i=><li key={i.piece.id}>{i.piece.code} · {i.piece.environment} · {i.piece.piece_type} · {i.units} un. · {i.emitted ? "Com PROD" : i.released ? "Liberada, a emitir" : i.replan ? "Reprogramar" : i.piece.forecast_date ? "Prevista" : "Sem previsão"}
+                  {i.piece.forecast_date && " · Previsão de liberação "+formatDate(i.piece.forecast_date)}
+                  {i.released && i.piece.released_at && " · Liberada em "+formatDate(i.piece.released_at.slice(0,10))}
+                  {i.prodDue && !i.emitted && (i.released ? " · Prazo de emissão " : " · Emissão estimada ")+formatDate(i.prodDue)}
+                </li>)}</ul>
+                {!!pending.length && (access.isMaster || access.permissions["technical.visits.manage"]) && <PieceForecastForm contractId={overview.contract.id} today={today}
+                  options={pending.map(i=>({id:i.piece.id,label:[i.piece.code,i.piece.environment,i.piece.piece_type].filter(Boolean).join(" · "),group:i.piece.forecast_group ?? null,date:i.piece.forecast_date ?? null,replan:i.replan}))}/>}
+              </details>;
+            })}
+          </details>
+        </PanelBody>
+      </Panel>
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <Panel>
           <PanelHeader title={queue.label} description="Abra a obra para consultar as peças ou seguir com a próxima ação." />
