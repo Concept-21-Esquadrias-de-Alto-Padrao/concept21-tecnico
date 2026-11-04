@@ -80,6 +80,21 @@ async function preview(name: string, html: string) {
 }
 
 describe("meeting-first workflow pages", () => {
+  it("shows the released pieces separately from the editable pending balance in the work detail", async () => {
+    snapshot.pieces = [
+      {id:"p01",contract_id:"contract",code:"P01",environment:"Sala",piece_type:"Porta de correr",quantity:1,status:"liberada"},
+      {id:"j01",contract_id:"contract",code:"J01",environment:"Cozinha",piece_type:"Janela maxim-ar",quantity:2,status:"medida",forecast_date:"2099-11-10"},
+    ] as TechnicalSnapshot["pieces"];
+    const html = (await contractHtml()).split('id="visao-geral"')[1].split("</section>")[0];
+    expect(html).toContain("3 contratadas");
+    const [pending,released] = html.split("Já liberadas");
+    expect(pending).toContain("J01 · Cozinha");
+    expect(pending).toContain("10/11/2099");
+    expect(pending).toContain("Informar ou alterar previsão");
+    expect(pending).not.toContain("P01 · Sala");
+    expect(released).toContain("P01 · Sala");
+    expect(released).not.toContain("Guardar previsão");
+  });
   it("shows the dashboard counters in the new order without counting a new contract as waiting for a folder", async () => {
     const html = renderToStaticMarkup(await DashboardPage({}));
     expect(html.indexOf("Aguardando reunião")).toBeLessThan(html.indexOf("Aguardando pasta"));

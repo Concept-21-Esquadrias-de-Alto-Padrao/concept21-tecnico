@@ -1,14 +1,12 @@
 import { readReceipt } from "@/lib/commercial-receipt";
 import {
   AlertTriangle,
-  CheckCircle2,
   ChevronDown,
   ClipboardList,
   Factory,
   FileText,
   History,
   LockKeyhole,
-  PackageCheck,
   PenLine,
   Pencil,
   ShieldCheck,
@@ -71,7 +69,9 @@ import {
 } from "@/lib/module-access";
 import { getCurrentPermissionFlags, requireAuthenticatedProfile } from "@/lib/server-access";
 import { getTechnicalContractDetailData } from "@/lib/technical-data";
-import { calculateReleaseProgress, isOverdue, isStageValidationSatisfied } from "@/lib/technical-rules";
+import { isOverdue, isStageValidationSatisfied } from "@/lib/technical-rules";
+import { releasePlan } from "@/lib/release-planning";
+import { PieceForecastForm } from "@/components/piece-forecast-form";
 import type {
   Client,
   Profile,
@@ -1493,9 +1493,15 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const corrections = snapshot.corrections.filter((correction) => correction.contract_id === id && !correction.deleted_at);
   const prodBatches = snapshot.prodBatches.filter((prod) => prod.contract_id === id && !prod.deleted_at);
   const doubts = snapshot.doubts.filter((doubt) => doubt.contract_id === id);
-  const releaseProgress = calculateReleaseProgress(pieces);
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const piecePlan = releasePlan(pieces, today);
+  const pending = piecePlan.filter(item => !item.released);
+  const released = piecePlan.filter(item => item.released);
+  const units = (items: typeof piecePlan) => items.reduce((sum, item) => sum + item.units, 0);
+  const total = units(piecePlan);
+  const releaseProgress = {total, released: units(released), balance: units(pending), percent: total ? Math.round(units(released) * 100 / total) : 0};
   const nextVisit = visits
-    .filter((visit) => visit.status === "agendada")
+    .filter((visit) => visit.status === "agendada" && visit.scheduled_date >= today)
     .sort((left, right) => left.scheduled_date.localeCompare(right.scheduled_date))[0];
   const workItemPermissions = getWorkItemPermissions(access);
   const nextAction = filterTechnicalWorkItems(buildTechnicalWorkItems(
@@ -1668,6 +1674,33 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         }
       />
 
+      <section id="visao-geral" aria-labelledby="resumo-pecas" className="rounded-xl border border-border bg-white p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 id="resumo-pecas" className="text-lg font-semibold">Peças da obra</h2>
+          <span className="text-sm text-muted-foreground">{total} contratadas · {releaseProgress.percent}% liberado</span>
+        </div>
+        <div className="grid items-start gap-4 md:grid-cols-2">
+          {[{title:"A liberar", items:pending, count:releaseProgress.balance, open:true},
+            {title:"Já liberadas", items:released, count:releaseProgress.released, open:false}].map(group=>
+            <div key={group.title} className="rounded-lg border border-border p-3">
+              <h3 className="mb-2 flex items-center justify-between font-semibold">{group.title}
+                <span className={group.open ? "rounded bg-orange-50 px-2 text-orange-900" : "rounded bg-green-50 px-2 text-green-800"}>{group.count}</span>
+              </h3>
+              <ul className="max-h-64 divide-y overflow-y-auto">{group.items.map(({piece,units:qty,replan})=>
+                <li key={piece.id} className="py-2 text-sm">
+                  <strong>{piece.code} · {piece.environment || "Ambiente a definir"}</strong>
+                  <span className="block text-muted-foreground">{piece.piece_type || piece.description || "Modelo a definir"} · {qty} un.</span>
+                  {group.open ? <span>{piece.forecast_date ? (replan ? "Revisar previsão de " : "Previsão de liberação: ")+formatDate(piece.forecast_date) : "Sem previsão"}</span>
+                    : <span>{piece.released_at ? "Liberada em "+formatDate(piece.released_at.slice(0,10)) : "Liberada"}{piece.active_prod_batch_id && " · "+(prodBatches.find(batch=>batch.id===piece.active_prod_batch_id)?.batch_number || "Em PROD")}</span>}
+                </li>)}</ul>
+              {!group.items.length && <p className="text-sm text-muted-foreground">{group.open ? "Nenhuma peça pendente." : "Nenhuma peça liberada."}</p>}
+              {group.open && pending.length>0 && canManageVisits && !["concluido","cancelado"].includes(currentStatus) &&
+                <PieceForecastForm contractId={id} today={today} options={pending.map(({piece,replan})=>({
+                  id:piece.id, label:[piece.code,piece.environment,piece.piece_type].filter(Boolean).join(" · "),group:piece.forecast_group ?? null,date:piece.forecast_date ?? null,replan,
+                }))}/>}
+            </div>)}
+        </div>
+      </section>
       <Panel>
         <PanelBody>
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -1732,10 +1765,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         </div>
       </Panel>
 
-      <section id="visao-geral" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Peças contratadas" value={releaseProgress.total} icon={PackageCheck} />
-        <StatCard label="Liberadas" value={releaseProgress.released} icon={CheckCircle2} tone="success" />
-        <StatCard label="Saldo" value={releaseProgress.balance} icon={AlertTriangle} tone={releaseProgress.balance ? "warning" : "success"} />
+      <section className="grid gap-4 sm:grid-cols-2">
         <StatCard label="Ações abertas" value={activeActions.length + activeCorrections.length} icon={AlertTriangle} tone="danger" href="#acoes" />
         <StatCard label="PRODs ativos" value={prodBatches.filter((item) => !["concluido", "cancelado"].includes(item.status)).length} icon={Factory} />
       </section>
