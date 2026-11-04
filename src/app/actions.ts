@@ -2593,7 +2593,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
 
     if (countError) throw countError;
 
-    const batchNumber = parsed.data.batch_number ?? `Lote ${(count ?? 0) + 1}`;
+    const batchNumber = parsed.data.batch_number ?? `Lote ${String((count ?? 0) + 1).padStart(2,"0")}`;
     const { data: release, error: releaseError } = await context.admin
       .from("technical_releases")
       .insert({

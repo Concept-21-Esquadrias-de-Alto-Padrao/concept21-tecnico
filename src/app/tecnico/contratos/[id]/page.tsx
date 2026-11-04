@@ -970,7 +970,7 @@ function ReleaseBatchForm({
       <input type="hidden" name="contract_id" value={contractId} />
       <div className="grid gap-3 lg:grid-cols-3">
         <Field label="Identificação do lote">
-          <input name="batch_number" className={inputClass} placeholder="Ex.: Lote 1" />
+          <input name="batch_number" className={inputClass} placeholder="Ex.: Lote 01" />
         </Field>
         <Field label="Prazo da liberação">
           <input name="default_due_date" type="date" className={inputClass} />
@@ -1596,6 +1596,19 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
       .filter((release) => isReleaseBatchSigned(release, releaseParticipantsByReleaseId.get(release.id) ?? []))
       .map((release) => release.id),
   );
+  const pieceById = new Map(pieces.map(piece => [piece.id,piece]));
+  const byReleaseDay = [...releases].sort((a,b) => b.release_date.localeCompare(a.release_date) || b.created_at.localeCompare(a.created_at));
+  function batchLabel(batch: TechnicalRelease) {
+    const number = /^lote\s+(\d+)$/i.exec(batch.batch_number?.trim() ?? "");
+    return number ? "Lote "+number[1].padStart(2,"0") : batch.batch_number || "Lote "+batch.id.slice(0,8);
+  }
+  const currentBatchByPiece = new Map<string,TechnicalRelease>();
+  for (const batch of byReleaseDay) {
+    if (batch.status === "cancelado") continue;
+    for (const link of releasePiecesByReleaseId.get(batch.id) ?? []) {
+      if (!currentBatchByPiece.has(link.piece_id)) currentBatchByPiece.set(link.piece_id,batch);
+    }
+  }
   const signedReleasePieceIds = new Set(
     [...latestReleasePieceByPieceId.values()]
       .filter((link) => signedReleaseIds.has(link.release_id))
@@ -1697,6 +1710,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 <li key={piece.id} className="py-2 text-sm">
                   <strong>{piece.code} · {piece.environment || "Ambiente a definir"}</strong>
                   <span className="block text-muted-foreground">{piece.piece_type || piece.description || "Modelo a definir"} · {qty} un.</span>
+                  {!group.open && <span className="text-xs font-semibold">{currentBatchByPiece.has(piece.id) ? batchLabel(currentBatchByPiece.get(piece.id)!) : "Sem lote vinculado"}</span>}
                   <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
                   {group.open ? <span>{piece.forecast_date ? (replan ? "Revisar previsão de " : "Previsão de liberação: ")+formatDate(piece.forecast_date) : "Previsão de liberação: A definir"}</span>
                     : <span>{piece.released_at ? "Liberada em "+formatDate(piece.released_at.slice(0,10)) : "Liberada"}{piece.active_prod_batch_id && " · "+(prodBatches.find(batch=>batch.id===piece.active_prod_batch_id)?.batch_number || "Em PROD")}</span>}
@@ -1710,6 +1724,18 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 }))}/>}
             </div>)}
         </div>
+        {byReleaseDay.length > 0 && <div className="mt-5 border-t pt-4">
+          <h3 className="font-semibold">Lotes de liberação</h3>
+          <p className="mb-3 text-sm text-muted-foreground">Do mais recente ao mais antigo. Abra um lote para ver as peças.</p>
+          {byReleaseDay.map(batch=>{
+            const batchPieces = (releasePiecesByReleaseId.get(batch.id) ?? []).flatMap(link=>pieceById.get(link.piece_id) ?? []);
+            const count = batchPieces.reduce((sum,p)=>sum+(p.quantity ?? 1),0);
+            return <details key={batch.id} className="mb-2 rounded-lg border border-border px-3 py-2">
+              <summary className="cursor-pointer text-sm"><strong>{batchLabel(batch)}</strong> · {formatDate(batch.release_date)} · {count} peça(s){batch.status==="cancelado" ? " · Cancelado" : batch.status==="aguardando_assinatura" ? " · Aguardando assinatura" : ""}</summary>
+              <ul className="mt-2 divide-y">{batchPieces.map(p=><li key={p.id} className="py-1 text-sm"><strong>{p.code}</strong> · {p.environment || "Ambiente a definir"} · {p.piece_type || p.description || "Modelo a definir"} · {p.quantity ?? 1} un.</li>)}</ul>
+            </details>;
+          })}
+        </div>}
       </section>
       <Panel>
         <PanelBody>
