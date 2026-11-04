@@ -258,10 +258,10 @@ describe("meeting-first workflow pages", () => {
     const html = await contractHtml();
     expect(html).toContain("Peças do contrato");
     expect(html).toContain("Cadastro-base recebido do Comercial");
-    expect(html).toContain("Ambiente conferido em obra");
-    expect(html).toContain("Registrar alteração estrutural");
-    expect(html).toContain("Liberação bloqueada até a conclusão da ação estrutural");
-    expect(html).toMatch(/<input[^>]+disabled[^>]+name="piece_ids"/);
+    expect(html).toContain("Ver peça");
+    expect(html).toContain("Bloqueada");
+    expect(html).not.toContain("Incluir P1 no lote");
+    expect(html).toContain("Configurar assinaturas dos novos lotes");
     await preview(
       "contract-pieces",
       html

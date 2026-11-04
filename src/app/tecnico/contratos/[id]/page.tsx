@@ -1,3 +1,4 @@
+import { MeasurementDesk } from "@/components/measurement-desk";
 import { WorkWorkspace, WorkArea } from "@/components/work-workspace";
 import { readReceipt } from "@/lib/commercial-receipt";
 import {
@@ -22,7 +23,6 @@ import {
   createDoubtAction,
   createPieceStructuralChangeAction,
   createProdBatchAction,
-  createReleaseBatchAction,
   createVisitAction,
   decidePieceChangeRequestAction,
   deliverDepartmentDocumentAction,
@@ -207,7 +207,7 @@ function StageValidationPanel({
         <div>
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-charcoal">
             <ShieldCheck className="size-4 text-accent" />
-            Validação da etapa
+            {isReleaseBatchConfig ? "Assinaturas dos novos lotes" : "Validação da etapa"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {isReleaseBatchConfig
@@ -243,9 +243,9 @@ function StageValidationPanel({
           <input type="hidden" name="stage" value={stage} />
           <label className="flex items-center gap-2 text-sm font-semibold text-charcoal">
             <input name="validation_required" type="checkbox" defaultChecked={validation.required} />
-            Necessária validação
+            {isReleaseBatchConfig ? "Exigir assinatura para novos lotes" : "Necessária validação"}
           </label>
-          <Field label="Participantes da etapa">
+          <Field label={isReleaseBatchConfig ? "Quem deve assinar" : "Participantes da etapa"}>
             <div className="grid gap-2 md:grid-cols-2">
               {activeProfiles.map((profile) => (
                 <label
@@ -866,6 +866,7 @@ function PieceActionForms({
       ) : null}
       {canManageProds ? (
         <ActionForm action={updatePieceCemAction} submitLabel="Atualizar CEM" className="rounded-md bg-muted/40 p-3">
+          <h4 className="font-semibold">Conferência no CEM</h4>
           <input type="hidden" name="id" value={piece.id} />
           <label className="flex items-center gap-2 text-xs font-semibold text-charcoal">
             <input name="cem_registered" type="checkbox" defaultChecked={piece.cem_registered} />
@@ -936,98 +937,6 @@ function SplitPieceForm({ pieces }: { pieces: TechnicalPiece[] }) {
         <Field label="Quantidade destacada">
           <input name="quantity" type="number" min={1} step={1} defaultValue={1} className={inputClass} />
         </Field>
-      </div>
-    </ActionForm>
-  );
-}
-
-function ReleaseBatchForm({
-  contractId,
-  pieces,
-  blockingActionsByPieceId,
-}: {
-  contractId: string;
-  pieces: TechnicalPiece[];
-  blockingActionsByPieceId: Map<string, TechnicalAction[]>;
-}) {
-  if (!pieces.length) {
-    return (
-      <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-800">
-        Não há peças pendentes para novo lote de liberação.
-      </div>
-    );
-  }
-
-  return (
-    <ActionForm
-      action={createReleaseBatchAction}
-      submitLabel="Criar lote de liberação"
-      className="rounded-md border border-border bg-white p-3"
-      confirmMessage="Confirma a criação deste lote? Somente as peças selecionadas serão liberadas para assinatura e avanço do fluxo."
-    >
-      <input type="hidden" name="contract_id" value={contractId} />
-      <div className="grid gap-3 lg:grid-cols-3">
-        <Field label="Identificação do lote">
-          <input name="batch_number" className={inputClass} placeholder="Ex.: Lote 01" />
-        </Field>
-        <Field label="Prazo da liberação">
-          <input name="default_due_date" type="date" className={inputClass} />
-        </Field>
-        <Field label="Observações">
-          <textarea name="notes" className={textareaClass} />
-        </Field>
-      </div>
-
-      <div className="space-y-2">
-        <div>
-          <p className="text-sm font-semibold text-charcoal">Peças deste lote</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Marque somente as peças que estão sendo liberadas agora. As demais permanecem aguardando novo lote.
-          </p>
-        </div>
-        <div className="grid gap-2">
-          {pieces.map((piece) => {
-            const blockingActions = blockingActionsByPieceId.get(piece.id) ?? [];
-            const blocked = blockingActions.length > 0;
-            return (
-            <div key={piece.id} className={cn("rounded-md border p-3", blocked ? "border-red-200 bg-red-50/60" : "border-border bg-muted/20")}>
-              <label className="flex cursor-pointer items-start gap-3 text-sm">
-                <input name="piece_ids" type="checkbox" value={piece.id} className="mt-1 size-4 accent-orange-600" disabled={blocked} />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-charcoal">{piece.code}</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {piece.environment ?? "Sem ambiente"} · {piece.piece_type ?? "Sem tipo"}
-                  </span>
-                </span>
-                <StatusBadge status={piece.status} type="piece" />
-              </label>
-              {blocked ? (
-                <p className="mt-2 text-xs font-semibold text-red-800">
-                  Liberação bloqueada até a conclusão da ação estrutural.
-                </p>
-              ) : null}
-              <div className="mt-3 grid gap-2 md:grid-cols-3">
-                <label className="space-y-1.5">
-                  <span className="text-xs font-semibold text-muted-foreground">Ambiente</span>
-                  <input
-                    name={`environment_${piece.id}`}
-                    className={inputClass}
-                    defaultValue={piece.environment ?? ""}
-                    placeholder="Ambiente correto"
-                  />
-                </label>
-                <ProjectMeasurementFields
-                  nameSuffix={`_${piece.id}`}
-                  projectOnly={piece.project_only}
-                  width={piece.measured_width_mm}
-                  height={piece.measured_height_mm}
-                  placeholders={{ width: piece.sale_width_mm ? String(piece.sale_width_mm) : "Largura", height: piece.sale_height_mm ? String(piece.sale_height_mm) : "Altura" }}
-                />
-              </div>
-            </div>
-            );
-          })}
-        </div>
       </div>
     </ActionForm>
   );
@@ -1345,7 +1254,7 @@ function ReleaseBatchList({
               <div className="min-w-0">
                 <p className="font-semibold text-charcoal">{release.batch_number ?? "Lote de liberação"}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {batchPieces.length || links.length} peça(s) · Liberado em {formatDate(release.release_date)}
+                  {batchPieceRows.reduce((sum,p)=>sum+(p.quantity ?? 1),0)} peça(s) · Liberado em {formatDate(release.release_date)}
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1384,16 +1293,9 @@ function ReleaseBatchList({
 
               <div>
                 <p className="text-xs font-semibold uppercase text-muted-foreground">Peças do lote</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {batchPieces.map(({ piece, link }) => (
-                    <span key={piece.id} className="rounded-md border border-border bg-muted/30 px-2 py-1 text-xs font-semibold text-charcoal">
-                      {piece.code} · {piece.environment ?? "Sem ambiente"} · {link.project_only_at_release ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}
-                    </span>
-                  ))}
-                  {!batchPieces.length ? (
-                    <span className="text-xs text-muted-foreground">Peças não encontradas no cadastro ativo.</span>
-                  ) : null}
-                </div>
+                <div className="mt-2 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-muted"><tr>{["Peça","Ambiente","Tipo / modelo","Medida de campo atual","Quantidade"].map(h=><th key={h} className="p-2">{h}</th>)}</tr></thead>
+                <tbody>{batchPieces.map(({piece,link})=><tr className="border-b" key={piece.id}><td className="p-2 font-semibold">{piece.code}</td><td className="p-2">{piece.environment}</td><td className="p-2">{piece.piece_type || piece.description}</td><td className="p-2">{link.project_only_at_release?"Projeto":piece.measured_width_mm && piece.measured_height_mm ? piece.measured_width_mm+" × "+piece.measured_height_mm+" mm" : "A definir"}</td><td className="p-2">{piece.quantity ?? 1}</td></tr>)}</tbody></table>
+                {!batchPieces.length && <p>Peças não encontradas no cadastro ativo.</p>}</div>
               </div>
 
               {release.notes ? <p className="rounded-md bg-muted/30 px-3 py-2 text-muted-foreground">{release.notes}</p> : null}
@@ -1594,7 +1496,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
       .filter((release) => isReleaseBatchSigned(release, releaseParticipantsByReleaseId.get(release.id) ?? []))
       .map((release) => release.id),
   );
-  const pieceById = new Map(pieces.map(piece => [piece.id,piece]));
+
   const byReleaseDay = [...releases].sort((a,b) => b.release_date.localeCompare(a.release_date) || b.created_at.localeCompare(a.created_at));
   function batchLabel(batch: TechnicalRelease) {
     const number = /^lote\s+(\d+)$/i.exec(batch.batch_number?.trim() ?? "");
@@ -1703,21 +1605,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               prod:prodBatches.find(p=>p.id===piece.active_prod_batch_id)?.batch_number ?? ""};
           })}/>
       </section></div></WorkArea>
-      <WorkArea id="lotes"><section id="lotes" className="rounded-xl border border-border bg-white p-4">
-        {byReleaseDay.length > 0 && <div className="mt-5 border-t pt-4">
-          <h3 className="font-semibold">Lotes de liberação</h3>
-          <p className="mb-3 text-sm text-muted-foreground">Do mais recente ao mais antigo. Abra um lote para ver as peças.</p>
-          {byReleaseDay.map(batch=>{
-            const batchPieces = (releasePiecesByReleaseId.get(batch.id) ?? []).flatMap(link=>pieceById.get(link.piece_id) ?? []);
-            const count = batchPieces.reduce((sum,p)=>sum+(p.quantity ?? 1),0);
-            return <details key={batch.id} className="mb-2 rounded-lg border border-border px-3 py-2">
-              <summary className="cursor-pointer text-sm"><strong>{batchLabel(batch)}</strong> · {formatDate(batch.release_date)} · {count} peça(s){batch.status==="cancelado" ? " · Cancelado" : batch.status==="aguardando_assinatura" ? " · Aguardando assinatura" : ""}</summary>
-              <ul className="mt-2 divide-y">{batchPieces.map(p=><li key={p.id} className="py-1 text-sm"><strong>{p.code}</strong> · {p.environment || "Ambiente a definir"} · {p.piece_type || p.description || "Modelo a definir"} · {p.quantity ?? 1} un.</li>)}</ul>
-            </details>;
-          })}
-        </div>}
-        {!byReleaseDay.length && <p>Nenhum lote de liberação registrado.</p>}
-      </section></WorkArea>
+
       <FlowStep
         id="dados-obra"
         title="Dados da obra"
@@ -2106,7 +1994,27 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         description="Registro das medidas encontradas em obra e liberação das peças por lotes."
         status={pecasStageStatus}
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2 text-sm"><a href="#pecas" className="rounded-md bg-charcoal px-3 py-2 font-semibold text-white">Peças e medidas</a><a href="#lotes" className="rounded-md border px-3 py-2 font-semibold">Consultar lotes ({releases.length})</a></div>
+          {!canOperatePieces && <p className="rounded-md bg-amber-50 p-3 text-sm">{!reuniaoReadyForNext ? "Conclua a reunião e as assinaturas exigidas para iniciar a operação de peças." : !entradaReadyForNext ? "Aguardando entrega e conferência da pasta." : !acoesValidation.complete ? "Aguardando resolução da etapa de ações." : "A etapa de visitas aguarda as assinaturas exigidas."}</p>}
+          <MeasurementDesk contractId={id} canRelease={canRelease && canOperatePieces} needsSignatures={pecasValidation.required} items={piecePlan.map(({piece,released:isReleased})=>{
+            const batch=currentBatchByPiece.get(piece.id);
+            const blocked=piece.project_only || !!structuralActionsByPieceId.get(piece.id)?.length || activeCorrections.some(c=>c.piece_id===piece.id && c.blocking);
+            return {id:piece.id,code:piece.code,environment:piece.environment ?? "",model:piece.piece_type || piece.description || "A definir",
+              width:piece.measured_width_mm,height:piece.measured_height_mm,released:isReleased,blocked,registered:piece.cem_registered,checked:piece.cem_checked,lot:batch?batchLabel(batch):"",
+              editor:<div><p className="mb-2 text-sm">Venda: {piece.sale_width_mm ?? "—"} × {piece.sale_height_mm ?? "—"} mm · {piece.project_only ? "Aguardando definição das medidas de projeto" : "Medidas de campo e conferência CEM"}</p>                  <PieceActionForms
+                    piece={piece}
+                    canMeasure={canMeasure && canOperatePieces}
+                    canManageProds={canManageProds && canOperatePieces}
+                    pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
+                    canRequestPieceChanges={canRequestPieceChanges}
+                    canAuthorizePieceChanges={canAuthorizePieceChanges}
+                    profiles={snapshot.profiles}
+                    structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
+                  />
+              </div>};})}/>
+          {canSplitPieces && <details className="rounded-md border p-3"><summary className="cursor-pointer text-sm">Desdobrar peça</summary><SplitPieceForm pieces={releaseCandidates}/></details>}
+          {canReopenStages && <details className="rounded-md border p-3"><summary className="cursor-pointer text-sm">Configurar assinaturas dos novos lotes</summary>
           <StageValidationPanel
             contractId={id}
             stage="pecas_medicoes_liberacoes"
@@ -2118,21 +2026,12 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             completeMessage=""
             signatureMode="release_batch_config"
           />
-          {!visitasValidation.complete ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              A etapa de visitas aguarda ciência de todos os participantes antes das ações de peça.
-            </div>
-          ) : null}
-          {canSplitPieces ? <SplitPieceForm pieces={releaseCandidates} /> : null}
-          {canRelease && canOperatePieces ? (
-            <ReleaseBatchForm
-              contractId={id}
-              pieces={releaseCandidates}
-              blockingActionsByPieceId={structuralActionsByPieceId}
-            />
-          ) : null}
+          </details>}
+        </div>
+      </FlowStep>
+      <WorkArea id="lotes"><section id="lotes" className="space-y-3 rounded-xl border bg-white p-4"><div className="flex flex-wrap items-center justify-between"><h2 className="text-lg font-semibold">Lotes de liberação</h2><a href="#pecas" className="text-sm font-semibold underline">Voltar às peças e medidas</a></div>
           <ReleaseBatchList
-            releases={releases}
+            releases={byReleaseDay}
             releasePiecesByReleaseId={releasePiecesByReleaseId}
             pieces={pieces}
             participantsByReleaseId={releaseParticipantsByReleaseId}
@@ -2143,177 +2042,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             canRequestChanges={canRequestReleaseChanges}
             canAuthorizeChanges={canAuthorizeReleaseChanges}
           />
-          <div className="space-y-3">
-            {pieces.map((piece) => {
-              const latestReleaseLink = latestReleasePieceByPieceId.get(piece.id);
-              const latestRelease = latestReleaseLink
-                ? releases.find((release) => release.id === latestReleaseLink.release_id)
-                : null;
-              const latestReleaseSigned = latestRelease
-                ? isReleaseBatchSigned(latestRelease, releaseParticipantsByReleaseId.get(latestRelease.id) ?? [])
-                : false;
-
-              return (
-              <details key={piece.id} className="group rounded-md border border-border bg-white">
-                <summary className="grid cursor-pointer list-none gap-3 px-3 py-3 marker:hidden sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-center">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-charcoal">{piece.code}</p>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {piece.environment ?? "Sem ambiente"} · {piece.piece_type ?? "Sem tipo"}
-                    </p>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    <span className="font-semibold text-charcoal">{piece.sale_width_mm ?? "-"} x {piece.sale_height_mm ?? "-"}</span>
-                    <span className="ml-1">venda</span>
-                  </div>
-                  {latestRelease ? (
-                    <span
-                      className={cn(
-                        "rounded-md px-2 py-1 text-xs font-semibold ring-1",
-                        latestReleaseSigned
-                          ? "bg-green-50 text-green-800 ring-green-200"
-                          : "bg-amber-50 text-amber-800 ring-amber-200",
-                      )}
-                    >
-                      {latestReleaseSigned ? "Lote validado" : "Lote aguardando assinatura"}
-                    </span>
-                  ) : null}
-                  <StatusBadge status={piece.status} type="piece" />
-                  <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
-                </summary>
-
-                <div className="space-y-4 border-t border-border p-3">
-                  <dl className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-md bg-muted/50 p-2">
-                      <dt className="text-muted-foreground">Venda</dt>
-                      <dd className="mt-1 font-semibold text-charcoal">{piece.sale_width_mm ?? "-"} x {piece.sale_height_mm ?? "-"}</dd>
-                    </div>
-                    <div className="rounded-md bg-muted/50 p-2">
-                      <dt className="text-muted-foreground">Medição</dt>
-                      <dd className="mt-1 font-semibold text-charcoal">{piece.project_only ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}</dd>
-                    </div>
-                    <div className="rounded-md bg-muted/50 p-2">
-                      <dt className="text-muted-foreground">CEM</dt>
-                      <dd className="mt-1 font-semibold text-charcoal">{piece.cem_registered ? "Cad." : "Pendente"} / {piece.cem_checked ? "Conf." : "Pendente"}</dd>
-                    </div>
-                    <div className="rounded-md bg-muted/50 p-2">
-                      <dt className="text-muted-foreground">Prazo</dt>
-                      <dd className="mt-1 font-semibold text-charcoal">{formatDate(piece.exceptional_due_date ?? piece.release_due_date)}</dd>
-                    </div>
-                  </dl>
-
-                  <PieceActionForms
-                    piece={piece}
-                    canMeasure={canMeasure && canOperatePieces}
-                    canManageProds={canManageProds && canOperatePieces}
-                    pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
-                    canRequestPieceChanges={canRequestPieceChanges}
-                    canAuthorizePieceChanges={canAuthorizePieceChanges}
-                    profiles={snapshot.profiles}
-                    structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
-                  />
-                </div>
-              </details>
-              );
-            })}
-          </div>
-
-          <div className="hidden">
-            {pieces.map((piece) => (
-              <article key={piece.id} className="rounded-md border border-border bg-white p-3 text-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-charcoal">{piece.code}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{piece.environment ?? "Sem ambiente"}</p>
-                  </div>
-                  <StatusBadge status={piece.status} type="piece" />
-                </div>
-
-                <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-md bg-muted/50 p-2">
-                    <dt className="text-muted-foreground">Venda</dt>
-                    <dd className="mt-1 font-semibold text-charcoal">
-                      {piece.sale_width_mm ?? "-"} x {piece.sale_height_mm ?? "-"}
-                    </dd>
-                  </div>
-                  <div className="rounded-md bg-muted/50 p-2">
-                    <dt className="text-muted-foreground">Medição</dt>
-                    <dd className="mt-1 font-semibold text-charcoal">
-                      {piece.project_only ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}
-                    </dd>
-                  </div>
-                  <div className="rounded-md bg-muted/50 p-2">
-                    <dt className="text-muted-foreground">CEM</dt>
-                    <dd className="mt-1 font-semibold text-charcoal">
-                      {piece.cem_registered ? "Cad." : "Pendente"} / {piece.cem_checked ? "Conf." : "Pendente"}
-                    </dd>
-                  </div>
-                  <div className="rounded-md bg-muted/50 p-2">
-                    <dt className="text-muted-foreground">Prazo</dt>
-                    <dd className="mt-1 font-semibold text-charcoal">
-                      {formatDate(piece.exceptional_due_date ?? piece.release_due_date)}
-                    </dd>
-                  </div>
-                </dl>
-
-                <PieceActionForms
-                  piece={piece}
-                  canMeasure={canMeasure && canOperatePieces}
-                  canManageProds={canManageProds && canOperatePieces}
-                  pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
-                  canRequestPieceChanges={canRequestPieceChanges}
-                  canAuthorizePieceChanges={canAuthorizePieceChanges}
-                  profiles={snapshot.profiles}
-                  structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
-                  className="mt-3 grid gap-2"
-                />
-              </article>
-            ))}
-          </div>
-
-          <div className="hidden">
-            <table className="min-w-[1200px] w-full border-separate border-spacing-0 bg-white text-left text-sm">
-              <thead>
-                <tr className="text-xs uppercase text-muted-foreground">
-                  <th className="border-b border-border px-3 py-3">Código</th>
-                  <th className="border-b border-border px-3 py-3">Ambiente</th>
-                  <th className="border-b border-border px-3 py-3">Venda</th>
-                  <th className="border-b border-border px-3 py-3">Medição</th>
-                  <th className="border-b border-border px-3 py-3">Status</th>
-                  <th className="border-b border-border px-3 py-3">CEM</th>
-                  <th className="border-b border-border px-3 py-3">Prazo</th>
-                  <th className="border-b border-border px-3 py-3">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pieces.map((piece) => (
-                  <tr key={piece.id} className="align-top">
-                    <td className="border-b border-border px-3 py-3 font-semibold text-charcoal">{piece.code}</td>
-                    <td className="border-b border-border px-3 py-3">{piece.environment ?? "-"}</td>
-                    <td className="border-b border-border px-3 py-3">{piece.sale_width_mm ?? "-"} x {piece.sale_height_mm ?? "-"}</td>
-                    <td className="border-b border-border px-3 py-3">{piece.project_only ? "Projeto" : `${piece.measured_width_mm ?? "-"} x ${piece.measured_height_mm ?? "-"}`}</td>
-                    <td className="border-b border-border px-3 py-3"><StatusBadge status={piece.status} type="piece" /></td>
-                    <td className="border-b border-border px-3 py-3">{piece.cem_registered ? "Cad." : "Pendente"} / {piece.cem_checked ? "Conf." : "Pendente"}</td>
-                    <td className="border-b border-border px-3 py-3">{formatDate(piece.exceptional_due_date ?? piece.release_due_date)}</td>
-                    <td className="border-b border-border px-3 py-3">
-                      <PieceActionForms
-                        piece={piece}
-                        canMeasure={canMeasure && canOperatePieces}
-                        canManageProds={canManageProds && canOperatePieces}
-                        pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
-                        canRequestPieceChanges={canRequestPieceChanges}
-                        canAuthorizePieceChanges={canAuthorizePieceChanges}
-                        profiles={snapshot.profiles}
-                        structuralActions={structuralActionsByPieceId.get(piece.id) ?? []}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </FlowStep>
+      </section></WorkArea>
 
       <FlowStep
         id="prods"
