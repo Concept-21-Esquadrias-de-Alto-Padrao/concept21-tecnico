@@ -1,9 +1,9 @@
+import { WorkWorkspace, WorkArea } from "@/components/work-workspace";
 import { readReceipt } from "@/lib/commercial-receipt";
 import {
   AlertTriangle,
   ChevronDown,
   ClipboardList,
-  Factory,
   FileText,
   History,
   LockKeyhole,
@@ -53,10 +53,8 @@ import { buildTechnicalWorkItems, filterTechnicalWorkItems } from "@/lib/technic
 import { ActionForm, Field, inputClass, textareaClass } from "@/components/action-form";
 import { DeleteTechnicalContractForm } from "@/components/delete-technical-contract-form";
 import { PageHeader } from "@/components/page-header";
-import { Panel, PanelBody } from "@/components/panel";
 import { ProjectMeasurementFields } from "@/components/project-measurement-fields";
 import { StatusBadge } from "@/components/status-badge";
-import { StatCard } from "@/components/stat-card";
 import { VisitReportPdfButton } from "@/components/visit-report-pdf-button";
 import { formatAuditLogEntry } from "@/lib/audit-log-format";
 import {
@@ -69,7 +67,7 @@ import {
 } from "@/lib/module-access";
 import { getCurrentPermissionFlags, requireAuthenticatedProfile } from "@/lib/server-access";
 import { getTechnicalContractDetailData } from "@/lib/technical-data";
-import { addDeadlineDays, isOverdue, isStageValidationSatisfied } from "@/lib/technical-rules";
+import { addDeadlineDays, isStageValidationSatisfied } from "@/lib/technical-rules";
 import { releasePlan } from "@/lib/release-planning";
 import { WorkPieceTable } from "@/components/work-piece-table";
 import type {
@@ -327,7 +325,7 @@ function FlowStep({
   description,
   status,
   locked,
-  defaultOpen,
+
   children,
 }: {
   id: string;
@@ -335,12 +333,12 @@ function FlowStep({
   description?: string;
   status: string;
   locked?: boolean;
-  defaultOpen?: boolean;
+
   children: ReactNode;
 }) {
   return (
-    <details id={id} open={defaultOpen} className="group rounded-md border border-border bg-card shadow-sm">
-      <summary className="flex cursor-pointer list-none items-start justify-between gap-4 px-4 py-4 marker:hidden">
+    <WorkArea id={id}><section id={id} className="group rounded-md border border-border bg-card shadow-sm">
+      <header className="flex items-start justify-between gap-4 px-4 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-base font-semibold text-charcoal">{title}</h2>
@@ -358,10 +356,10 @@ function FlowStep({
           </div>
           {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         </div>
-        <ChevronDown className="mt-1 size-5 flex-none text-muted-foreground transition group-open:rotate-180" />
-      </summary>
+
+      </header>
       <div className="border-t border-border p-4">{children}</div>
-    </details>
+    </section></WorkArea>
   );
 }
 
@@ -1663,23 +1661,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const canSplitPieces = (canMeasure || canRelease) && canOperatePieces;
   const canCreateProdBatch = canManageProds && piecesReadyForProd.length > 0;
 
-  const tabLinks: Array<readonly [string, string]> = [
-    ["#visao-geral", "Visão geral"],
-    ["#dados-obra", "Dados da obra"],
-    ["#reuniao", "Reunião e ata"],
-    ["#entrada", "Entrega da pasta"],
-    ["#acoes", "Ações"],
-    ["#visitas", "Visitas"],
-    ["#pecas", "Medições e liberações"],
-    ["#prods", "PRODs"],
-    ["#duvidas", "Dúvidas"],
-    ["#historico", "Histórico"],
-  ];
-  if (canDeleteContract) tabLinks.push(["#administracao", "Administração"]);
-
   return (
     <div className="space-y-6">
-      {readReceipt(technical?.commercial_data) && <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm"><strong>{readReceipt(technical?.commercial_data)?.status === "completed" ? "Recebimento comercial conferido" : "Conferência do recebimento pendente"}</strong><p className="mt-1">{readReceipt(technical?.commercial_data)?.draft.notes}</p><Link href={`/tecnico/contratos/${id}/recebimento`} className="mt-2 inline-block font-semibold underline">{readReceipt(technical?.commercial_data)?.status === "completed" ? "Consultar conferência e histórico" : "Continuar conferência"}</Link></div>}
       <PageHeader
         title={`${contract.contract_number} · ${client?.name ?? "Cliente"}`}
         description={`${contract.work_name} · ${contract.full_address}`}
@@ -1694,6 +1677,17 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         }
       />
 
+      <WorkWorkspace admin={canDeleteContract}>
+      <WorkArea id="visao-geral"><div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border bg-white px-4 py-3 text-sm">
+        <StatusBadge status={currentStatus} type="contract"/>
+        <span>Prazo contratual · {technical?.contractual_deadline_value == null ? "A definir" : technical.contractual_deadline_value+" "+(technical.contractual_deadline_unit==="dias_corridos"?"dias corridos":"dias úteis")}</span>
+        <a href="#visitas" className="hover:underline">Próxima visita · {nextVisit ? formatDate(nextVisit.scheduled_date) : "A agendar"}</a>
+        <a href="#acoes" className="font-semibold hover:underline">Ações abertas · {activeActions.length+activeCorrections.length}</a>
+        <a href="#prods" className="font-semibold hover:underline">PRODs ativos · {prodBatches.filter(p=>!["concluido","cancelado"].includes(p.status)).length}</a>
+        {technical?.risk_status && technical.risk_status!=="normal" && <span className="rounded bg-amber-50 px-2 py-1">Risco · {technical.risk_status}</span>}
+        {nextAction && <div className="w-full border-t border-border pt-2"><a href="#acoes" className="font-semibold hover:underline">Próxima ação · {nextAction.title}</a> · {profileName(snapshot.profiles,nextAction.responsible_profile_id)}{nextAction.due_date && " · "+formatDate(nextAction.due_date)}</div>}
+      </div>
       <section id="visao-geral" aria-labelledby="resumo-pecas" className="rounded-xl border border-border bg-white p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 id="resumo-pecas" className="text-lg font-semibold">Peças da obra</h2>
@@ -1708,6 +1702,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               revise:replan,group:piece.forecast_group ?? null,lotId:batch?.id ?? "",lot:batch?batchLabel(batch):"",
               prod:prodBatches.find(p=>p.id===piece.active_prod_batch_id)?.batch_number ?? ""};
           })}/>
+      </section></div></WorkArea>
+      <WorkArea id="lotes"><section id="lotes" className="rounded-xl border border-border bg-white p-4">
         {byReleaseDay.length > 0 && <div className="mt-5 border-t pt-4">
           <h3 className="font-semibold">Lotes de liberação</h3>
           <p className="mb-3 text-sm text-muted-foreground">Do mais recente ao mais antigo. Abra um lote para ver as peças.</p>
@@ -1720,76 +1716,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             </details>;
           })}
         </div>}
-      </section>
-      <Panel>
-        <PanelBody>
-          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={currentStatus} type="contract" />
-                <span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
-                  {releaseProgress.percent}% liberado
-                </span>
-                <span className={technical?.risk_status === "atrasado" ? "rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-800 ring-1 ring-red-200" : "rounded-md bg-green-50 px-2 py-1 text-xs font-semibold text-green-800 ring-1 ring-green-200"}>
-                  Risco: {technical?.risk_status ?? "normal"}
-                </span>
-              </div>
-              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-                <div>
-                  <dt className="text-xs font-semibold uppercase text-muted-foreground">Prazo</dt>
-                  <dd className="mt-1 text-charcoal">
-                    {technical?.contractual_deadline_value ?? "-"} {technical?.contractual_deadline_unit === "dias_corridos" ? "dias corridos" : "dias úteis"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold uppercase text-muted-foreground">Técnico</dt>
-                  <dd className="mt-1 text-charcoal">{profileName(snapshot.profiles, technical?.technical_manager_profile_id)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold uppercase text-muted-foreground">Acompanhamento</dt>
-                  <dd className="mt-1 text-charcoal">{profileName(snapshot.profiles, technical?.followup_profile_id)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold uppercase text-muted-foreground">Próxima visita</dt>
-                  <dd className="mt-1 text-charcoal">{nextVisit ? formatDate(nextVisit.scheduled_date) : "Sem visita"}</dd>
-                </div>
-              </dl>
-            </div>
-            <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
-              <p className="font-semibold text-charcoal">Próxima ação</p>
-              <p className="mt-2 text-muted-foreground">{nextAction?.title ?? "Nenhuma ação aberta."}</p>
-              {nextAction?.description ? (
-                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground" title={nextAction.description}>{nextAction.description}</p>
-              ) : nextAction ? <p className="mt-1 text-xs text-muted-foreground">Sem descrição informada.</p> : null}
-              {nextAction ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Responsável: <span className="font-semibold text-charcoal">{profileName(snapshot.profiles, nextAction.responsible_profile_id)}</span>
-                </p>
-              ) : null}
-              {nextAction?.due_date ? (
-                <p className={isOverdue(nextAction.due_date) ? "mt-2 font-semibold text-danger" : "mt-2 text-muted-foreground"}>
-                  Vence em {formatDate(nextAction.due_date)}
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </PanelBody>
-        <div className="overflow-x-auto border-t border-border px-4">
-          <nav className="flex min-w-max gap-1">
-            {tabLinks.map(([href, label]) => (
-              <a key={href} href={href} className="border-b-2 border-transparent px-3 py-3 text-sm font-semibold text-muted-foreground hover:border-accent hover:text-charcoal">
-                {label}
-              </a>
-            ))}
-          </nav>
-        </div>
-      </Panel>
-
-      <section className="grid gap-4 sm:grid-cols-2">
-        <StatCard label="Ações abertas" value={activeActions.length + activeCorrections.length} icon={AlertTriangle} tone="danger" href="#acoes" />
-        <StatCard label="PRODs ativos" value={prodBatches.filter((item) => !["concluido", "cancelado"].includes(item.status)).length} icon={Factory} />
-      </section>
-
+        {!byReleaseDay.length && <p>Nenhum lote de liberação registrado.</p>}
+      </section></WorkArea>
       <FlowStep
         id="dados-obra"
         title="Dados da obra"
@@ -1807,7 +1735,8 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           />
           <div className="grid gap-4 border-t border-border pt-4 xl:grid-cols-[1fr_1.1fr]">
           <div className="rounded-md border border-border bg-white p-3 text-sm">
-            <h3 className="font-semibold text-charcoal">Dados atuais</h3>
+                  {readReceipt(technical?.commercial_data) && <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm"><strong>{readReceipt(technical?.commercial_data)?.status === "completed" ? "Recebimento comercial conferido" : "Conferência do recebimento pendente"}</strong><p className="mt-1">{readReceipt(technical?.commercial_data)?.draft.notes}</p><Link href={`/tecnico/contratos/${id}/recebimento`} className="mt-2 inline-block font-semibold underline">{readReceipt(technical?.commercial_data)?.status === "completed" ? "Consultar conferência e histórico" : "Continuar conferência"}</Link></div>}
+<h3 className="font-semibold text-charcoal">Dados atuais</h3>
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
                 <dt className="text-xs font-semibold uppercase text-muted-foreground">Contrato</dt>
@@ -2588,6 +2517,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           <DeleteTechnicalContractForm contractId={id} contractNumber={contract.contract_number} />
         </FlowStep>
       ) : null}
+      </WorkWorkspace>
     </div>
   );
 }
