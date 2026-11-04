@@ -288,5 +288,3 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     </div>
   );
 }
-
-

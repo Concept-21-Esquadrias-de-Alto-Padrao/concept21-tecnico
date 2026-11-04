@@ -1762,7 +1762,7 @@ export async function planReleaseAction(_: ActionState, formData: FormData) {
     });
     if (error) throw error;
     revalidateTechnical(cid);
-    return ok("Previsão registrada. O planejamento do Igor foi atualizado.");
+    return ok("Previsão de liberação registrada para as peças selecionadas.");
   } catch (err) { return fail(err); }
 }
 
