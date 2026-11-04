@@ -95,7 +95,7 @@ describe("meeting-first workflow pages", () => {
     expect(pending).toContain("Prevista");
     expect(pending).toContain("10/11/2099");
     expect(pending).toContain("14/11/2099");
-    expect(html).toContain("Ambiente</th>");
+    expect(html).toContain("Ordenar por Ambiente em ordem crescente");
     expect(released).toContain("P01");
     expect(released).toContain("Liberada");
     expect(released).not.toContain("Selecionar P01");

@@ -16,6 +16,17 @@ type Row = {
   date:string|null; delivery:string; revise:boolean; group:string|null; lotId:string; lot:string; prod:string;
 };
 const normalize = (s:string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+const columns = {code:"Peça", environment:"Ambiente", model:"Tipo / modelo", status:"Situação", date:"Liberação", delivery:"Previsão de entrega", lot:"Lote"} as const;
+type Column = keyof typeof columns;
+const keys = Object.keys(columns) as Column[];
+const collator = new Intl.Collator("pt-BR",{numeric:true,sensitivity:"base"});
+const statusRank = {missing:"1", planned:"2", released:"3"};
+function sortValue(row:Row,key:Column) {
+  if(key==="status") return statusRank[row.status];
+  if(key==="date") return row.date?.slice(0,10) || "";
+  if(key==="delivery") return /^(\d{2})\/(\d{2})\/(\d{4})$/.test(row.delivery) ? row.delivery.split("/").reverse().join("-") : "";
+  return row[key]==="A definir" ? "" : row[key];
+}
 export function WorkPieceTable({rows,contractId,today,editable}:{rows:Row[];contractId:string;today:string;editable:boolean}){
   const [filter,setFilter]=useState<State|"all">("all");
   const [search,setSearch]=useState("");
@@ -23,9 +34,14 @@ export function WorkPieceTable({rows,contractId,today,editable}:{rows:Row[];cont
   const [selected,setSelected]=useState<string[]>([]);
   const router=useRouter();
   const saved=useCallback(()=>{setSelected([]);router.refresh();},[router]);
-  const order = {missing:0,planned:1,released:2};
+  const [sort,setSort]=useState<{key:Column;desc:boolean}>({key:"status",desc:false});
+  function toggle(key:Column){setSort(old=>({key,desc:old.key===key && !old.desc}));}
   const visible=rows.filter(r=>(filter==="all"||r.status===filter)&&(!lot||r.lotId===lot)&&normalize([r.code,r.environment,r.model].join(" ")).includes(normalize(search.trim())))
-    .sort((a,b)=>order[a.status]-order[b.status]||a.code.localeCompare(b.code,"pt-BR",{numeric:true}));
+    .sort((a,b)=>{
+      const left=sortValue(a,sort.key), right=sortValue(b,sort.key);
+      if(Boolean(left)!==Boolean(right)) return left ? -1 : 1;
+      return (sort.desc?-1:1)*collator.compare(left,right)||collator.compare(a.code,b.code);
+    });
   const lots=new Map(rows.filter(r=>r.lotId).map(r=>[r.lotId,r.lot]));
   const chosen=rows.filter(r=>selected.includes(r.id)&&r.status!=="released");
   return <div className="space-y-3">
@@ -40,6 +56,8 @@ export function WorkPieceTable({rows,contractId,today,editable}:{rows:Row[];cont
       <label className="grid gap-1">Lote<select value={lot} onChange={e=>{setLot(e.target.value);setSelected([]);}} className="rounded-md border bg-white p-2"><option value="">Todos os lotes</option>
         {[...lots].sort((a,b)=>a[1].localeCompare(b[1],"pt-BR",{numeric:true})).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
     </div>
+    <div className="flex flex-wrap items-center gap-2 text-sm lg:hidden"><label>Ordenar por <select className="rounded border p-2" value={sort.key} onChange={e=>setSort({key:e.target.value as Column,desc:false})}>{keys.map(k=><option value={k} key={k}>{columns[k]}</option>)}</select></label>
+      <button type="button" className="rounded border px-3 py-2" onClick={()=>toggle(sort.key)}>{sort.desc?"↓ Decrescente":"↑ Crescente"}</button></div>
     {editable && <div className="rounded-md bg-muted/40 p-2 text-sm">
       {chosen.length ? <ActionForm action={planReleaseAction} onSuccess={saved} submitLabel="Guardar previsão">
         <input type="hidden" name="contract_id" value={contractId}/><input type="hidden" name="seen" value={JSON.stringify(Object.fromEntries(chosen.map(r=>[r.id,r.group])))}/>
@@ -48,7 +66,9 @@ export function WorkPieceTable({rows,contractId,today,editable}:{rows:Row[];cont
       </ActionForm> : "Selecione as peças pendentes para informar ou alterar a previsão."}
     </div>}
     <table className="block w-full text-left text-sm lg:table"><caption className="sr-only">Peças, situação e previsões de liberação e entrega</caption>
-      <thead className="hidden bg-muted lg:table-header-group"><tr>{["Peça","Ambiente","Tipo / modelo","Situação","Liberação","Previsão de entrega","Lote"].map(s=><th className="p-2" key={s}>{s}</th>)}</tr></thead>
+      <thead className="hidden bg-muted lg:table-header-group"><tr>{keys.map(k=><th scope="col" aria-sort={sort.key===k?(sort.desc?"descending":"ascending"):undefined} key={k}>
+        <button type="button" onClick={()=>toggle(k)} className="w-full rounded p-2 text-left hover:bg-orange-50" aria-label={"Ordenar por "+columns[k]+" em ordem "+(sort.key===k&&!sort.desc?"decrescente":"crescente")}>{columns[k]} <span aria-hidden="true">{sort.key===k?(sort.desc?"↓":"↑"):"↕"}</span></button>
+      </th>)}</tr></thead>
       <tbody className="block lg:table-row-group">{visible.map(r=><tr key={r.id} className="grid grid-cols-2 gap-1 border-b py-2 lg:table-row">
         <td className="p-2 font-semibold">{editable&&r.status!=="released"&&<input type="checkbox" className="mr-2" aria-label={"Selecionar "+r.code} checked={selected.includes(r.id)} onChange={e=>setSelected(e.target.checked?[...selected,r.id]:selected.filter(id=>id!==r.id))}/>}
           {r.code}{r.units>1&&" × "+r.units}</td>
