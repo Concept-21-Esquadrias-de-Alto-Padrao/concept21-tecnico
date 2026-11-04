@@ -489,6 +489,7 @@ export async function getTechnicalContractsData() {
 export async function getTechnicalContractDetailData(contractId: string) {
   return loadTechnicalSnapshot(
     includeKeys([
+      "dashboardHolidays",
       "clients",
       "profiles",
       "contracts",

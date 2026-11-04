@@ -170,7 +170,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     const revise = units(pending.filter(i=>i.replan));
     return <article key={contract.id} className="space-y-2 border-t border-border py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        {canOpen ? <Link href={base + next.target} className="font-semibold text-charcoal hover:underline">{title} ↗</Link> : <strong>{title}</strong>}
+        {canOpen ? <Link href={base} className="font-semibold text-charcoal hover:underline">{title} ↗</Link> : <strong>{title}</strong>}
         <StatusBadge status={technical?.technical_status ?? "aguardando_reuniao"} type="contract" />
       </div>
       {queue.key !== "parcial" && <div className="rounded-lg border-l-4 border-orange-400 bg-orange-50 px-3 py-2">

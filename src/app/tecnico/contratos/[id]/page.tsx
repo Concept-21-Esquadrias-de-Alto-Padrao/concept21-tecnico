@@ -69,7 +69,7 @@ import {
 } from "@/lib/module-access";
 import { getCurrentPermissionFlags, requireAuthenticatedProfile } from "@/lib/server-access";
 import { getTechnicalContractDetailData } from "@/lib/technical-data";
-import { isOverdue, isStageValidationSatisfied } from "@/lib/technical-rules";
+import { addDeadlineDays, isOverdue, isStageValidationSatisfied } from "@/lib/technical-rules";
 import { releasePlan } from "@/lib/release-planning";
 import { PieceForecastForm } from "@/components/piece-forecast-form";
 import type {
@@ -1495,6 +1495,13 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const doubts = snapshot.doubts.filter((doubt) => doubt.contract_id === id);
   const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const piecePlan = releasePlan(pieces, today);
+  const holidays = snapshot.dashboardHolidays?.filter(h => h.company_id === technical?.company_id).map(h => ({date:h.holiday_date}));
+  function deliveryForecast(baseDate?: string | null) {
+    if (!baseDate) return "A definir";
+    if (technical?.contractual_deadline_value == null || !technical.contractual_deadline_unit) return "Prazo contratual não informado";
+    if (technical.contractual_deadline_unit === "dias_uteis" && !holidays) return "Calendário indisponível";
+    return formatDate(addDeadlineDays({startDate:baseDate.slice(0,10), days:technical.contractual_deadline_value, unit:technical.contractual_deadline_unit, holidays}));
+  }
   const pending = piecePlan.filter(item => !item.released);
   const released = piecePlan.filter(item => item.released);
   const units = (items: typeof piecePlan) => items.reduce((sum, item) => sum + item.units, 0);
@@ -1690,8 +1697,11 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 <li key={piece.id} className="py-2 text-sm">
                   <strong>{piece.code} · {piece.environment || "Ambiente a definir"}</strong>
                   <span className="block text-muted-foreground">{piece.piece_type || piece.description || "Modelo a definir"} · {qty} un.</span>
-                  {group.open ? <span>{piece.forecast_date ? (replan ? "Revisar previsão de " : "Previsão de liberação: ")+formatDate(piece.forecast_date) : "Sem previsão"}</span>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                  {group.open ? <span>{piece.forecast_date ? (replan ? "Revisar previsão de " : "Previsão de liberação: ")+formatDate(piece.forecast_date) : "Previsão de liberação: A definir"}</span>
                     : <span>{piece.released_at ? "Liberada em "+formatDate(piece.released_at.slice(0,10)) : "Liberada"}{piece.active_prod_batch_id && " · "+(prodBatches.find(batch=>batch.id===piece.active_prod_batch_id)?.batch_number || "Em PROD")}</span>}
+                  <span>Previsão de entrega: <strong>{deliveryForecast(group.open ? piece.forecast_date : piece.released_at)}</strong>{group.open && replan && " · a revisar"}</span>
+                  </div>
                 </li>)}</ul>
               {!group.items.length && <p className="text-sm text-muted-foreground">{group.open ? "Nenhuma peça pendente." : "Nenhuma peça liberada."}</p>}
               {group.open && pending.length>0 && canManageVisits && !["concluido","cancelado"].includes(currentStatus) &&
