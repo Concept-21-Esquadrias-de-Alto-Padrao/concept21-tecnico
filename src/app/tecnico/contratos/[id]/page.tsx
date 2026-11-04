@@ -24,7 +24,6 @@ import {
   checkProdBatchFormAction,
   createDoubtAction,
   createPieceStructuralChangeAction,
-  createProdBatchAction,
   createVisitAction,
   decidePieceChangeRequestAction,
   deliverDepartmentDocumentAction,
@@ -1505,15 +1504,6 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const releaseCandidates = pieces.filter(
     (piece) => !["liberada", "em_prod", "entregue", "cancelada"].includes(piece.status),
   );
-  const piecesReadyForProd = pieces.filter(
-    (piece) =>
-      piece.status === "liberada" &&
-      !piece.project_only &&
-      piece.cem_registered &&
-      piece.cem_checked &&
-      !piece.active_prod_batch_id &&
-      signedReleasePieceIds.has(piece.id),
-  );
   const pendingReleaseSignatureCount = releases.filter(
     (release) => !isReleaseBatchSigned(release, releaseParticipantsByReleaseId.get(release.id) ?? []),
   ).length;
@@ -1549,7 +1539,6 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const canRegisterVisit = canManageVisits && entradaReadyForNext && reuniaoReadyForNext && acoesValidation.complete;
   const canOperatePieces = entradaReadyForNext && reuniaoReadyForNext && acoesValidation.complete && visitasReadyForNext;
   const canSplitPieces = (canMeasure || canRelease) && canOperatePieces;
-  const canCreateProdBatch = canManageProds && piecesReadyForProd.length > 0;
 
   return (
     <div className="space-y-6">
@@ -2033,18 +2022,18 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         locked={prodsValidation.complete || approvedOrDeliveredProds.length > 0}
       >
         <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-                    <ProdPieceDesk editable={canManageProds && canOperatePieces}
+                    <ProdPieceDesk contractId={id} editable={canManageProds}
             rows={piecePlan.map(({piece,released:isReleased})=>{
               const batch=currentBatchByPiece.get(piece.id);
               const prod=prodBatches.find(p=>p.id===piece.active_prod_batch_id);
               const item=prod?.cem_report?.rows.find(r=>r.code.trim().toUpperCase()===piece.code.trim().toUpperCase());
               const blocked=activeCorrections.some(c=>c.piece_id===piece.id&&c.blocking)||structuralActionsByPieceId.has(piece.id);
-              const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm?"Medida pendente":!piece.cem_registered||!piece.cem_checked?"Conferir CEM":"";
+              const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm?"Medida pendente":"";
               return {id:piece.id,code:piece.code,environment:piece.environment||"—",model:piece.piece_type||piece.description||"—",qty:piece.quantity??1,
                 lot:batch?batchLabel(batch):"",released:piece.released_at?.slice(0,10)||"",due:piece.released_at&&holidays?addDeadlineDays({startDate:piece.released_at.slice(0,10),days:5,unit:"dias_uteis",holidays})||"":"",
-                registered:piece.cem_registered,checked:piece.cem_checked,prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:item?item.width+" × "+item.height:""};
+                issued:item ? prod?.cem_report?.issued ?? "" : "",prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:item?item.width+" × "+item.height:""};
             })}/>
-          <a className="text-sm font-semibold underline xl:col-span-2" href="/tecnico/prods">Abrir central de PRODs e importar Itens da Obra</a>
+
           <div className="space-y-3">
             {prodBatches.map((prod) => {
               const batchPieceIds = snapshot.prodBatchPieces.filter((link) => link.prod_batch_id === prod.id).map((link) => link.piece_id);
@@ -2100,31 +2089,6 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               );
             })}
           </div>
-          {canManageProds && !canCreateProdBatch ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              {pendingReleaseSignatureCount
-                ? "Há lote(s) de liberação aguardando assinatura antes de montar PROD."
-                : "Nenhuma peça está pronta para PROD. A peça precisa estar em lote validado e com cadastro/conferência no CEM."}
-            </div>
-          ) : null}
-          {canCreateProdBatch ? (
-            <ActionForm action={createProdBatchAction} submitLabel="Montar PROD">
-              {hiddenContract(id)}
-              <Field label="Número do PROD">
-                <input name="batch_number" className={inputClass} required />
-              </Field>
-              <Field label="Descrição">
-                <textarea name="description" className={textareaClass} />
-              </Field>
-              <Field label="Peças liberadas e conferidas no CEM">
-                <select name="piece_ids" multiple className="min-h-48 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-charcoal outline-none focus:border-accent">
-                  {piecesReadyForProd.map((piece) => (
-                    <option key={piece.id} value={piece.id}>{piece.code} · {piece.environment ?? "Sem ambiente"}</option>
-                  ))}
-                </select>
-              </Field>
-            </ActionForm>
-          ) : null}
         </div>
       <StageValidationPanel
             contractId={id}

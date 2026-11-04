@@ -34,7 +34,7 @@ export async function POST(request:Request) {
         existing && (existing.deleted_at || existing.status==="cancelado")?"Código de PROD cancelado":
         p.active_prod_batch_id && existing?.id!==p.active_prod_batch_id?"Já vinculada a outra PROD":
         existing && p.active_prod_batch_id!==existing.id?"PROD existente contém peças diferentes":
-        !existing && (!p.released_at || p.status!=="liberada" || !p.cem_registered || !p.cem_checked)?"Liberação ou conferência CEM pendente":"";
+        !existing && (!p.released_at || p.status!=="liberada")?"Liberação de medidas pendente":"";
       return {...row,pieceId:p?.id,problem};
     });
     const digest=createHash("sha256").update(buffer).digest("hex");
