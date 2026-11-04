@@ -38,7 +38,7 @@ function formatVisitTime(value: string | null) {
 }
 
 export default async function TechnicalDashboardPage({ searchParams }: { searchParams?: Promise<{ fila?: string }> }) {
-  const access = await getCurrentPermissionFlags(appNavigationPermissionKeys);
+  const access = await getCurrentPermissionFlags([...appNavigationPermissionKeys, "technical.visits.manage"]);
   if (!canAccessModule(access, MODULE_ACCESS.dashboard)) {
     redirect(firstAllowedAppRoute(access) ?? "/login");
   }

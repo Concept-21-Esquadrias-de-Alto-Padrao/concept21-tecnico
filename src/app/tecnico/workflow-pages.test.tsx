@@ -134,6 +134,13 @@ describe("meeting-first workflow pages", () => {
     expect(partial).toContain("02/01/2099");
     expect(partial).toContain("Sem previsão: 1 peça(s)");
     expect(partial).not.toContain("Carga do Igor");
+    const granted = ["technical.visits.manage", "technical.dashboard.view", "technical.contracts.view"];
+    vi.mocked(getCurrentPermissionFlags).mockImplementation(async keys => ({
+      isMaster: false, permissions: Object.fromEntries(keys.map(key => [key, granted.includes(key)])),
+    }));
+    expect(await queue("parcial")).toContain("Informar ou alterar previsão");
+    granted.shift();
+    expect(await queue("parcial")).not.toContain("Informar ou alterar previsão");
   });
   it("uses the oldest eligible release and skips a holiday for the PROD deadline", async () => {
     snapshot.technicalContracts[0].company_id = "company";
