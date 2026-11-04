@@ -8,6 +8,7 @@ import {
 } from "@/app/actions";
 import { ActionForm } from "@/components/action-form";
 import { ProdCreationForm } from "@/components/prod-creation-form";
+import { CemImportForm } from "@/components/cem-import-form";
 import { PageHeader } from "@/components/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/panel";
 import { StatusBadge } from "@/components/status-badge";
@@ -51,6 +52,9 @@ export default async function TechnicalProdsPage() {
                         PROD {prod.batch_number} · {contract?.contract_number ?? "Contrato"} · {snapshot.clients.find((client) => client.id === contract?.client_id)?.name ?? "Cliente não vinculado"}
                       </Link>
                       <p className="mt-1 text-muted-foreground">{pieces.map((piece) => piece.code).join(", ") || "Sem peças"}</p>
+                      {prod.cem_report && <details className="mt-2"><summary className="cursor-pointer">Itens da Obra · emissão {prod.cem_report.issued}</summary>
+                        {prod.cem_report.rows.map(r=><p key={r.code}>{r.code} · {r.environment} · {r.quantity} un. · Fabricação {r.width} × {r.height} mm · {r.area} m² · {r.weight} kg</p>)}
+                      </details>}
                     </div>
                     <StatusBadge status={prod.status} type="prod" />
                   </div>
@@ -104,8 +108,11 @@ export default async function TechnicalProdsPage() {
         </Panel>
         {canManage ? (
           <Panel>
-            <PanelHeader title="Montar PROD" />
+            <PanelHeader title="Registrar PROD" />
             <PanelBody>
+              <h3 className="mb-3 font-semibold">Importar Itens da Obra</h3>
+              <CemImportForm contracts={snapshot.contracts.map(c=>({id:c.id,label:c.contract_number+" · "+(snapshot.clients.find(client=>client.id===c.client_id)?.name || c.work_name)}))}/>
+              <details className="mt-5 border-t pt-3"><summary className="mb-3 cursor-pointer font-semibold">Montar PROD manualmente</summary>
               <ProdCreationForm
                 contracts={snapshot.contracts.map((contract) => ({
                   id: contract.id,
@@ -117,6 +124,7 @@ export default async function TechnicalProdsPage() {
                   .filter((piece) => piece.status === "liberada" && piece.cem_registered && piece.cem_checked && !piece.active_prod_batch_id && !piece.deleted_at)
                   .map((piece) => ({ id: piece.id, contractId: piece.contract_id, code: piece.code, environment: piece.environment ?? "Sem ambiente", model: piece.piece_type ?? piece.description ?? "Modelo não informado" }))}
               />
+              </details>
             </PanelBody>
           </Panel>
         ) : null}

@@ -458,6 +458,7 @@ export type TechnicalCorrection = {
 };
 
 export type TechnicalProdBatch = {
+  cem_report?: {issued:string;rows:import("./cem-items").CemItem[]}|null;
   id: string;
   company_id: string;
   contract_id: string;

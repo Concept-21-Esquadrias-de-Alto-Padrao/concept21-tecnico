@@ -26,6 +26,6 @@ declare module "pdf-parse/lib/pdf-parse.js" {
     version: string;
   };
 
-  function pdfParse(dataBuffer: Buffer): Promise<PdfParseResult>;
+  function pdfParse(dataBuffer: Buffer, options?: {pagerender(page: {getTextContent(): Promise<{items: {str:string; transform:number[]}[]}>}): Promise<string>}): Promise<PdfParseResult>;
   export = pdfParse;
 }
