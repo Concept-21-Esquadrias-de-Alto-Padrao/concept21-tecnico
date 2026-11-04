@@ -1,3 +1,5 @@
+import { WorkVisits } from "@/components/work-visits";
+import { ProdPieceDesk } from "@/components/prod-piece-desk";
 import { MeasurementDesk } from "@/components/measurement-desk";
 import { WorkWorkspace, WorkArea } from "@/components/work-workspace";
 import { readReceipt } from "@/lib/commercial-receipt";
@@ -43,7 +45,6 @@ import {
   updateReleaseBatchAction,
   updateContractWorkDataAction,
   updateContractResponsiblesAction,
-  updatePieceCemAction,
   updatePieceMeasurementAction,
   updatePieceRegistrationAction,
   approveProdBatchFormAction,
@@ -201,13 +202,15 @@ function StageValidationPanel({
     !isReleaseBatchConfig && validation.required && stageComplete && validation.currentParticipant && !currentSigned,
   );
 
+  if (!validation.required && !canManage) return null;
   return (
-    <div id={`assinatura-${stage}`} className={cn("scroll-mt-40 rounded-md border border-border bg-white p-3", className)}>
+    <details id={`assinatura-${stage}`} className={cn("scroll-mt-40 rounded-md border border-border bg-white p-3", className)}>
+      <summary className="cursor-pointer text-sm font-medium">{isReleaseBatchConfig ? "Configurar assinaturas dos novos lotes" : validation.required ? "Assinaturas · "+title+" · "+signedCount+"/"+validation.participants.length : "Configurar assinaturas · "+title}</summary>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-charcoal">
             <ShieldCheck className="size-4 text-accent" />
-            {isReleaseBatchConfig ? "Assinaturas dos novos lotes" : "Validação da etapa"}
+            {isReleaseBatchConfig ? "Assinaturas dos novos lotes" : "Assinaturas"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {isReleaseBatchConfig
@@ -238,12 +241,12 @@ function StageValidationPanel({
       </div>
 
       {canManage ? (
-        <ActionForm action={saveStageValidationAction} submitLabel="Salvar validação" className="mt-3 rounded-md bg-muted/30 p-3">
+        <ActionForm action={saveStageValidationAction} submitLabel="Guardar regra de assinatura" className="mt-3 rounded-md bg-muted/30 p-3">
           <input type="hidden" name="contract_id" value={contractId} />
           <input type="hidden" name="stage" value={stage} />
           <label className="flex items-center gap-2 text-sm font-semibold text-charcoal">
             <input name="validation_required" type="checkbox" defaultChecked={validation.required} />
-            {isReleaseBatchConfig ? "Exigir assinatura para novos lotes" : "Necessária validação"}
+            {isReleaseBatchConfig ? "Exigir assinatura para novos lotes" : "Exigir assinatura nesta etapa"}
           </label>
           <Field label={isReleaseBatchConfig ? "Quem deve assinar" : "Participantes da etapa"}>
             <div className="grid gap-2 md:grid-cols-2">
@@ -275,7 +278,8 @@ function StageValidationPanel({
           {validation.participants.map((participant) => {
             const profile = profiles.find((item) => item.id === participant.profile_id);
             const name = profile?.name ?? "Usuário removido";
-            return (
+            if (!validation.required && !canManage) return null;
+  return (
               <div
                 key={participant.id}
                 className={cn(
@@ -315,7 +319,7 @@ function StageValidationPanel({
           <input type="hidden" name="stage" value={stage} />
         </ActionForm>
       ) : null}
-    </div>
+    </details>
   );
 }
 
@@ -825,7 +829,6 @@ function StructuralChangeActionForm({ piece, profiles }: { piece: TechnicalPiece
 function PieceActionForms({
   piece,
   canMeasure,
-  canManageProds,
   pieceChangeRequests,
   canRequestPieceChanges,
   canAuthorizePieceChanges,
@@ -835,7 +838,6 @@ function PieceActionForms({
 }: {
   piece: TechnicalPiece;
   canMeasure: boolean;
-  canManageProds: boolean;
   pieceChangeRequests: TechnicalPieceChangeRequest[];
   canRequestPieceChanges: boolean;
   canAuthorizePieceChanges: boolean;
@@ -843,7 +845,7 @@ function PieceActionForms({
   structuralActions: TechnicalAction[];
   className?: string;
 }) {
-  if (!canMeasure && !canManageProds && !canRequestPieceChanges && !canAuthorizePieceChanges) return null;
+  if (!canMeasure && !canRequestPieceChanges && !canAuthorizePieceChanges) return null;
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -862,20 +864,6 @@ function PieceActionForms({
           </Field>
           <ProjectMeasurementFields projectOnly={piece.project_only} width={piece.measured_width_mm} height={piece.measured_height_mm} />
           <textarea name="notes" className={textareaClass} placeholder="Observação da medição (opcional)" defaultValue={piece.notes ?? ""} />
-        </ActionForm>
-      ) : null}
-      {canManageProds ? (
-        <ActionForm action={updatePieceCemAction} submitLabel="Atualizar CEM" className="rounded-md bg-muted/40 p-3">
-          <h4 className="font-semibold">Conferência no CEM</h4>
-          <input type="hidden" name="id" value={piece.id} />
-          <label className="flex items-center gap-2 text-xs font-semibold text-charcoal">
-            <input name="cem_registered" type="checkbox" defaultChecked={piece.cem_registered} />
-            Cadastrada
-          </label>
-          <label className="flex items-center gap-2 text-xs font-semibold text-charcoal">
-            <input name="cem_checked" type="checkbox" defaultChecked={piece.cem_checked} />
-            Conferida
-          </label>
         </ActionForm>
       ) : null}
       {canMeasure ? (
@@ -1724,16 +1712,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           locked={hasCompletedMeeting}
         >
           <div className="space-y-4">
-            <StageValidationPanel
-              contractId={id}
-              stage="reuniao_ata"
-              title="Reunião e ata"
-              profiles={snapshot.profiles}
-              validation={reuniaoValidation}
-              canManage={canReopenStages}
-              stageComplete={hasCompletedMeeting}
-              completeMessage="Registre a reunião e ata para liberar a assinatura dos participantes."
-            />
+
             {snapshot.meetings.map((meeting) => (
               <article key={meeting.id} className="rounded-md border border-border bg-white p-3 text-sm">
                 <p className="font-semibold text-charcoal">{formatDate(meeting.meeting_date)} · {meeting.participants.join(", ")}</p>
@@ -1746,7 +1725,17 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               <ReopenStageForm contractId={id} stage="reuniao_ata" submitLabel="Reabrir reunião e ata" />
             ) : null}
           </div>
-        </FlowStep>
+        <StageValidationPanel
+              contractId={id}
+              stage="reuniao_ata"
+              title="Reunião e ata"
+              profiles={snapshot.profiles}
+              validation={reuniaoValidation}
+              canManage={canReopenStages}
+              stageComplete={hasCompletedMeeting}
+              completeMessage="Registre a reunião e ata para liberar a assinatura dos participantes."
+            />
+      </FlowStep>
 
         <FlowStep
           id="entrada"
@@ -1760,18 +1749,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           locked={hasCommercialFolder}
         >
           <div className="space-y-4">
-            <StageValidationPanel
-              contractId={id}
-              stage="entrada_comercial"
-              title="Entrega da pasta"
-              profiles={snapshot.profiles}
-              validation={entradaValidation}
-              canManage={canReopenStages}
-              stageComplete={hasCommercialFolder && reuniaoReadyForNext}
-              completeMessage={reuniaoReadyForNext
-                ? "Registre a entrega da pasta para liberar a assinatura dos participantes."
-                : "Conclua a reunião e as assinaturas dos participantes antes da entrega da pasta."}
-            />
+
             {folderBlocked && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Há atividades bloqueando a entrega da pasta. Consulte os encaminhamentos da reunião.</p>}
             <div className="rounded-md border border-border bg-white p-3 text-sm">
               <p className="font-semibold text-charcoal">
@@ -1804,7 +1782,19 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               <ReopenStageForm contractId={id} stage="entrada_comercial" submitLabel="Reabrir entrega da pasta" />
             ) : null}
           </div>
-        </FlowStep>
+        <StageValidationPanel
+              contractId={id}
+              stage="entrada_comercial"
+              title="Entrega da pasta"
+              profiles={snapshot.profiles}
+              validation={entradaValidation}
+              canManage={canReopenStages}
+              stageComplete={hasCommercialFolder && reuniaoReadyForNext}
+              completeMessage={reuniaoReadyForNext
+                ? "Registre a entrega da pasta para liberar a assinatura dos participantes."
+                : "Conclua a reunião e as assinaturas dos participantes antes da entrega da pasta."}
+            />
+      </FlowStep>
       </div>
 
       <FlowStep
@@ -1818,12 +1808,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         <div className="space-y-6">
           <TechnicalActionsPanel snapshot={snapshot} access={access} contractId={id} />
           {workItemPermissions.canViewActions ? (
-            <details className="group border-t border-border pt-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold [&::-webkit-details-marker]:hidden">
-                Validação das ações gerais
-                <ChevronDown className="size-4 group-open:rotate-180" />
-              </summary>
-              <StageValidationPanel
+            <StageValidationPanel
                 contractId={id}
                 stage="acoes"
                 title="Ações gerais"
@@ -1834,16 +1819,10 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 completeMessage="Valide e conclua as ações gerais abertas para liberar a assinatura dos participantes."
                 className="mt-4"
               />
-            </details>
           ) : null}
           <span id="correcoes" className="block scroll-mt-4" />
           {workItemPermissions.canViewCorrections ? (
-            <details className="group border-t border-border pt-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold [&::-webkit-details-marker]:hidden">
-                Validação das correções técnicas
-                <ChevronDown className="size-4 group-open:rotate-180" />
-              </summary>
-              <StageValidationPanel
+            <StageValidationPanel
                 contractId={id}
                 stage="correcoes"
                 title="Correções técnicas"
@@ -1854,14 +1833,13 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 completeMessage="Encerre ou cancele as correções técnicas abertas para liberar a assinatura dos participantes."
                 className="mt-4"
               />
-            </details>
           ) : null}
         </div>
       </FlowStep>
 
       <FlowStep
         id="visitas"
-        title="Visitas"
+        title="Visitas e relatórios"
         description="Agenda, realização, relatório e vínculo com peças."
         status={stageStatusWithValidation(
           performedVisits.length
@@ -1875,34 +1853,16 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         locked={visitasValidation.complete || performedVisits.length > 0}
       >
         <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-          <StageValidationPanel
-            contractId={id}
-            stage="visitas"
-            title="Visitas"
-            profiles={snapshot.profiles}
-            validation={visitasValidation}
-            canManage={canReopenStages}
-            stageComplete={performedVisits.length > 0}
-            completeMessage="Registre a realização de pelo menos uma visita para liberar a assinatura dos participantes."
-            className="xl:col-span-2"
-          />
-          <div className="space-y-3">
-            {visits.map((visit) => {
+
+          <WorkVisits visits={visits.map((visit) => {
               const linkedPieces = snapshot.visitPieces
                 .filter((link) => link.visit_id === visit.id)
                 .map((link) => pieces.find((piece) => piece.id === link.piece_id))
                 .filter((piece): piece is TechnicalPiece => Boolean(piece));
-              return (
+              return {id:visit.id,day:visit.scheduled_date,time:visit.scheduled_time??"",kind:visit.visit_type,team:visit.technicians.join(", "),status:visit.status,content:(
                 <article key={visit.id} className="rounded-md border border-border bg-white p-3 text-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-charcoal">{formatDate(visit.scheduled_date)} · {visit.visit_type}</p>
-                      <p className="mt-1 text-muted-foreground">{visit.technicians.join(", ") || "Sem técnico"}</p>
-                    </div>
-                    <StatusBadge status={visit.status} type="visit" />
-                  </div>
                   <p className="mt-2 text-muted-foreground">{visit.result_summary ?? visit.objectives.join(", ")}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">Peças: {linkedPieces.map((piece) => piece.code).join(", ") || "Não vinculadas"}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">Peças: {linkedPieces.map((piece) => [piece.code,piece.environment,piece.piece_type].filter(Boolean).join(" · ")).join(", ") || "Não vinculadas"}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {visit.report_snapshot ? <VisitReportPdfButton visit={visit} pieces={linkedPieces} /> : null}
                     {canGenerateReports && visit.status === "aguardando_relatorio" ? (
@@ -1930,33 +1890,16 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                     </ActionForm>
                   ) : null}
                   {canCancelVisits && visit.status === "agendada" ? (
-                    <ActionForm action={cancelVisitAction} submitLabel="Cancelar visita" className="mt-3 rounded-md bg-red-50 p-3">
+                    <details className="mt-3"><summary className="cursor-pointer text-sm">Cancelar visita</summary><ActionForm action={cancelVisitAction} submitLabel="Cancelar visita" className="mt-3 rounded-md bg-red-50 p-3">
                       <input type="hidden" name="id" value={visit.id} />
                       <Field label="Motivo do cancelamento">
                         <input name="cancel_reason" className={inputClass} required />
                       </Field>
-                    </ActionForm>
+                    </ActionForm></details>
                   ) : null}
                 </article>
-              );
-            })}
-            {!hasCompletedMeeting ? (
-              <div className="rounded-md border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
-                Conclua a reunião e ata para liberar o agendamento de visitas.
-              </div>
-            ) : null}
-            {hasCompletedMeeting && (!reuniaoValidation.complete || !acoesValidation.complete) ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                A reunião/ações aguardam ciência de todos os participantes antes das visitas.
-              </div>
-            ) : null}
-            {reuniaoReadyForNext && !entradaReadyForNext ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                Registre a pasta comercial e conclua suas assinaturas antes de agendar visitas.
-              </div>
-            ) : null}
-          </div>
-          {canRegisterVisit ? (
+              )};
+            })} schedule={canRegisterVisit ? (
             <ActionForm action={createVisitAction} submitLabel="Agendar visita">
               {hiddenContract(id)}
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1976,16 +1919,44 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               <Field label="Objetivos">
                 <textarea name="objectives" className={textareaClass} placeholder="Um por linha ou separados por ;" required />
               </Field>
-              <Field label="Peças vinculadas">
+              <Field label="Peças previstas para medição (opcional)">
                 <select name="piece_ids" multiple className="min-h-32 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-charcoal outline-none focus:border-accent">
-                  {pieces.map((piece) => (
+                  {releaseCandidates.map((piece) => (
                     <option key={piece.id} value={piece.id}>{piece.code} · {piece.environment ?? "Sem ambiente"}</option>
                   ))}
                 </select>
               </Field>
             </ActionForm>
-          ) : null}
+          ) : null}/>
+          <div className="xl:col-span-2">            {!hasCompletedMeeting ? (
+              <div className="rounded-md border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+                Conclua a reunião e ata para liberar o agendamento de visitas.
+              </div>
+            ) : null}
+            {hasCompletedMeeting && (!reuniaoValidation.complete || !acoesValidation.complete) ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                A reunião/ações aguardam ciência de todos os participantes antes das visitas.
+              </div>
+            ) : null}
+            {reuniaoReadyForNext && !entradaReadyForNext ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Registre a pasta comercial e conclua suas assinaturas antes de agendar visitas.
+              </div>
+            ) : null}
+          </div>
+
         </div>
+      <StageValidationPanel
+            contractId={id}
+            stage="visitas"
+            title="Visitas e relatórios"
+            profiles={snapshot.profiles}
+            validation={visitasValidation}
+            canManage={canReopenStages}
+            stageComplete={performedVisits.length > 0}
+            completeMessage="Registre a realização de pelo menos uma visita para liberar a assinatura dos participantes."
+            className="xl:col-span-2"
+          />
       </FlowStep>
 
       <FlowStep
@@ -2005,11 +1976,10 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             const batch=currentBatchByPiece.get(piece.id);
             const blocked=piece.project_only || !!structuralActionsByPieceId.get(piece.id)?.length || activeCorrections.some(c=>c.piece_id===piece.id && c.blocking);
             return {id:piece.id,code:piece.code,environment:piece.environment ?? "",model:piece.piece_type || piece.description || "A definir",
-              width:piece.measured_width_mm,height:piece.measured_height_mm,released:isReleased,blocked,registered:piece.cem_registered,checked:piece.cem_checked,lot:batch?batchLabel(batch):"",
-              editor:<div><p className="mb-2 text-sm">Venda: {piece.sale_width_mm ?? "—"} × {piece.sale_height_mm ?? "—"} mm · {piece.project_only ? "Aguardando definição das medidas de projeto" : "Medidas de campo e conferência CEM"}</p>                  <PieceActionForms
+              width:piece.measured_width_mm,height:piece.measured_height_mm,released:isReleased,blocked,lot:batch?batchLabel(batch):"",
+              editor:<div><p className="mb-2 text-sm">Venda: {piece.sale_width_mm ?? "—"} × {piece.sale_height_mm ?? "—"} mm · {piece.project_only ? "Aguardando definição das medidas de projeto" : "Medidas de campo"}</p>                  <PieceActionForms
                     piece={piece}
                     canMeasure={canMeasure && canOperatePieces}
-                    canManageProds={canManageProds && canOperatePieces}
                     pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
                     canRequestPieceChanges={canRequestPieceChanges}
                     canAuthorizePieceChanges={canAuthorizePieceChanges}
@@ -2018,7 +1988,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                   />
               </div>};})}/>
           {canSplitPieces && <details className="rounded-md border p-3"><summary className="cursor-pointer text-sm">Desdobrar peça</summary><SplitPieceForm pieces={releaseCandidates}/></details>}
-          {canReopenStages && <details className="rounded-md border p-3"><summary className="cursor-pointer text-sm">Configurar assinaturas dos novos lotes</summary>
+          {canReopenStages && <>
           <StageValidationPanel
             contractId={id}
             stage="pecas_medicoes_liberacoes"
@@ -2030,7 +2000,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             completeMessage=""
             signatureMode="release_batch_config"
           />
-          </details>}
+          </>}
         </div>
       </FlowStep>
       <WorkArea id="lotes"><section id="lotes" className="space-y-3 rounded-xl border bg-white p-4"><div className="flex flex-wrap items-center justify-between"><h2 className="text-lg font-semibold">Lotes de liberação</h2><a href="#pecas" className="text-sm font-semibold underline">Voltar às peças e medidas</a></div>
@@ -2063,17 +2033,18 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         locked={prodsValidation.complete || approvedOrDeliveredProds.length > 0}
       >
         <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-          <StageValidationPanel
-            contractId={id}
-            stage="prods"
-            title="PRODs"
-            profiles={snapshot.profiles}
-            validation={prodsValidation}
-            canManage={canReopenStages}
-            stageComplete={approvedOrDeliveredProds.length > 0}
-            completeMessage="Aprove ou entregue pelo menos um PROD para liberar a assinatura dos participantes."
-            className="xl:col-span-2"
-          />
+                    <ProdPieceDesk editable={canManageProds && canOperatePieces}
+            rows={piecePlan.map(({piece,released:isReleased})=>{
+              const batch=currentBatchByPiece.get(piece.id);
+              const prod=prodBatches.find(p=>p.id===piece.active_prod_batch_id);
+              const item=prod?.cem_report?.rows.find(r=>r.code.trim().toUpperCase()===piece.code.trim().toUpperCase());
+              const blocked=activeCorrections.some(c=>c.piece_id===piece.id&&c.blocking)||structuralActionsByPieceId.has(piece.id);
+              const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm?"Medida pendente":!piece.cem_registered||!piece.cem_checked?"Conferir CEM":"";
+              return {id:piece.id,code:piece.code,environment:piece.environment||"—",model:piece.piece_type||piece.description||"—",qty:piece.quantity??1,
+                lot:batch?batchLabel(batch):"",released:piece.released_at?.slice(0,10)||"",due:piece.released_at&&holidays?addDeadlineDays({startDate:piece.released_at.slice(0,10),days:5,unit:"dias_uteis",holidays})||"":"",
+                registered:piece.cem_registered,checked:piece.cem_checked,prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:item?item.width+" × "+item.height:""};
+            })}/>
+          <a className="text-sm font-semibold underline xl:col-span-2" href="/tecnico/prods">Abrir central de PRODs e importar Itens da Obra</a>
           <div className="space-y-3">
             {prodBatches.map((prod) => {
               const batchPieceIds = snapshot.prodBatchPieces.filter((link) => link.prod_batch_id === prod.id).map((link) => link.piece_id);
@@ -2155,6 +2126,17 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             </ActionForm>
           ) : null}
         </div>
+      <StageValidationPanel
+            contractId={id}
+            stage="prods"
+            title="PRODs"
+            profiles={snapshot.profiles}
+            validation={prodsValidation}
+            canManage={canReopenStages}
+            stageComplete={approvedOrDeliveredProds.length > 0}
+            completeMessage="Aprove ou entregue pelo menos um PROD para liberar a assinatura dos participantes."
+            className="xl:col-span-2"
+          />
       </FlowStep>
 
       <FlowStep
@@ -2169,17 +2151,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         locked={openDoubts.length === 0}
       >
         <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-          <StageValidationPanel
-            contractId={id}
-            stage="duvidas"
-            title="Dúvidas"
-            profiles={snapshot.profiles}
-            validation={duvidasValidation}
-            canManage={canReopenStages}
-            stageComplete={openDoubts.length === 0}
-            completeMessage="Responda ou encerre as dúvidas abertas para liberar a assinatura dos participantes."
-            className="xl:col-span-2"
-          />
+
           <div className="grid gap-3">
             {(["producao", "obras_instalacoes"] as const).map((area) => (
               <div key={area} className="rounded-md border border-border bg-white p-3">
@@ -2213,6 +2185,17 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             </ActionForm>
           ) : null}
         </div>
+      <StageValidationPanel
+            contractId={id}
+            stage="duvidas"
+            title="Dúvidas"
+            profiles={snapshot.profiles}
+            validation={duvidasValidation}
+            canManage={canReopenStages}
+            stageComplete={openDoubts.length === 0}
+            completeMessage="Responda ou encerre as dúvidas abertas para liberar a assinatura dos participantes."
+            className="xl:col-span-2"
+          />
       </FlowStep>
 
       <FlowStep
