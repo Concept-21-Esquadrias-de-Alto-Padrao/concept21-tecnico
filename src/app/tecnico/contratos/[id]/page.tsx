@@ -1997,7 +1997,11 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2 text-sm"><a href="#pecas" className="rounded-md bg-charcoal px-3 py-2 font-semibold text-white">Peças e medidas</a><a href="#lotes" className="rounded-md border px-3 py-2 font-semibold">Consultar lotes ({releases.length})</a></div>
           {!canOperatePieces && <p className="rounded-md bg-amber-50 p-3 text-sm">{!reuniaoReadyForNext ? "Conclua a reunião e as assinaturas exigidas para iniciar a operação de peças." : !entradaReadyForNext ? "Aguardando entrega e conferência da pasta." : !acoesValidation.complete ? "Aguardando resolução da etapa de ações." : "A etapa de visitas aguarda as assinaturas exigidas."}</p>}
-          <MeasurementDesk contractId={id} canRelease={canRelease && canOperatePieces} needsSignatures={pecasValidation.required} items={piecePlan.map(({piece,released:isReleased})=>{
+          <MeasurementDesk contractId={id} today={today} visits={performedVisits.flatMap(v=>{
+            if(!v.performed_at) return [];
+            const day=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo"}).format(new Date(v.performed_at));
+            return [{id:v.id,day,label:formatDate(day)+" · "+v.visit_type}];
+          }).sort((a,b)=>b.day.localeCompare(a.day))} canRelease={canRelease && canOperatePieces} needsSignatures={pecasValidation.required} items={piecePlan.map(({piece,released:isReleased})=>{
             const batch=currentBatchByPiece.get(piece.id);
             const blocked=piece.project_only || !!structuralActionsByPieceId.get(piece.id)?.length || activeCorrections.some(c=>c.piece_id===piece.id && c.blocking);
             return {id:piece.id,code:piece.code,environment:piece.environment ?? "",model:piece.piece_type || piece.description || "A definir",

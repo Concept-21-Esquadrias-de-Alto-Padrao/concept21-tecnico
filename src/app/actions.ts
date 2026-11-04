@@ -2471,6 +2471,15 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
     const context = await getActionContext("technical.pieces.release");
     const parsed = releaseBatchSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return invalidForm(parsed.error);
+    const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo"}).format(new Date());
+    const releaseDate = parsed.data.release_date ?? today;
+    if (releaseDate > today) throw new Error("A data efetiva da liberação não pode ser futura.");
+    if (parsed.data.visit_id) {
+      const {data:visit,error} = await context.admin.from("technical_visits").select("performed_at,status")
+        .eq("company_id",context.companyId).eq("contract_id",parsed.data.contract_id).eq("id",parsed.data.visit_id).maybeSingle();
+      if (error) throw error;
+      if (!visit?.performed_at || !["realizada","aguardando_relatorio","relatorio_emitido"].includes(visit.status)) throw new Error("Selecione uma visita realizada desta obra.");
+    }
 
     const pieceIds = Array.from(new Set(idsFromForm(formData, "piece_ids")));
     if (!pieceIds.length) throw new Error("Selecione ao menos uma peça para o lote de liberação.");
@@ -2576,7 +2585,6 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
     }
 
     const now = new Date().toISOString();
-    const releaseDate = now.slice(0, 10);
     const dueDate =
       parsed.data.default_due_date ??
       addDeadlineDays({
@@ -2601,6 +2609,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
         contract_id: parsed.data.contract_id,
         batch_number: batchNumber,
         release_date: releaseDate,
+        visit_id: parsed.data.visit_id || null,
         default_due_date: dueDate,
         validation_required: validationRequired,
         status: validationRequired ? "aguardando_assinatura" : "validado",
@@ -2668,7 +2677,8 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
           measured_height_mm: measured?.height ?? null,
           project_only: measured?.projectOnly ?? false,
           status: "liberada",
-          released_at: now,
+          released_at: releaseDate === now.slice(0,10) ? now : releaseDate+"T12:00:00-03:00",
+          release_visit_id: parsed.data.visit_id || null,
           release_due_date: dueDate,
           exceptional_due_date: parsed.data.default_due_date,
         })

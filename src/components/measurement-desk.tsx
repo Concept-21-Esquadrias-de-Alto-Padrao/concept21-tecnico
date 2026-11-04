@@ -6,7 +6,9 @@ import {createReleaseBatchAction} from "@/app/actions";
 
 type Item={id:string;code:string;environment:string;model:string;width:number|null;height:number|null;released:boolean;blocked:boolean;registered:boolean;checked:boolean;lot:string;editor:ReactNode};
 const clean=(s:string)=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-export function MeasurementDesk({contractId,items,canRelease,needsSignatures}:{contractId:string;items:Item[];canRelease:boolean;needsSignatures:boolean}){
+export function MeasurementDesk({contractId,items,canRelease,needsSignatures,visits,today}:{contractId:string;items:Item[];canRelease:boolean;needsSignatures:boolean;visits:{id:string;day:string;label:string}[];today:string}){
+  const [visitId,setVisitId]=useState(visits.length===1?visits[0].id:"");
+  const [effective,setEffective]=useState(visits.length===1?visits[0].day:"");
   const [query,setQuery]=useState(""),[filter,setFilter]=useState("all"),[edit,setEdit]=useState("");
   const [selection,setSelection]=useState<string[]>([]),[prepare,setPrepare]=useState(false);
   const router=useRouter();
@@ -20,6 +22,9 @@ export function MeasurementDesk({contractId,items,canRelease,needsSignatures}:{c
     <p className="mb-4 text-sm">{selected.length} item(ns) selecionado(s) · Medidas de campo em milímetros. {needsSignatures?"Este lote exigirá assinatura.":"Este lote dispensa assinatura."}</p>
     <ActionForm action={createReleaseBatchAction} onSuccess={saved} submitLabel="Confirmar liberação do lote" confirmMessage="Confirma as medidas de campo e a liberação das peças selecionadas?">
       <input type="hidden" name="contract_id" value={contractId}/>
+      <div className="grid gap-3 md:grid-cols-2"><Field label="Visita de origem"><select className={inputClass} name="visit_id" value={visitId} onChange={e=>{setVisitId(e.target.value);setEffective(visits.find(v=>v.id===e.target.value)?.day??"");}}>
+        <option value="">Sem visita vinculada · informar a data</option>{visits.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}</select></Field>
+        <Field label="Data efetiva da liberação"><input type="date" required max={today} name="release_date" className={inputClass} value={effective} onChange={e=>setEffective(e.target.value)}/></Field></div>
       {selected.map(i=><fieldset key={i.id} className="rounded-lg border p-3"><legend className="px-1 text-sm font-semibold">{i.code} · {i.environment} · {i.model}</legend>
         <input type="hidden" name="piece_ids" value={i.id}/>
         <div className="grid gap-3 md:grid-cols-3"><Field label="Ambiente"><input className={inputClass} name={"environment_"+i.id} defaultValue={i.environment}/></Field>

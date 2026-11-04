@@ -633,6 +633,7 @@ describe("piece measurement and structural changes", () => {
     const { tables } = prepareMeasuredPiece();
     const formData = new FormData();
     formData.set("contract_id", contractId);
+    formData.set("release_date","2025-10-15");
     formData.set("piece_ids", pieceId);
     formData.set(`project_only_${pieceId}`, "on");
     formData.set(`environment_${pieceId}`, "Sala");
@@ -640,6 +641,8 @@ describe("piece measurement and structural changes", () => {
     const result = await createReleaseBatchAction(initialState, formData);
 
     expect(result.ok, result.message).toBe(true);
+    expect(tables.technical_releases[0].release_date).toBe("2025-10-15");
+    expect(String(tables.technical_contract_pieces[0].released_at).slice(0,10)).toBe("2025-10-15");
     expect(tables.technical_contract_pieces[0]).toMatchObject({
       project_only: true,
       measured_width_mm: null,

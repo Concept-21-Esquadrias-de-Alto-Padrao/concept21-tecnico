@@ -252,6 +252,8 @@ export const releasePieceSchema = z.object({
 
 export const releaseBatchSchema = z.object({
   contract_id: z.string().uuid(),
+  visit_id: z.string().uuid().optional().or(z.literal("")),
+  release_date: z.string().date("Informe uma data efetiva válida.").optional(),
   batch_number: optionalText,
   default_due_date: optionalDate,
   notes: optionalText,
