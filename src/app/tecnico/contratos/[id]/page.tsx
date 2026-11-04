@@ -71,7 +71,7 @@ import { getCurrentPermissionFlags, requireAuthenticatedProfile } from "@/lib/se
 import { getTechnicalContractDetailData } from "@/lib/technical-data";
 import { addDeadlineDays, isOverdue, isStageValidationSatisfied } from "@/lib/technical-rules";
 import { releasePlan } from "@/lib/release-planning";
-import { PieceForecastForm } from "@/components/piece-forecast-form";
+import { WorkPieceTable } from "@/components/work-piece-table";
 import type {
   Client,
   Profile,
@@ -1699,31 +1699,15 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           <h2 id="resumo-pecas" className="text-lg font-semibold">Peças da obra</h2>
           <span className="text-sm text-muted-foreground">{total} contratadas · {releaseProgress.percent}% liberado</span>
         </div>
-        <div className="grid items-start gap-4 md:grid-cols-2">
-          {[{title:"A liberar", items:pending, count:releaseProgress.balance, open:true},
-            {title:"Já liberadas", items:released, count:releaseProgress.released, open:false}].map(group=>
-            <div key={group.title} className="rounded-lg border border-border p-3">
-              <h3 className="mb-2 flex items-center justify-between font-semibold">{group.title}
-                <span className={group.open ? "rounded bg-orange-50 px-2 text-orange-900" : "rounded bg-green-50 px-2 text-green-800"}>{group.count}</span>
-              </h3>
-              <ul className="max-h-64 divide-y overflow-y-auto">{group.items.map(({piece,units:qty,replan})=>
-                <li key={piece.id} className="py-2 text-sm">
-                  <strong>{piece.code} · {piece.environment || "Ambiente a definir"}</strong>
-                  <span className="block text-muted-foreground">{piece.piece_type || piece.description || "Modelo a definir"} · {qty} un.</span>
-                  {!group.open && <span className="text-xs font-semibold">{currentBatchByPiece.has(piece.id) ? batchLabel(currentBatchByPiece.get(piece.id)!) : "Sem lote vinculado"}</span>}
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                  {group.open ? <span>{piece.forecast_date ? (replan ? "Revisar previsão de " : "Previsão de liberação: ")+formatDate(piece.forecast_date) : "Previsão de liberação: A definir"}</span>
-                    : <span>{piece.released_at ? "Liberada em "+formatDate(piece.released_at.slice(0,10)) : "Liberada"}{piece.active_prod_batch_id && " · "+(prodBatches.find(batch=>batch.id===piece.active_prod_batch_id)?.batch_number || "Em PROD")}</span>}
-                  <span>Previsão de entrega: <strong>{deliveryForecast(group.open ? piece.forecast_date : piece.released_at)}</strong>{group.open && replan && " · a revisar"}</span>
-                  </div>
-                </li>)}</ul>
-              {!group.items.length && <p className="text-sm text-muted-foreground">{group.open ? "Nenhuma peça pendente." : "Nenhuma peça liberada."}</p>}
-              {group.open && pending.length>0 && canManageVisits && !["concluido","cancelado"].includes(currentStatus) &&
-                <PieceForecastForm contractId={id} today={today} options={pending.map(({piece,replan})=>({
-                  id:piece.id, label:[piece.code,piece.environment,piece.piece_type].filter(Boolean).join(" · "),group:piece.forecast_group ?? null,date:piece.forecast_date ?? null,replan,
-                }))}/>}
-            </div>)}
-        </div>
+        <WorkPieceTable contractId={id} today={today} editable={canManageVisits && !["concluido","cancelado"].includes(currentStatus)}
+          rows={piecePlan.map(({piece,units, released:isReleased,replan})=>{
+            const date = isReleased ? piece.released_at : piece.forecast_date;
+            const batch = isReleased ? currentBatchByPiece.get(piece.id) : undefined;
+            return {id:piece.id,code:piece.code,environment:piece.environment || "A definir",model:piece.piece_type || piece.description || "A definir",
+              units,status:isReleased?"released":date?"planned":"missing",date:date ?? null,delivery:deliveryForecast(date),
+              revise:replan,group:piece.forecast_group ?? null,lotId:batch?.id ?? "",lot:batch?batchLabel(batch):"",
+              prod:prodBatches.find(p=>p.id===piece.active_prod_batch_id)?.batch_number ?? ""};
+          })}/>
         {byReleaseDay.length > 0 && <div className="mt-5 border-t pt-4">
           <h3 className="font-semibold">Lotes de liberação</h3>
           <p className="mb-3 text-sm text-muted-foreground">Do mais recente ao mais antigo. Abra um lote para ver as peças.</p>
