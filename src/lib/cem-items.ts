@@ -47,6 +47,8 @@ export function readCemPages(pages: Cell[][]) {
 
 export async function readCemPdf(buffer:Buffer) {
   const pages:Cell[][]=[];
-  await pdfParse(buffer,{pagerender:async page=>{pages.push((await page.getTextContent()).items);return "";}});
+  // PDF.js expects slice() to copy bytes; Node Buffer.slice() shares its backing memory.
+  const pdf=await pdfParse(Uint8Array.from(buffer),{pagerender:async page=>{pages.push((await page.getTextContent()).items);return "";}});
+  if(pages.length!==pdf.numpages) throw new Error("Não foi possível ler todas as páginas do PDF.");
   return readCemPages(pages);
 }
