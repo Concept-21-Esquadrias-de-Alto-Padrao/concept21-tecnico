@@ -8,6 +8,8 @@ import type { ProductionContract, TechnicalPiece } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type VisitScheduleFormProps = {
+  initialContractId?: string;
+  onSuccess?: () => void;
   contracts: Array<Pick<ProductionContract, "id" | "contract_number" | "work_name">>;
   pieces: Array<
     Pick<
@@ -21,6 +23,7 @@ type VisitScheduleFormProps = {
       | "sale_height_mm"
       | "status"
       | "deleted_at"
+      | "active_prod_batch_id"
     >
   >;
 };
@@ -30,14 +33,14 @@ function pieceDimensions(piece: Pick<TechnicalPiece, "sale_width_mm" | "sale_hei
   return `${piece.sale_width_mm ?? "-"} x ${piece.sale_height_mm ?? "-"} mm`;
 }
 
-export function VisitScheduleForm({ contracts, pieces }: VisitScheduleFormProps) {
-  const [selectedContractId, setSelectedContractId] = useState("");
+export function VisitScheduleForm({ contracts, pieces, initialContractId="", onSuccess }: VisitScheduleFormProps) {
+  const [selectedContractId, setSelectedContractId] = useState(initialContractId);
   const [selectedPieceIds, setSelectedPieceIds] = useState<string[]>([]);
 
   const contractPieces = useMemo(
     () =>
       pieces
-        .filter((piece) => piece.contract_id === selectedContractId && !piece.deleted_at)
+        .filter((piece) => piece.contract_id === selectedContractId && !piece.deleted_at && !piece.active_prod_batch_id && !["liberada","em_prod","entregue","cancelada"].includes(piece.status))
         .sort((left, right) =>
           left.code.localeCompare(right.code, "pt-BR", { numeric: true, sensitivity: "base" }),
         ),
@@ -51,7 +54,7 @@ export function VisitScheduleForm({ contracts, pieces }: VisitScheduleFormProps)
   }
 
   return (
-    <ActionForm action={createVisitAction} submitLabel="Agendar visita">
+    <ActionForm action={createVisitAction} submitLabel="Agendar visita" onSuccess={onSuccess}>
       <Field label="Contrato">
         <select
           name="contract_id"
@@ -74,7 +77,7 @@ export function VisitScheduleForm({ contracts, pieces }: VisitScheduleFormProps)
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Tipo">
-          <input name="visit_type" className={inputClass} defaultValue="Medição" required />
+          <select name="visit_type" className={inputClass} defaultValue="Medição" required><option>Orientação</option><option>Medição</option><option>Orientação e Medição</option></select>
         </Field>
         <Field label="Data">
           <input name="scheduled_date" type="date" className={inputClass} required />
@@ -93,7 +96,7 @@ export function VisitScheduleForm({ contracts, pieces }: VisitScheduleFormProps)
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-charcoal">Peças do contrato</p>
+          <p className="text-sm font-semibold text-charcoal">Peças pendentes · seleção opcional</p>
           {selectedContractId ? (
             <span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
               {selectedPieceIds.length} selecionada(s)
@@ -101,6 +104,7 @@ export function VisitScheduleForm({ contracts, pieces }: VisitScheduleFormProps)
           ) : null}
         </div>
 
+        <p className="text-xs text-muted-foreground">Agende sem selecionar peças quando ainda não souber quais poderão ser liberadas. A seleção é uma previsão, não uma liberação.</p>
         <div className="max-h-80 overflow-y-auto rounded-md border border-border bg-white p-2">
           {!selectedContractId ? (
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">Nenhum contrato selecionado.</p>

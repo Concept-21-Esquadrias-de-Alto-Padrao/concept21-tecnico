@@ -526,6 +526,8 @@ export async function getTechnicalOperationalData() {
       "pieces",
       "actions",
       "visits",
+      "visitPieces",
+      "dashboardHolidays",
       "releases",
       "releasePieces",
       "releaseParticipants",
