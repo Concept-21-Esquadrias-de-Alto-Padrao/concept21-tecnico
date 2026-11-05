@@ -8,5 +8,5 @@ export function ContractCreateActions({ canImport, canManualCreate }: {
   profiles: Pick<Profile, "id" | "name">[];
 }) {
   if (!canImport && !canManualCreate) return null;
-  return <Link href="/tecnico/contratos/adicionar" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-charcoal px-4 text-sm font-semibold text-white hover:bg-charcoal/90"><Plus className="size-4" />Adicionar obra</Link>;
+  return <Link href="/tecnico/contratos/adicionar" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-white hover:bg-orange-600"><Plus className="size-4" />Adicionar obra</Link>;
 }

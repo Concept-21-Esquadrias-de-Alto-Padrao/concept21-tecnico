@@ -1,221 +1,41 @@
 "use client";
-
-import { readReceipt } from "@/lib/commercial-receipt";
-import { Search } from "lucide-react";
+import { Search, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/status-badge";
 import type { TechnicalContractOverview } from "@/lib/types";
-import { calculateReleaseProgress, isOverdue } from "@/lib/technical-rules";
 import { formatDate, normalizeText } from "@/lib/utils";
+import { workPortfolio, sortPortfolio, type PortfolioRow, type PortfolioSort } from "@/lib/works-portfolio";
 
-export function TechnicalContractsTable({
-  overviews,
-}: {
-  overviews: TechnicalContractOverview[];
-}) {
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("");
-
-  const filtered = useMemo(() => {
-    const normalized = normalizeText(query);
-    return overviews
-      .filter((overview) => {
-        const text = normalizeText(
-          [
-            overview.contract.contract_number,
-            overview.client?.name,
-            overview.contract.full_address,
-            overview.contract.work_name,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        );
-        return (!normalized || text.includes(normalized)) && (!status || (status === "recebimento_pendente" ? Boolean(readReceipt(overview.technical?.commercial_data) && readReceipt(overview.technical?.commercial_data)?.status !== "completed") : overview.technical?.technical_status === status && !(status === "aguardando_reuniao" && readReceipt(overview.technical?.commercial_data) && readReceipt(overview.technical?.commercial_data)?.status !== "completed")));
-      })
-      .sort((left, right) => left.contract.contract_number.localeCompare(right.contract.contract_number));
-  }, [overviews, query, status]);
-
-  return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-[1fr_220px]">
-        <label className="relative block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar por número, cliente ou endereço"
-            aria-label="Buscar contratos"
-            className="min-h-11 w-full rounded-md border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-accent"
-          />
-        </label>
-        <select
-          value={status}
-          aria-label="Situação do contrato"
-          onChange={(event) => setStatus(event.target.value)}
-          className="min-h-11 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-accent"
-        >
-          <option value="">Todas as situações</option>
-          <option value="recebimento_pendente">Conferência do recebimento pendente</option>
-          <option value="aguardando_reuniao">Aguardando reunião</option>
-          <option value="aguardando_pasta">Aguardando pasta</option>
-          <option value="em_acompanhamento">Em acompanhamento</option>
-          <option value="aguardando_visita">Aguardando visita</option>
-          <option value="em_medicao">Em medição</option>
-          <option value="em_liberacao">Em liberação</option>
-          <option value="em_prod">Em PROD</option>
-          <option value="repassado">Repassado</option>
-          <option value="concluido">Concluído</option>
-        </select>
-      </div>
-
-      <div className="space-y-3 md:hidden">
-        {filtered.map((overview) => {
-          const progress = calculateReleaseProgress(overview.pieces);
-          const nextVisit = overview.visits
-            .filter((visit) => visit.status === "agendada")
-            .sort((left, right) => left.scheduled_date.localeCompare(right.scheduled_date))[0];
-          const openCorrections = overview.corrections.filter(
-            (correction) => !["encerrada", "cancelada"].includes(correction.status),
-          );
-          const pendingProds = overview.prodBatches.filter(
-            (prod) => !["concluido", "cancelado"].includes(prod.status),
-          );
-          const risk =
-            overview.technical?.risk_status === "atrasado" ||
-            openCorrections.some((correction) => correction.critical) ||
-            overview.actions.some((action) => isOverdue(action.due_date) && !["concluida", "cancelada"].includes(action.status));
-
-          return (
-            <article key={overview.contract.id} className="rounded-md border border-border bg-white p-3 text-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-semibold text-charcoal">{overview.contract.contract_number}</p>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">
-                    {overview.client?.name ?? "Cliente não vinculado"}
-                  </p>
-                </div>
-                {readReceipt(overview.technical?.commercial_data) && readReceipt(overview.technical?.commercial_data)?.status !== "completed" ? <span className="inline-block rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Conferência pendente</span> : <StatusBadge status={overview.technical?.technical_status ?? "aguardando_reuniao"} type="contract" />}
-              </div>
-
-              <p className="mt-2 text-xs text-muted-foreground">{overview.contract.work_name}</p>
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{overview.contract.full_address}</p>
-
-              <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-md bg-muted/50 p-2">
-                  <dt className="text-muted-foreground">Próxima visita</dt>
-                  <dd className="mt-1 font-semibold text-charcoal">
-                    {nextVisit ? formatDate(nextVisit.scheduled_date) : "Sem visita"}
-                  </dd>
-                </div>
-                <div className="rounded-md bg-muted/50 p-2">
-                  <dt className="text-muted-foreground">Peças</dt>
-                  <dd className="mt-1 font-semibold text-charcoal">
-                    {progress.released}/{progress.total} liberadas
-                  </dd>
-                </div>
-                <div className="rounded-md bg-muted/50 p-2">
-                  <dt className="text-muted-foreground">Correções</dt>
-                  <dd className="mt-1 font-semibold text-charcoal">{openCorrections.length}</dd>
-                </div>
-                <div className="rounded-md bg-muted/50 p-2">
-                  <dt className="text-muted-foreground">PRODs</dt>
-                  <dd className="mt-1 font-semibold text-charcoal">{pendingProds.length}</dd>
-                </div>
-              </dl>
-
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <span className={risk ? "text-sm font-semibold text-danger" : "text-sm font-semibold text-success"}>
-                  {risk ? "Em risco" : "Normal"}
-                </span>
-                <Link
-                  href={readReceipt(overview.technical?.commercial_data)?.status === "pending" || readReceipt(overview.technical?.commercial_data)?.status === "applying" ? `/tecnico/contratos/${overview.contract.id}/recebimento` : `/tecnico/contratos/${overview.contract.id}`}
-                  className="inline-flex min-h-10 items-center rounded-md bg-charcoal px-3 text-xs font-semibold text-white hover:bg-black"
-                >
-                  {readReceipt(overview.technical?.commercial_data)?.status === "pending" ? "Conferir recebimento" : "Abrir"}
-                </Link>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-
-      <div className="hidden overflow-x-auto rounded-md border border-border md:block">
-        <table className="min-w-[1100px] w-full border-separate border-spacing-0 bg-white text-left text-sm">
-          <thead>
-            <tr className="text-xs uppercase text-muted-foreground">
-              <th className="border-b border-border px-3 py-3">Contrato</th>
-              <th className="border-b border-border px-3 py-3">Cliente / obra</th>
-              <th className="border-b border-border px-3 py-3">Situação</th>
-              <th className="border-b border-border px-3 py-3">Próxima visita</th>
-              <th className="border-b border-border px-3 py-3">Peças</th>
-              <th className="border-b border-border px-3 py-3">Correções</th>
-              <th className="border-b border-border px-3 py-3">PRODs</th>
-              <th className="border-b border-border px-3 py-3">Risco</th>
-              <th className="border-b border-border px-3 py-3">Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((overview) => {
-              const progress = calculateReleaseProgress(overview.pieces);
-              const nextVisit = overview.visits
-                .filter((visit) => visit.status === "agendada")
-                .sort((left, right) => left.scheduled_date.localeCompare(right.scheduled_date))[0];
-              const openCorrections = overview.corrections.filter(
-                (correction) => !["encerrada", "cancelada"].includes(correction.status),
-              );
-              const pendingProds = overview.prodBatches.filter(
-                (prod) => !["concluido", "cancelado"].includes(prod.status),
-              );
-              const risk =
-                overview.technical?.risk_status === "atrasado" ||
-                openCorrections.some((correction) => correction.critical) ||
-                overview.actions.some((action) => isOverdue(action.due_date) && !["concluida", "cancelada"].includes(action.status));
-
-              return (
-                <tr key={overview.contract.id} className="align-top">
-                  <td className="border-b border-border px-3 py-3 font-semibold text-charcoal">
-                    {overview.contract.contract_number}
-                  </td>
-                  <td className="border-b border-border px-3 py-3">
-                    <p className="font-medium text-charcoal">{overview.client?.name ?? "Cliente não vinculado"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{overview.contract.work_name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{overview.contract.full_address}</p>
-                  </td>
-                  <td className="border-b border-border px-3 py-3">
-                    {readReceipt(overview.technical?.commercial_data) && readReceipt(overview.technical?.commercial_data)?.status !== "completed" ? <span className="inline-block rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Conferência pendente</span> : <StatusBadge status={overview.technical?.technical_status ?? "aguardando_reuniao"} type="contract" />}
-                  </td>
-                  <td className="border-b border-border px-3 py-3">
-                    {nextVisit ? formatDate(nextVisit.scheduled_date) : "Sem visita"}
-                  </td>
-                  <td className="border-b border-border px-3 py-3">
-                    <p>{progress.total} total</p>
-                    <p className="text-xs text-muted-foreground">
-                      {progress.released} liberadas · {progress.balance} saldo
-                    </p>
-                  </td>
-                  <td className="border-b border-border px-3 py-3">{openCorrections.length}</td>
-                  <td className="border-b border-border px-3 py-3">{pendingProds.length}</td>
-                  <td className="border-b border-border px-3 py-3">
-                    <span className={risk ? "font-semibold text-danger" : "text-success"}>
-                      {risk ? "Em risco" : "Normal"}
-                    </span>
-                  </td>
-                  <td className="border-b border-border px-3 py-3">
-                    <Link
-                      href={readReceipt(overview.technical?.commercial_data)?.status === "pending" || readReceipt(overview.technical?.commercial_data)?.status === "applying" ? `/tecnico/contratos/${overview.contract.id}/recebimento` : `/tecnico/contratos/${overview.contract.id}`}
-                      className="inline-flex rounded-md bg-charcoal px-3 py-2 text-xs font-semibold text-white hover:bg-black"
-                    >
-                      {readReceipt(overview.technical?.commercial_data)?.status === "pending" ? "Conferir recebimento" : "Abrir"}
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs text-muted-foreground">{filtered.length} contrato(s) no recorte.</p>
-    </div>
-  );
+export function TechnicalContractsTable({overviews, today, readOnly=false}:{overviews:TechnicalContractOverview[];today?:string;readOnly?:boolean}) {
+ const params=useSearchParams();
+ const query=params.get('q')??'', group=params.get('grupo')??'ativas', status=params.get('situacao')??'';
+ const sort:PortfolioSort=['obra','liberacao','prod','visita','atencao'].includes(params.get('ordem')??'')?params.get('ordem') as PortfolioSort:'obra';
+ const descending=params.get('sentido')==='desc';
+ const [more,setMore]=useState(false);
+ const day=today??new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo'}).format(new Date());
+ const rows=useMemo(()=>overviews.map(o=>workPortfolio(o,day)),[overviews,day]);
+ const active=(r:PortfolioRow)=>!['concluido','cancelado'].includes(r.overview.technical?.technical_status??'');
+ const groups=[{key:'todas',label:'Todas',test:()=>true},{key:'ativas',label:'Em andamento',test:active},{key:'sem',label:'Sem liberação',test:(r:PortfolioRow)=>active(r)&&r.total>0&&r.released===0},{key:'parcial',label:'Liberação parcial',test:(r:PortfolioRow)=>active(r)&&r.released>0&&r.balance>0},{key:'concluidas',label:'Concluídas',test:(r:PortfolioRow)=>r.overview.technical?.technical_status==='concluido'}];
+ const selected=groups.find(g=>g.key===group)??groups[1];
+ function update(values:Record<string,string>){const p=new URLSearchParams(params.toString());Object.entries(values).forEach(([k,v])=>v?p.set(k,v):p.delete(k));window.history.replaceState(null,'','/tecnico/contratos'+(p.size?'?'+p.toString():''));}
+ const filtered=sortPortfolio(rows.filter(r=>selected.test(r)&&(!status||(status==='recebimento_pendente'?r.receipt&&r.receipt.status!=='completed':r.overview.technical?.technical_status===status))&&normalizeText([r.overview.contract.contract_number,r.overview.client?.name,r.overview.contract.work_name,r.overview.contract.full_address].filter(Boolean).join(' ')).includes(normalizeText(query))),sort,descending);
+ const sum=(key:'total'|'released'|'balance')=>filtered.reduce((s,r)=>s+r[key],0);
+ function heading(key:PortfolioSort,label:string){return <th scope="col" aria-sort={sort===key?(descending?'descending':'ascending'):'none'} className="px-4 py-3"><button onClick={()=>update({ordem:key,sentido:sort===key&&!descending?'desc':'asc'})} className="flex min-h-9 items-center gap-2 text-left" title={key==='liberacao'?'Ordenar pelo percentual liberado':key==='prod'?'Ordenar pelas peças liberadas sem PROD':undefined}>{label}<ArrowUpDown className="size-3.5"/><span className="sr-only">{sort===key&&!descending?'Ordenar decrescente':'Ordenar crescente'}</span></button></th>}
+ function identity(r:PortfolioRow){const o=r.overview;const name=o.client?.name??o.contract.work_name??'Cliente não informado';const target='/tecnico/contratos/'+o.contract.id+(r.receipt&&r.receipt.status!=='completed'?'/recebimento':'');return <div className="space-y-2"><div>{readOnly?<strong>{o.contract.contract_number} · {name}</strong>:<Link href={target+'?retorno='+encodeURIComponent('/tecnico/contratos'+(params.size?'?'+params.toString():''))} className="font-semibold hover:text-orange-700 hover:underline">{o.contract.contract_number} · {name} ↗</Link>}{o.contract.work_name&&normalizeText(o.contract.work_name)!==normalizeText(name)&&<p className="mt-1 text-xs text-muted-foreground">{o.contract.work_name}</p>}</div>{r.receipt&&r.receipt.status!=='completed'?<span className="text-xs font-medium text-amber-800">Conferência pendente</span>:<StatusBadge status={o.technical?.technical_status??'aguardando_reuniao'} type="contract"/>}</div>}
+ function progress(r:PortfolioRow){return <div className="space-y-1"><p><strong>{r.released} de {r.total}</strong> liberadas</p><div className="h-1.5 rounded-full bg-slate-100" role="progressbar" aria-label="Percentual liberado" aria-valuenow={r.percent} aria-valuemin={0} aria-valuemax={100}><div className="h-full rounded-full bg-emerald-600" style={{width:r.percent+'%'}}/></div><p className="text-xs text-muted-foreground">{r.balance} pendentes · {r.percent}%</p></div>}
+ function prods(r:PortfolioRow){return <div><p className="font-medium">{r.prods.length} PROD(s) · {r.emitted} peças</p><p className={r.ready?'mt-1 text-xs font-medium text-blue-800':'mt-1 text-xs text-muted-foreground'}>{r.ready} liberadas sem PROD</p>{r.prods.length>0&&<details className="mt-2 text-xs"><summary className="cursor-pointer text-muted-foreground">Ver códigos</summary><p className="mt-1">{r.prods.map(p=>p.batch_number).join(' · ')}</p></details>}</div>}
+ function visit(r:PortfolioRow){return r.nextVisit?<div><p className="font-medium">{formatDate(r.nextVisit.scheduled_date)}</p><p className="mt-1 text-xs text-muted-foreground">{r.nextVisit.visit_type}{r.nextVisit.scheduled_time?' · '+r.nextVisit.scheduled_time.slice(0,5):''}</p></div>:<span className="text-muted-foreground">Sem agendamento</span>}
+ function attention(r:PortfolioRow){return <div className="space-y-1.5">{r.alerts.length?r.alerts.slice(0,2).map(a=><span key={a.label} className={'block w-fit rounded-md px-2 py-1 text-xs font-medium '+(a.urgent?'bg-red-50 text-red-800':'bg-amber-50 text-amber-900')}>{a.label}</span>):<span className="text-xs text-muted-foreground">Sem alertas registrados</span>}{r.alerts.length>2&&<details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Mais {r.alerts.length-2} aviso(s)</summary>{r.alerts.slice(2).map(a=><p className="mt-1" key={a.label}>{a.label}</p>)}</details>}{r.overview.contract.full_address&&<details className="pt-1 text-xs"><summary className="cursor-pointer text-muted-foreground">Endereço</summary><p className="mt-1">{r.overview.contract.full_address}</p></details>}</div>}
+ return <div className="space-y-4">
+  <nav aria-label="Filtrar carteira de obras" className="flex flex-wrap gap-2">{groups.map(g=><button key={g.key} aria-pressed={selected.key===g.key} onClick={()=>update({grupo:g.key})} className={'min-h-10 rounded-full border px-4 py-2 text-sm font-medium transition '+(selected.key===g.key?'border-charcoal bg-charcoal text-white':'border-border bg-white text-charcoal hover:border-orange-400')}>{g.label} <span className="ml-2 tabular-nums opacity-70">{rows.filter(g.test).length}</span></button>)}</nav>
+  <div className="flex flex-wrap gap-3"><label className="relative min-w-60 flex-1"><Search className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted-foreground"/><input value={query} onChange={e=>update({q:e.target.value})} placeholder="Buscar número, cliente, obra ou endereço" aria-label="Buscar contratos" className="min-h-11 w-full rounded-lg border bg-white pl-9 pr-3 text-sm outline-none focus:border-orange-500"/></label><button aria-expanded={more} onClick={()=>setMore(!more)} className="rounded-lg border bg-white px-4 text-sm font-medium">Mais filtros{status?' · 1':''}</button>{(query||status)&&<button onClick={()=>update({q:'',situacao:''})} className="px-2 text-sm underline">Limpar busca e filtros</button>}</div>
+  {more&&<div className="rounded-lg border bg-white p-3"><label className="text-sm">Situação <select aria-label="Situação do contrato" value={status} onChange={e=>update({situacao:e.target.value})} className="ml-2 min-h-10 rounded-lg border px-3"><option value="">Todas as situações</option>{[['recebimento_pendente','Conferência pendente'],['aguardando_reuniao','Aguardando reunião'],['aguardando_pasta','Aguardando pasta'],['em_acompanhamento','Em acompanhamento'],['aguardando_visita','Aguardando visita'],['em_medicao','Em medição'],['em_liberacao','Em liberação'],['em_prod','Em PROD'],['repassado','Repassado'],['concluido','Concluído'],['cancelado','Cancelado']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label></div>}
+  <div className="flex flex-wrap justify-between gap-2 text-sm"><p><strong>{filtered.length}</strong> obra(s) encontradas</p><p className="text-muted-foreground">{sum('total')} peças · {sum('released')} liberadas · <strong className="text-charcoal">{sum('balance')} a liberar</strong></p></div>
+  {!filtered.length&&<p className="rounded-xl border bg-white p-8 text-center text-muted-foreground">Nenhuma obra encontrada. Ajuste a busca ou os filtros.</p>}
+  <div className="hidden overflow-x-auto rounded-xl border border-border lg:block"><table className="w-full min-w-[980px] border-separate border-spacing-0 bg-white text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600"><tr>{heading('obra','Obra / cliente')}{heading('liberacao','Liberação das peças')}{heading('prod','PRODs')}{heading('visita','Próxima visita')}{heading('atencao','Atenção')}</tr></thead><tbody>{filtered.map(r=><tr key={r.overview.contract.id} className="align-top hover:bg-orange-50/30"><td className="w-[30%] border-t px-4 py-4">{identity(r)}</td><td className="w-[20%] border-t px-4 py-4">{progress(r)}</td><td className="border-t px-4 py-4">{prods(r)}</td><td className="border-t px-4 py-4">{visit(r)}</td><td className="border-t px-4 py-4">{attention(r)}</td></tr>)}</tbody></table></div>
+  <div className="space-y-3 lg:hidden"><label className="block text-sm">Ordenar por <select value={sort+(descending?':desc':':asc')} onChange={e=>{const [ordem,sentido]=e.target.value.split(':');update({ordem,sentido});}} className="ml-2 min-h-10 rounded border bg-white px-2">{[['obra','Obra'],['liberacao','Liberação'],['prod','Peças sem PROD'],['visita','Visita'],['atencao','Avisos']].flatMap(([k,l])=>['asc','desc'].map(d=><option key={k+d} value={k+':'+d}>{l} · {d==='asc'?'crescente':'decrescente'}</option>))}</select></label>{filtered.map(r=><article key={r.overview.contract.id} className="space-y-4 rounded-xl border bg-white p-4 text-sm">{identity(r)}{progress(r)}<div className="grid grid-cols-2 gap-3"><div><p className="mb-1 text-xs text-muted-foreground">PRODs</p>{prods(r)}</div><div><p className="mb-1 text-xs text-muted-foreground">Próxima visita</p>{visit(r)}</div></div>{attention(r)}</article>)}</div>
+  <p className="text-xs text-muted-foreground">Quantidades somadas por peça ativa, com a mesma regra do Painel Técnico. Ordene pelos títulos das colunas.</p>
+ </div>;
 }

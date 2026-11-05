@@ -51,7 +51,8 @@ describe("contracts list as the primary screen", () => {
     expect(html).toContain("Adicionar obra");
     expect(html).toContain("/tecnico/contratos/adicionar");
     expect(html).toContain("Buscar contratos");
-    expect(html).toContain("Situação do contrato");
+    expect(html).toContain("Mais filtros");
+    expect(html).toContain("Liberação parcial");
     expect(html).toContain("26-0001");
     expect(html).not.toContain("Salvar contrato");
     expect(html).not.toContain("Conferir extração");

@@ -1,3 +1,4 @@
+import { readDashboardPreview } from "@/lib/dashboard-preview";
 import { ClipboardList } from "lucide-react";
 import { redirect } from "next/navigation";
 import { ContractCreateActions } from "@/components/contract-create-actions";
@@ -23,17 +24,20 @@ export default async function TechnicalContractsPage() {
     redirect(firstAllowedAppRoute(access) ?? "/login");
   }
 
-  const snapshot = await getTechnicalContractsData();
+  const preview = await readDashboardPreview(access.isMaster);
+  const snapshot = preview?.snapshot ?? await getTechnicalContractsData();
+  const today = new Intl.DateTimeFormat("sv-SE", {timeZone:"America/Sao_Paulo"}).format(new Date());
   const overviews = buildContractOverviews(snapshot);
   const canImport = access.isMaster || Boolean(access.permissions["technical.contracts.import_pdf"]);
   const canManualCreate = access.isMaster || Boolean(access.permissions["technical.contracts.manual_create"]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {preview && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm"><strong>Homologação · Obras reais em consulta.</strong> Cópia de {new Date(preview.capturedAt).toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo"})}. Busca, filtros e ordenação disponíveis. Cadastro e abertura das obras desabilitados nesta cópia.</p>}
       <PageHeader
         title="Obras"
-        description="Contratos, peças e andamento técnico em um só lugar."
-        actions={canImport || canManualCreate ? (
+        description="Encontre a obra, compare as liberações e acompanhe o que ainda precisa avançar."
+        actions={preview ? <button disabled className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-white opacity-70" title="Cadastro desabilitado na cópia de consulta">+ Adicionar obra</button> : (canImport || canManualCreate) ? (
           <ContractCreateActions
             canImport={canImport}
             canManualCreate={canManualCreate}
@@ -43,7 +47,7 @@ export default async function TechnicalContractsPage() {
       />
       <section aria-label="Contratos cadastrados">
         {overviews.length ? (
-          <TechnicalContractsTable overviews={overviews} />
+          <TechnicalContractsTable overviews={overviews} today={today} readOnly={Boolean(preview)} />
         ) : (
           <EmptyState icon={ClipboardList} title="Nenhum contrato técnico cadastrado" description="Nenhum registro disponível." />
         )}
