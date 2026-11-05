@@ -1,3 +1,4 @@
+import { readDashboardPreview } from "@/lib/dashboard-preview";
 import { readReceipt } from "@/lib/commercial-receipt";
 import { releasePlan } from "@/lib/release-planning";
 import { PieceForecastForm } from "@/components/piece-forecast-form";
@@ -37,13 +38,14 @@ function formatVisitTime(value: string | null) {
   return value ? value.slice(0, 5) : "A definir";
 }
 
-export default async function TechnicalDashboardPage({ searchParams }: { searchParams?: Promise<{ fila?: string }> }) {
+export default async function TechnicalDashboardPage({ searchParams }: { searchParams?: Promise<{ fila?: string; q?: string }> }) {
   const access = await getCurrentPermissionFlags([...appNavigationPermissionKeys, "technical.visits.manage"]);
   if (!canAccessModule(access, MODULE_ACCESS.dashboard)) {
     redirect(firstAllowedAppRoute(access) ?? "/login");
   }
 
-  const snapshot = await getTechnicalDashboardData();
+  const preview = await readDashboardPreview(access.isMaster);
+  const snapshot = preview?.snapshot ?? await getTechnicalDashboardData();
   const workItemPermissions = getWorkItemPermissions(access);
   const workItems = buildTechnicalWorkItems(
     workItemPermissions.canViewActions ? snapshot.actions : [],
@@ -78,7 +80,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
       (visit) => visit.scheduled_date > today && visit.scheduled_date <= sevenDays && visit.status === "agendada",
     ).length,
     visitsWaitingReport: snapshot.visits.filter(visitRequiresReport).length,
-    piecesWaitingRelease: snapshot.pieces.filter((piece) => !piece.deleted_at && ["avaliada", "medida"].includes(piece.status)).length,
+
     prodsWaitingCheck: snapshot.prodBatches.filter((prod) => prod.status === "aguardando_conferencia").length,
     prodsWaitingApproval: snapshot.prodBatches.filter((prod) => prod.status === "aguardando_aprovacao").length,
     pendingConfirmations: snapshot.deliveries.filter((delivery) => delivery.status === "entregue").length,
@@ -110,16 +112,20 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     Number(b.unscheduled) - Number(a.unscheduled) || b.ready - a.ready ||
     a.overview.contract.contract_number.localeCompare(b.overview.contract.contract_number, "pt-BR", { numeric: true }));
   const queues = [
-    { key: "todas", label: "Obras em andamento", hint: "Todas as etapas", items: rows },
+    { key: "todas", label: "Obras em andamento", hint: "Obras ativas · filtros podem se sobrepor", items: rows },
     { key: "agendar", label: "Agendar medição", hint: "Obras sem liberação e sem medição marcada", items: rows.filter(r => r.unscheduled) },
     { key: "parcial", label: "Saldo a liberar", hint: "Obras já liberadas em parte e com saldo", items: rows.filter(r=>r.progress.released>0 && r.progress.balance>0) },
     { key: "prod", label: "A emitir PROD", hint: "Obras com peças liberadas sem PROD", items: rows.filter(r => r.ready > 0) },
     { key: "atrasos", label: "Com atividade vencida", hint: "Ações e correções em aberto", items: rows.filter(r => r.due) },
   ];
   function units(items: ReturnType<typeof releasePlan>) { return items.reduce((sum,i)=>sum+i.units,0); }
-  const requested = (await searchParams)?.fila;
+  const params = await searchParams;
+  const requested = params?.fila;
+  const query = (params?.q ?? "").trim();
+  const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const queue = queues.find(q => q.key === requested) ?? queues[0];
-  const canOpen = canAccessModule(access, MODULE_ACCESS.contracts);
+  const visibleRows = queue.items.filter(row => normalize([row.overview.contract.contract_number, row.overview.client?.name, row.overview.contract.work_name].filter(Boolean).join(" ")).includes(normalize(query)));
+  const canOpen = !preview && canAccessModule(access, MODULE_ACCESS.contracts);
   function renderRow(row: typeof rows[number]) {
     const { overview, progress, nextVisit, ready, unscheduled, due, prods } = row;
     const { contract, client, technical } = overview;
@@ -134,6 +140,12 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     const issueDate = release && holidays ? addDeadlineDays({startDate: release.slice(0,10), days: 5, unit: "dias_uteis", holidays}) : null;
     const issue = action("Emitir PROD das peças liberadas", profileName(technical?.technical_manager_profile_id) ?? "Técnico · Emissão", "#prods", issueDate);
     function nextAction() {
+      if (queue.key === "parcial") {
+        const pending = row.plan.filter(i => !i.released);
+        const needsDate = pending.some(i => !i.piece.forecast_date || i.replan);
+        const nextDate = pending.flatMap(i => i.piece.forecast_date && !i.replan ? [i.piece.forecast_date] : []).sort()[0];
+        return action(needsDate ? "Definir previsão do saldo" : row.measurement ? "Acompanhar próxima medição" : "Agendar medição do saldo", "Obras · Planejamento", needsDate ? "#visao-geral" : "#visitas", needsDate ? null : nextDate);
+      }
       if (queue.key === "agendar") return schedule;
       if (queue.key === "prod") return issue;
       if (row.work) return action(row.work.title, profileName(row.work.responsible_profile_id) ?? "A atribuir", "#acoes", row.work.due_date);
@@ -168,37 +180,36 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     const dates = pending.flatMap(i=>i.piece.forecast_date && !i.replan ? [i.piece.forecast_date] : []).sort();
     const missing = units(pending.filter(i=>!i.piece.forecast_date));
     const revise = units(pending.filter(i=>i.replan));
-    return <article key={contract.id} className="space-y-2 border-t border-border py-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        {canOpen ? <Link href={base} className="font-semibold text-charcoal hover:underline">{title} ↗</Link> : <strong>{title}</strong>}
-        <StatusBadge status={technical?.technical_status ?? "aguardando_reuniao"} type="contract" />
+    return <article key={contract.id} className="border-t border-border py-4" data-dashboard-row>
+      <div className="grid gap-4 lg:grid-cols-[minmax(220px,1.5fr)_minmax(160px,1fr)_minmax(180px,1fr)_minmax(200px,1.2fr)] lg:items-center">
+        <div>
+          {canOpen ? <Link href={base} className="font-semibold text-charcoal hover:underline">{title} ↗</Link> : <strong>{title}</strong>}
+          <div className="mt-2"><StatusBadge status={technical?.technical_status ?? "aguardando_reuniao"} type="contract" /></div>
+        </div>
+        <div className="space-y-1 text-sm">
+          <p><strong>{progress.released}</strong> de {progress.total} peças liberadas</p>
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label={"Liberação de " + title} aria-valuenow={progress.percent} aria-valuemin={0} aria-valuemax={100}><div className="h-full rounded-full bg-emerald-600" style={{width:progress.percent+"%"}} /></div>
+          <p className="text-xs text-muted-foreground">{inProd} com PROD · {progress.balance} a liberar</p>
+          {ready > 0 && <p className="text-xs font-medium text-blue-800">{ready} aguardando PROD</p>}
+          {unscheduled && <p className="text-xs font-medium text-amber-800">Sem medição agendada · {progress.balance} peça(s) a liberar</p>}
+          {row.measurement && progress.balance > 0 && <p className="text-xs text-green-800">Medição: {formatDate(row.measurement.scheduled_date)}</p>}
+        </div>
+        <div className="text-sm"><p className="font-medium">Responsável: {next.owner}</p><p className={next.date && next.date < today ? "font-medium text-red-700" : "text-muted-foreground"}>{next.date ? "Prazo: " + formatDate(next.date) : "Prazo a definir"}</p>{due && <p className="text-xs text-red-700">Atividade vencida</p>}</div>
+        <div>{canOpen ? <Link href={base + next.target} className="inline-flex min-h-10 items-center rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-900 hover:bg-orange-100">{next.title} →</Link> : <span className="inline-flex min-h-10 items-center rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-900">{next.title}</span>}</div>
       </div>
-      {queue.key !== "parcial" && <div className="rounded-lg border-l-4 border-orange-400 bg-orange-50 px-3 py-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Próxima ação</p>
-        {canOpen ? <Link href={base + next.target} className="font-semibold text-charcoal hover:underline">{next.title} ↗</Link> : <strong>{next.title}</strong>}
-        <p className="mt-1 text-sm">Responsável: {next.owner} · Prazo: {next.date ? formatDate(next.date) : "A definir"}</p>
-      </div>}
-      {partial && <section className="rounded-lg border bg-white p-3 text-sm">
-        <p className="font-semibold">Saldo a liberar · {progress.balance} de {progress.total} peças</p>
-        <p>Já liberadas: {progress.released} · Próxima previsão: {dates.length ? formatDate(dates[0]) : "A definir"}</p>
-        {missing>0 && <p className="text-amber-800">Sem previsão: {missing} peça(s)</p>}
-        {revise>0 && <p className="text-amber-800">Previsão a revisar: {revise} peça(s)</p>}
-        {(access.isMaster || access.permissions["technical.visits.manage"]) && <PieceForecastForm contractId={contract.id} today={today}
-          options={pending.map(i=>({id:i.piece.id,label:[i.piece.code,i.piece.environment,i.piece.piece_type].filter(Boolean).join(" · "),group:i.piece.forecast_group ?? null,date:i.piece.forecast_date ?? null,replan:i.replan}))}/>}
-      </section>}
-      {due && <p className="text-sm font-medium text-red-800">Vencida em {formatDate(due.due_date)} · {due.title}</p>}
-      {unscheduled && <p className="text-sm font-medium text-amber-800">Sem medição agendada · {progress.balance} peça(s) a liberar</p>}
-      {row.measurement && progress.balance > 0 && <p className="text-sm font-medium text-green-800">Medição agendada · {formatDate(row.measurement.scheduled_date)}</p>}
-      {nextVisit && <p className="text-sm">Próxima visita · {formatDate(nextVisit.scheduled_date)} · {nextVisit.visit_type}</p>}
-      {ready > 0 && <p className="text-sm font-medium text-blue-800">{ready} peça(s) liberada(s) aguardando PROD</p>}
-      <p className="text-xs text-muted-foreground">{progress.released} de {progress.total} peças liberadas ({progress.percent}%) · {inProd} com PROD{prods.length > 0 && " · " + prods.map(p => p.batch_number).join(", ")}</p>
+      {partial && <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm"><summary className="cursor-pointer py-2 font-medium">Saldo: {progress.balance} peças · {missing ? missing + " sem previsão" : dates.length ? "Próxima liberação: " + formatDate(dates[0]) : "Previsão a definir"}{revise > 0 && " · " + revise + " a reprogramar"}</summary><div className="pb-3">
+        <p className="mb-1 font-semibold">Saldo a liberar · {progress.balance} de {progress.total} peças</p>{missing>0 && <p>Sem previsão: {missing} peça(s)</p>}<p className="mb-2">Já liberadas: {progress.released} de {progress.total}. A previsão não libera peças para fabricação.</p>
+        {!preview && (access.isMaster || access.permissions["technical.visits.manage"]) && <PieceForecastForm contractId={contract.id} today={today} options={pending.map(i=>({id:i.piece.id,label:[i.piece.code,i.piece.environment,i.piece.piece_type].filter(Boolean).join(" · "),group:i.piece.forecast_group ?? null,date:i.piece.forecast_date ?? null,replan:i.replan}))}/>}
+      </div></details>}
+      {prods.length > 0 && <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">{prods.length} PROD(s) vinculada(s)</summary><p className="py-2">{prods.map(p=>p.batch_number).join(" · ")}</p></details>}
     </article>;
   }
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {preview && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950"><strong>Homologação · Obras reais em consulta.</strong> Cópia de {new Date(preview.capturedAt).toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo"})}. Filtros e busca disponíveis. Os lançamentos e atalhos das obras estão desabilitados nesta cópia; ela não atualiza o oficial.</p>}
       <PageHeader
-        title="Painel Técnico"
-        description="Acompanhe as liberações, as próximas visitas e as obras que precisam de atenção."
+        title="O que precisa avançar?"
+        description="Painel Técnico · Prioridades, responsáveis e próximos passos das obras."
         actions={
           <Link
             href="/tecnico/contratos"
@@ -211,22 +222,26 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
       />
 
       <nav aria-label="Filtrar obras por situação" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {queues.map(q => <Link key={q.key} href={"/tecnico?fila=" + q.key} scroll={false}
+        {queues.map(q => <Link key={q.key} href={"/tecnico?fila=" + q.key + (query ? "&q=" + encodeURIComponent(query) : "")} scroll={false}
           aria-current={q.key === queue.key ? "page" : undefined}
-          className={"rounded-xl border p-4 transition hover:border-orange-500 focus-visible:outline-2 " +
+          className={"rounded-xl border p-3 transition hover:border-orange-500 focus-visible:outline-2 " +
             (q.key === queue.key ? "border-charcoal bg-charcoal text-white" : "border-border bg-white text-charcoal")}>
           <span className="block text-sm font-semibold">{q.label}</span>
-          <strong className="my-1 block text-3xl tabular-nums">{q.items.length}</strong>
+          <strong className="my-1 block text-2xl tabular-nums">{q.items.length}</strong>
           <span className="text-xs">{q.hint}</span>
         </Link>)}
       </nav>
-      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="space-y-4">
         <Panel>
-          <PanelHeader title={queue.label} description="Abra a obra para consultar as peças ou seguir com a próxima ação." />
+          <PanelHeader title={queue.label} description={preview ? "Cópia de consulta. Compare o andamento, o saldo e a próxima ação de cada obra." : "Abra a obra para consultar as peças ou seguir com a próxima ação."} />
           <PanelBody>
-            {queue.items.slice(0, 5).map(renderRow)}
-            {queue.items.length > 5 && <details><summary className="cursor-pointer py-3 text-sm font-semibold">Ver mais {queue.items.length - 5} obras</summary>{queue.items.slice(5).map(renderRow)}</details>}
-            {!queue.items.length && <p className="text-sm text-muted-foreground">Nenhuma obra nesta fila.</p>}
+            <form action="/tecnico" className="mb-4 flex flex-wrap gap-2"><input type="hidden" name="fila" value={queue.key}/><label htmlFor="dashboard-search" className="sr-only">Buscar obra ou cliente</label><input key={query} id="dashboard-search" name="q" defaultValue={query} placeholder="Buscar número da obra ou cliente" className="min-h-11 min-w-48 flex-1 rounded-lg border px-3 text-sm"/><button type="submit" className="rounded-lg bg-charcoal px-4 py-2 text-sm font-semibold text-white">Buscar</button>{query && <Link className="px-3 py-2 text-sm underline" href={"/tecnico?fila="+queue.key}>Limpar</Link>}</form>
+            <div className="mb-3 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground"><span>{visibleRows.length} obra(s) nesta seleção</span><span>{visibleRows.reduce((sum,r)=>sum+r.progress.balance,0)} peças a liberar · {visibleRows.reduce((sum,r)=>sum+r.ready,0)} liberadas sem PROD</span></div>
+            <div className="hidden grid-cols-[minmax(220px,1.5fr)_minmax(160px,1fr)_minmax(180px,1fr)_minmax(200px,1.2fr)] gap-4 rounded-lg bg-slate-50 px-2 py-3 text-xs font-semibold uppercase tracking-wide text-slate-600 lg:grid"><span>Obra e cliente</span><span>Liberação e PROD</span><span>Responsável · Prazo</span><span>Próxima ação</span></div>
+            {visibleRows.slice(0, 10).map(renderRow)}
+            {visibleRows.length > 10 && <details><summary className="cursor-pointer py-3 text-sm font-semibold">Ver mais {visibleRows.length - 10} obras</summary>{visibleRows.slice(10).map(renderRow)}</details>}
+            {!visibleRows.length && <p className="py-5 text-sm text-muted-foreground">Nenhuma obra nesta fila.</p>}
+
           </PanelBody>
         </Panel>
 
@@ -259,7 +274,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
                 <div className="flex flex-wrap justify-between gap-2 py-2 text-sm" key={contract.id}>
                   {canOpen ? <Link href={"/tecnico/contratos/" + contract.id} className="hover:underline">{contract.contract_number} · {client?.name ?? contract.work_name}</Link> :
                     <span>{contract.contract_number} · {client?.name ?? contract.work_name}</span>}
-                  <span className="text-muted-foreground">{formatDate(technical?.created_at)}</span>
+                  <span className="text-muted-foreground">{formatDate(technical?.created_at?.slice(0,10))}</span>
                 </div>)}
               {!overviews.some(item => item.technical?.created_at) && <p className="text-sm text-muted-foreground">Nenhum cadastro com data disponível.</p>}
             </div>          </PanelBody>
@@ -274,7 +289,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
         <StatCard label="Visitas hoje" value={metrics.visitsToday} icon={CalendarDays} tone="accent" href="/tecnico/agenda" />
         <StatCard label="Próximas visitas" value={metrics.upcomingVisits} icon={CalendarDays} href="/tecnico/agenda" />
         <StatCard label="Visitas aguardando relatório" value={metrics.visitsWaitingReport} icon={ClipboardList} tone="warning" href="/tecnico/agenda" />
-        <StatCard label="Peças aguardando liberação" value={metrics.piecesWaitingRelease} icon={PackageCheck} href="/tecnico/contratos" />
+        <StatCard label="Peças aguardando liberação" value={rows.reduce((sum,row)=>sum+row.progress.balance,0)} icon={PackageCheck} href="/tecnico/contratos" />
         <StatCard label="PRODs aguardando conferência" value={metrics.prodsWaitingCheck} icon={Factory} href="/tecnico/prods" />
         <StatCard label="PRODs aguardando aprovação" value={metrics.prodsWaitingApproval} icon={CheckCircle2} tone="accent" href="/tecnico/prods" />
         <StatCard label="Confirmações pendentes" value={metrics.pendingConfirmations} icon={PackageCheck} tone="warning" href="/tecnico/prods" />
@@ -283,7 +298,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
 
       </section>
       <p className="text-xs text-muted-foreground">
-        Fonte atual: {snapshot.source === "empty" ? "Supabase não configurado ou sem dados" : "Supabase"}.
+        Fonte atual: {preview ? "Cópia de consulta das obras oficiais" : snapshot.source === "empty" ? "Supabase não configurado ou sem dados" : "Supabase"}.
       </p>
     </div>
   );

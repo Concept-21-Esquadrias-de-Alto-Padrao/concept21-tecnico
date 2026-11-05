@@ -75,7 +75,7 @@ function emptySnapshot(): TechnicalSnapshot {
   };
 }
 
-function filterSnapshotToVisibleContracts(snapshot: TechnicalSnapshot) {
+export function filterSnapshotToVisibleContracts(snapshot: TechnicalSnapshot) {
   const deletedTechnicalContractIds = new Set(
     snapshot.technicalContracts
       .filter((technical) => Boolean(technical.deleted_at))

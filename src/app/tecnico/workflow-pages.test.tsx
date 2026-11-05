@@ -109,6 +109,19 @@ describe("meeting-first workflow pages", () => {
     expect(html).toMatch(/Aguardando pasta<[^>]+>[\s\S]*?>0<\/p>/);
     await preview("dashboard", html);
   });
+  it("counts pending quantities consistently across all active piece statuses", async () => {
+    snapshot.pieces = [
+      {contract_id:"contract", status:"cadastrada", quantity:10},
+      {contract_id:"contract", status:"medida", quantity:3},
+      {contract_id:"contract", status:"liberada", quantity:2},
+      {contract_id:"contract", status:"cancelada", quantity:90},
+      {contract_id:"contract", status:"medida", quantity:50, deleted_at:"2026-11-01"},
+    ] as TechnicalSnapshot["pieces"];
+    const html = renderToStaticMarkup(await DashboardPage({}));
+    expect(html).toContain("13 peças a liberar");
+    expect(html).toMatch(/Peças aguardando liberação<[^>]+>[\s\S]*?>13<\/p>/);
+    expect(html).toContain("de 15 peças liberadas");
+  });
   it("consolidates actions and corrections into a single dashboard counter", async () => {
     snapshot.actions = [{
       id: "action-open", contract_id: "contract", title: "Ação aberta", description: "Descrição",
@@ -132,7 +145,7 @@ describe("meeting-first workflow pages", () => {
     expect(await renderQueue()).toContain("Sem medição agendada · 1 peça(s) a liberar");
     snapshot.visits[0].status = "agendada";
     snapshot.visits[0].visit_type = "Orientação";
-    expect(await renderQueue()).toContain("Agendar medição ↗");
+    expect(await renderQueue()).toContain("Agendar medição →");
     snapshot.visits[0].visit_type = "Orientação e Medição";
     expect(await renderQueue()).toContain("Nenhuma obra nesta fila.");
   });
@@ -140,7 +153,8 @@ describe("meeting-first workflow pages", () => {
     snapshot.actions = [{contract_id: "contract", title: "Confirmar acabamento", responsible_profile_id: "me", status: "aberta", due_date: "2026-11-06"}] as TechnicalSnapshot["actions"];
     const html = renderToStaticMarkup(await DashboardPage({}));
     expect(html).toContain("Confirmar acabamento");
-    expect(html).toContain("Responsável: Participante de teste · Prazo: 06/11/2026");
+    expect(html).toContain("Responsável: Participante de teste");
+    expect(html).toContain("Prazo: 06/11/2026");
   });
   it("shows partial works only in the remaining balance queue even with no appointment", async () => {
     snapshot.technicalContracts[0].commercial_folder_received = true;
