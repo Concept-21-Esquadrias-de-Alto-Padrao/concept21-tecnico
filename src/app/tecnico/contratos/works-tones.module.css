@@ -1,0 +1,51 @@
+/* Palette scoped to Obras, matching the approved dashboard. */
+.works {
+  --accent: #304b65;
+  --accent-foreground: #ffffff;
+  --charcoal: #243746;
+  --foreground: #243746;
+  --muted-foreground: #5b626b;
+  --border: #d6dee5;
+  --warning: #825c18;
+  --danger: #943f52;
+  --success: #2f725c;
+  color: var(--foreground);
+}
+:global(body):has(.works) > :global(div.min-h-screen) { background: #f1f4f7; }
+:global(body):has(.works) :global(header) { border-bottom-color: #ced7de; }
+:global(body):has(.works) :global(header nav a[aria-current="page"]) {
+  color: #243746; background: #e6eef5; box-shadow: inset 0 -2px #304b65;
+}
+.works :global(h1), .works :global(h2), .works :global(h3) { letter-spacing: -.02em; }
+.works > div:first-child > div:first-child > p:first-child { color: #5b544d; letter-spacing: .12em; }
+.works :global(section) { border-radius: 12px; }
+.works :global(section.shadow-sm) { box-shadow: 0 2px 6px #24374605; }
+.works :global([data-dashboard-row]) { padding-inline: 8px; transition: background-color 120ms; }
+.works :global([data-dashboard-row]:hover), .works :global(tbody tr:hover) { background: #f6f8fa; }
+.works :global(thead), .works :global(.bg-slate-50) { background-color: #f1f4f7; }
+.works :global(.text-orange-800), .works :global(.text-orange-900) { color: #304b65; }
+.works :global(.bg-orange-50), .works :global(.bg-orange-100) { background-color: #e6eef5; }
+.works :global(.border-orange-400), .works :global(.border-orange-200) { border-color: #8da3b5; }
+.works :global(.bg-emerald-600) { background-color: #3f806c; }
+.works :global(.text-red-700) { color: #943f52; }
+.works :global(.bg-warning) { background: #f6eedc; color: #765214; }
+.works :global(.bg-danger) { background: #f8e9ed; color: #943f52; }
+.works :global(.bg-success) { background: #e8f2ed; color: #2f725c; }
+.works :global(section[aria-label="Indicadores por etapa"] .bg-charcoal),
+.works :global(section[aria-label="Indicadores por etapa"] .bg-accent) { background: #e6eef5; color: #304b65; }
+.works :global(a:focus-visible), .works :global(button:focus-visible),
+.works :global(input:focus-visible), .works :global(summary:focus-visible),
+:global(body):has(.works) :global(header a:focus-visible) { outline: 2px solid #304b65; outline-offset: 3px; }
+.works ::selection { background: #d4e2ee; color: #243746; }
+@media (prefers-reduced-motion: reduce) { .works :global(*) { transition: none; } }
+
+.works :global(nav[aria-label="Filtrar carteira de obras"] button[aria-pressed="true"]) { background: #304b65; border-color: #304b65; color: #fff; }
+.works :global(nav[aria-label="Filtrar carteira de obras"] button:hover) { border-color: #8da3b5; }
+.works :global(input:focus), .works :global(select:focus) { border-color: #304b65; }
+.works :global(a.font-semibold:hover) { color: #304b65; }
+.works :global(a.bg-accent:hover) { background: #243746; color: #fff; }
+.works :global(.bg-red-50) { background: #f8e9ed; }
+.works :global(.text-red-800) { color: #943f52; }
+.works :global(.bg-amber-50) { background: #f6eedc; }
+.works :global(.text-amber-900) { color: #765214; }
+.works :global(select:focus-visible) { outline: 2px solid #304b65; outline-offset: 3px; }

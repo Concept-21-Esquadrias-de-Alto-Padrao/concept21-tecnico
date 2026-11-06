@@ -1,3 +1,4 @@
+import styles from "./works-tones.module.css";
 import { readDashboardPreview } from "@/lib/dashboard-preview";
 import { ClipboardList } from "lucide-react";
 import { redirect } from "next/navigation";
@@ -32,12 +33,12 @@ export default async function TechnicalContractsPage() {
   const canManualCreate = access.isMaster || Boolean(access.permissions["technical.contracts.manual_create"]);
 
   return (
-    <div className="space-y-4">
+    <div className={`${styles.works} space-y-4`}>
       {preview && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm"><strong>Homologação · Obras reais em consulta.</strong> Cópia de {new Date(preview.capturedAt).toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo"})}. Busca, filtros e ordenação disponíveis. Cadastro e abertura das obras desabilitados nesta cópia.</p>}
       <PageHeader
-        title="Obras"
+        title="Contratos"
         description="Encontre a obra, compare as liberações e acompanhe o que ainda precisa avançar."
-        actions={preview ? <button disabled className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-white opacity-70" title="Cadastro desabilitado na cópia de consulta">+ Adicionar obra</button> : (canImport || canManualCreate) ? (
+        actions={preview ? <button disabled className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-white opacity-70" title="Cadastro desabilitado na cópia de consulta">+ Adicionar contrato</button> : (canImport || canManualCreate) ? (
           <ContractCreateActions
             canImport={canImport}
             canManualCreate={canManualCreate}

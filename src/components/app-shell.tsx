@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/tecnico", label: "Painel", icon: Home, permissions: MODULE_ACCESS.dashboard },
   { href: "/tecnico/minhas-atividades", label: "Meu trabalho", icon: UserRoundCheck, permissions: MODULE_ACCESS.myActivities },
-  { href: "/tecnico/contratos", label: "Obras", icon: ClipboardList, permissions: MODULE_ACCESS.contracts },
+  { href: "/tecnico/contratos", label: "Contratos", icon: ClipboardList, permissions: MODULE_ACCESS.contracts },
   { href: "/tecnico/agenda", label: "Agenda", icon: CalendarDays, permissions: MODULE_ACCESS.agenda },
   { href: "/tecnico/acoes", label: "Ações", icon: CheckSquare, permissions: MODULE_ACCESS.actions },
   { href: "/tecnico/prods", label: "PRODs", icon: Factory, permissions: MODULE_ACCESS.prods },
