@@ -457,9 +457,14 @@ async function loadTechnicalSnapshot(
   }
 }
 
+export async function getFolderWorkflowData() {
+ return loadTechnicalSnapshot(includeKeys(["dashboardHolidays","clients","profiles","contracts","technicalContracts","pieces","releases","releasePieces","prodBatches"]));
+}
+
 export async function getTechnicalDashboardData() {
   return loadTechnicalSnapshot(
     includeKeys([
+      "releases", "releasePieces",
       "dashboardHolidays",
       "clients",
       "profiles",

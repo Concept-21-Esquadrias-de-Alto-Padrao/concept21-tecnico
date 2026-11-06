@@ -5,7 +5,7 @@ import type { ProductionContract, TechnicalAction, TechnicalContract, TechnicalC
 
 export type MyActivity = {
   id: string;
-  kind: "receipt" | "action" | "correction" | "stage_signature" | "release_signature";
+  kind: "folder_send" | "folder_receive" | "prod_issue" | "receipt" | "action" | "correction" | "stage_signature" | "release_signature";
   title: string;
   contractId: string;
   contractNumber: string;
@@ -17,9 +17,11 @@ export type MyActivity = {
   linkLabel: string;
   blocking: boolean;
   pieceLabels?: string[];
+  ownerName?: string;
 };
 
 export const activityKindLabels: Record<MyActivity["kind"], string> = {
+  folder_send: "Envio de pasta", folder_receive: "Recebimento de pasta", prod_issue: "Emissão de PROD",
   receipt: "Recebimento comercial", action: "Ação geral", correction: "Correção técnica",
   stage_signature: "Assinatura de etapa", release_signature: "Assinatura de lote",
 };

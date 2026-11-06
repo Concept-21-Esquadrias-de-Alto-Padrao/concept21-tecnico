@@ -179,15 +179,20 @@ describe("meeting-first workflow pages", () => {
     granted.shift();
     expect(await queue("parcial")).not.toContain("Informar ou alterar previsão");
   });
-  it("uses the oldest eligible release and skips a holiday for the PROD deadline", async () => {
+  it("uses confirmed folder receipt rather than release for the PROD deadline", async () => {
     snapshot.technicalContracts[0].company_id = "company";
+    snapshot.contracts[0].company_id = "company";
     snapshot.dashboardHolidays = [{company_id: "company", holiday_date: "2026-11-02"}];
     snapshot.pieces = [
-      {contract_id: "contract", status: "liberada", released_at: "2026-10-28"},
+      {id:"p1",contract_id: "contract", status: "liberada", released_at: "2026-10-28"},
       {contract_id: "contract", status: "liberada", released_at: "2026-10-30"},
     ] as TechnicalSnapshot["pieces"];
     const html = renderToStaticMarkup(await DashboardPage({ searchParams: Promise.resolve({ fila: "prod" }) }));
-    expect(html).toContain("Prazo: 05/11/2026");
+    expect(html).not.toContain("Prazo: 05/11/2026");
+    snapshot.releases=[{id:"r1",company_id:"company",contract_id:"contract",release_date:"2026-10-28",status:"validado",folder_handoff:{sent_date:"2026-10-29",received_date:"2026-10-30"}}] as TechnicalSnapshot["releases"];
+    snapshot.releasePieces=[{release_id:"r1",piece_id:"p1"}] as TechnicalSnapshot["releasePieces"];
+    const received=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({fila:"prod"})}));
+    expect(received).toContain("Prazo: 09/11/2026");
   });
   it("shows visit time and work name in the upcoming agenda", async () => {
     const scheduled = new Date();

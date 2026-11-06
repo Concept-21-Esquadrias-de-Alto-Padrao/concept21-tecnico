@@ -1,3 +1,5 @@
+import {ReleaseFolderHandoff} from "@/components/release-folder-handoff";
+import {releaseFolderDeadlines} from "@/lib/release-folder";
 import { WorkVisits } from "@/components/work-visits";
 import { ProdPieceDesk } from "@/components/prod-piece-desk";
 import { MeasurementDesk } from "@/components/measurement-desk";
@@ -1993,6 +1995,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         </div>
       </FlowStep>
       <WorkArea id="lotes"><section id="lotes" className="space-y-3 rounded-xl border bg-white p-4"><div className="flex flex-wrap items-center justify-between"><h2 className="text-lg font-semibold">Lotes de liberação</h2><a href="#pecas" className="text-sm font-semibold underline">Voltar às peças e medidas</a></div>
+          <ReleaseFolderHandoff releases={releases} profiles={snapshot.profiles} actorId={authContext.profile.id} canSend={Boolean(canManageVisits)} canReceive={Boolean(canManageProds)} holidays={holidays??[]} today={today}/>
           <ReleaseBatchList
             releases={byReleaseDay}
             releasePiecesByReleaseId={releasePiecesByReleaseId}
@@ -2021,6 +2024,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         )}
         locked={prodsValidation.complete || approvedOrDeliveredProds.length > 0}
       >
+        <ReleaseFolderHandoff releases={releases} profiles={snapshot.profiles} actorId={authContext.profile.id} canSend={Boolean(canManageVisits)} canReceive={Boolean(canManageProds)} holidays={holidays??[]} today={today}/>
         <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
                     <ProdPieceDesk contractId={id} editable={canManageProds}
             rows={piecePlan.map(({piece,released:isReleased})=>{
@@ -2030,7 +2034,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               const blocked=activeCorrections.some(c=>c.piece_id===piece.id&&c.blocking)||structuralActionsByPieceId.has(piece.id);
               const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm?"Medida pendente":"";
               return {id:piece.id,code:piece.code,environment:piece.environment||"—",model:piece.piece_type||piece.description||"—",qty:piece.quantity??1,
-                lot:batch?batchLabel(batch):"",released:piece.released_at?.slice(0,10)||"",due:piece.released_at&&holidays?addDeadlineDays({startDate:piece.released_at.slice(0,10),days:5,unit:"dias_uteis",holidays})||"":"",
+                lot:batch?batchLabel(batch):"",released:piece.released_at?.slice(0,10)||"",due:batch?releaseFolderDeadlines(batch,holidays??[]).issueDue||"":"",
                 issued:item ? prod?.cem_report?.issued ?? "" : "",prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:item?item.width+" × "+item.height:""};
             })}/>
 

@@ -1,3 +1,5 @@
+import {buildFolderWorkflow,folderStages} from "./folder-workflow";
+import {getFolderWorkflowData} from "./technical-data";
 import "server-only";
 import { buildMyActivities, type MyActivitiesSource } from "@/lib/my-activities";
 import { canAccessModule, getWorkItemPermissions, MODULE_ACCESS, TECHNICAL_PERMISSIONS } from "@/lib/module-access";
@@ -82,5 +84,7 @@ export async function getMyActivities() {
       oneOf: { column: "contract_id", values: [...new Set(stageParticipants.filter((row) => row.stage === "entrada_comercial").map((row) => row.contract_id))] },
     }),
   ]);
-  return buildMyActivities({ contracts, technicalContracts, actions, corrections, validations, stageParticipants, releaseParticipants, releases, completedMeetings, performedVisits, openActions, openCorrections, approvedProds, openDoubts, meetingSignatures }, { companyId, profileId }, access);
+  const existing = buildMyActivities({ contracts, technicalContracts, actions, corrections, validations, stageParticipants, releaseParticipants, releases, completedMeetings, performedVisits, openActions, openCorrections, approvedProds, openDoubts, meetingSignatures }, { companyId, profileId }, access);
+  const folders = canSign ? buildFolderWorkflow(await getFolderWorkflowData()).filter(r=>r.release.company_id===companyId && r.ownerId===profileId && r.stage!=="done") : [];
+  return [...existing,...folders.map(r=>({id:`folder-${r.release.id}-${r.stage}`,kind:(r.stage==="send"?"folder_send":r.stage==="receive"?"folder_receive":"prod_issue") as "folder_send"|"folder_receive"|"prod_issue",title:folderStages[r.stage]+" · "+(r.release.batch_number??"Lote"),contractId:r.contract.id,contractNumber:r.contract.contract_number,workName:r.client,ownerName:r.owner,dueDate:r.due?r.due+"T17:30:00-03:00":null,available:access.isMaster||Boolean(access.permissions[r.stage==="send"?"technical.visits.manage":"technical.prods.manage"]),blocking:false,nextStep:r.stage==="send"?"Encaminhar a pasta em até três dias úteis da liberação.":r.stage==="receive"?"Confirmar quando a pasta estiver em suas mãos. O prazo de emissão ainda não começou.":"Emitir o saldo do lote em até cinco dias úteis do recebimento.",href:r.href,linkLabel:"Abrir pasta e PRODs",pieceLabels:r.pending.map(p=>[p.code,p.environment,p.piece_type].filter(Boolean).join(" · "))}))].sort((a,b)=>(a.dueDate??"9999").localeCompare(b.dueDate??"9999")||a.id.localeCompare(b.id));
 }

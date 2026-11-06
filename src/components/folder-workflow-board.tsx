@@ -1,0 +1,19 @@
+"use client";
+import {useState} from 'react';
+import Link from 'next/link';
+import type {FolderWorkflowRow} from '@/lib/folder-workflow';
+import {folderStages} from '@/lib/folder-workflow';
+import {formatDate} from '@/lib/utils';
+export function FolderWorkflowBoard({rows,compact=false}:{rows:FolderWorkflowRow[];compact?:boolean}){
+ const [stage,setStage]=useState('all');const [q,setQ]=useState('');
+ const normalize=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ const visible=rows.filter(r=>(stage==='all'?(!compact||r.stage!=='done'):r.stage===stage)&&normalize(r.contract.contract_number+' '+r.client+' '+r.release.batch_number+' '+r.owner).includes(normalize(q)));
+ return <section className="rounded-xl border border-border bg-white p-5 space-y-4" aria-label="Pasta e emissão por lote">
+ <div><h2 className="text-lg font-semibold">Da liberação à emissão</h2><p className="text-sm text-muted-foreground">3 dias úteis para encaminhar a pasta. 5 dias úteis para emitir após o recebimento. Vencimentos às 17h30.</p></div>
+ <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">{(['send','receive','issue','done'] as const).map(k=><button key={k} onClick={()=>setStage(stage===k?'all':k)} aria-pressed={stage===k} className={'rounded-lg border p-3 text-left '+(stage===k?'border-orange-400 bg-orange-50':'border-slate-200 hover:bg-slate-50')}><span className="block text-xs">{folderStages[k]}</span><strong className="text-xl">{rows.filter(r=>r.stage===k).length}</strong><span className="ml-2 text-xs">lote(s)</span></button>)}</div>
+ <div className="flex flex-wrap gap-3"><input aria-label="Buscar obra, lote ou responsável" placeholder="Buscar obra, lote ou responsável" type="search" value={q} onChange={e=>setQ(e.target.value)} className="min-w-0 flex-1 rounded-lg border p-2 text-sm"/><button className="text-sm underline" onClick={()=>{setStage('all');setQ('');}}>Limpar filtros</button></div>
+ <div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Prazos e responsáveis por lote de liberação</caption><thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Obra / lote','Próxima ação / responsável','Liberação','Envio da pasta','Recebimento','Emitir até','Emissão realizada / saldo'].map(c=><th key={c} className="p-3">{c}</th>)}</tr></thead><tbody>{visible.map(r=><tr key={r.release.id} className="border-t align-top"><td className="p-3"><Link className="font-semibold hover:underline" href={r.href}>{r.contract.contract_number} · {r.client}</Link><p className="mt-1 text-xs">{r.release.batch_number??'Lote'} · {r.pieces.reduce((s,p)=>s+(p.quantity??1),0)} peça(s)</p></td><td className="p-3"><Link href={r.href} className="font-medium text-orange-800 hover:underline">{folderStages[r.stage]} →</Link><p className="text-xs mt-1">{r.owner}</p>{r.stage==='send'&&<p className="mt-1 text-xs">Encaminhar até {formatDate(r.sendDue)}</p>}</td><td className="p-3 whitespace-nowrap">{formatDate(r.release.release_date)}</td><td className="p-3">{r.release.folder_handoff?.sent_date?formatDate(r.release.folder_handoff.sent_date):'Não registrado'}</td><td className="p-3">{r.release.folder_handoff?.received_date?formatDate(r.release.folder_handoff.received_date):'Aguardando'}</td><td className="p-3">{r.issueDue?formatDate(r.issueDue):'Prazo ainda não iniciado'}</td><td className="p-3">{r.prods.map(p=><p key={p.id}>{p.batch_number} · {p.cem_report?.issued?formatDate(p.cem_report.issued):'Data do relatório não informada'}</p>)}<strong className="text-xs">{r.pending.reduce((s,p)=>s+(p.quantity??1),0)} peça(s) a emitir</strong></td></tr>)}</tbody></table></div>
+ {!visible.length&&<p className="text-sm text-muted-foreground">Nenhum lote nesta situação.</p>}
+ <p className="text-xs text-muted-foreground">Sem registro histórico, o sistema não presume recebimento. A entrega das esquadrias mantém seu prazo próprio.</p>
+ </section>;
+}

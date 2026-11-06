@@ -1,4 +1,5 @@
 "use server";
+import {z} from "zod";
 
 import { randomUUID } from "node:crypto";
 import { receiptDueAt, readReceipt, type CommercialReceipt } from "@/lib/commercial-receipt";
@@ -5000,4 +5001,25 @@ export async function approveProdBatchFormAction(formData: FormData) {
 
 export async function confirmDepartmentDeliveryFormAction(formData: FormData) {
   await confirmDepartmentDeliveryAction(formData);
+}
+
+export async function releaseFolderStepAction(_:ActionState,formData:FormData){
+ try {
+  const step=String(formData.get('step')??'');
+  if(!['send','receive'].includes(step)) throw new Error('Operação inválida.');
+  const context=await getActionContext(step==='send'?'technical.visits.manage':'technical.prods.manage');
+  const rid=z.string().uuid().parse(formData.get('release_id'));
+  const effective=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(formData.get('effective'));
+  const recipient=step==='send'?z.string().uuid().parse(formData.get('recipient')):null;
+  if(recipient){
+   const {data:target}=await context.admin.from('profiles').select('is_master').eq('id',recipient).eq('company_id',context.companyId).eq('status','active').single();
+   if(!target||(!target.is_master&&!await hasContextPermission({...context,profileId:recipient,isMaster:false},'technical.prods.manage')))throw new Error('O destinatário precisa ter permissão para emitir PRODs.');
+  }
+  const {data:release,error:readError}=await context.admin.from('technical_releases').select('contract_id').eq('company_id',context.companyId).eq('id',rid).single();
+  if(readError||!release) throw new Error('Lote não encontrado.');
+  const {error}=await context.admin.rpc('technical_release_folder_step',{co:context.companyId,rid,actor:context.profileId,step,effective,recipient});
+  if(error)throw error;
+  revalidateTechnical(release.contract_id);
+  return ok(step==='send'?'Pasta enviada. Aguardando confirmação do destinatário.':'Recebimento confirmado. Prazo de emissão iniciado.');
+ }catch(error){return fail(error);}
 }

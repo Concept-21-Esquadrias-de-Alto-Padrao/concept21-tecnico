@@ -1,3 +1,5 @@
+import {FolderWorkflowBoard} from "@/components/folder-workflow-board";
+import {buildFolderWorkflow} from "@/lib/folder-workflow";
 import { readDashboardPreview } from "@/lib/dashboard-preview";
 import { readReceipt } from "@/lib/commercial-receipt";
 import { releasePlan } from "@/lib/release-planning";
@@ -46,6 +48,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
 
   const preview = await readDashboardPreview(access.isMaster);
   const snapshot = preview?.snapshot ?? await getTechnicalDashboardData();
+  const folderRows=buildFolderWorkflow(snapshot);
   const workItemPermissions = getWorkItemPermissions(access);
   const workItems = buildTechnicalWorkItems(
     workItemPermissions.canViewActions ? snapshot.actions : [],
@@ -135,10 +138,8 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     const action = (title: string, owner: string, target: string, date?: string | null) => ({title, owner, target, date: date?.slice(0,10)});
     const schedule = action("Agendar medição", "Obras · Agendamento", "#visitas");
     const holidays = snapshot.dashboardHolidays?.filter(h => h.company_id === technical?.company_id).map(h => ({ date: h.holiday_date }));
-    const release = overview.pieces.filter(p => !p.deleted_at && p.status === "liberada" && !p.active_prod_batch_id && p.released_at)
-      .map(p => p.released_at!).sort()[0];
-    const issueDate = release && holidays ? addDeadlineDays({startDate: release.slice(0,10), days: 5, unit: "dias_uteis", holidays}) : null;
-    const issue = action("Emitir PROD das peças liberadas", profileName(technical?.technical_manager_profile_id) ?? "Técnico · Emissão", "#prods", issueDate);
+    const folder=folderRows.filter(r=>r.contract.id===contract.id&&r.stage!=='done').sort((a,b)=>(a.due??'9999').localeCompare(b.due??'9999'))[0];
+    const issue=folder?action(folder.stage==='send'?'Encaminhar pasta dos lotes liberados':folder.stage==='receive'?'Confirmar recebimento da pasta':'Emitir PROD das peças liberadas',folder.owner,'#prods',folder.due):action('Conferir vínculo das peças com o lote','Obras · Repasse','#prods');
     function nextAction() {
       if (queue.key === "parcial") {
         const pending = row.plan.filter(i => !i.released);
@@ -281,6 +282,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
         </Panel>
       </div>
 
+      {!preview && <FolderWorkflowBoard rows={folderRows} compact />}
       <section aria-label="Indicadores por etapa"><h2 className="mb-3 text-lg font-semibold">Indicadores por etapa</h2>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Aguardando reunião" value={metrics.waitingMeeting} icon={CalendarDays} tone="warning" href="/tecnico/contratos" />

@@ -382,6 +382,7 @@ export type TechnicalVisitPiece = {
 };
 
 export type TechnicalRelease = {
+  folder_handoff?: import("./release-folder").ReleaseFolder | null;
   id: string;
   company_id: string;
   contract_id: string;

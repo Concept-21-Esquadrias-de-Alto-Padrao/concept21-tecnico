@@ -61,6 +61,7 @@ export function MyActivitiesView({ items, loading, error, refresh }: {
                     {item.blocking ? <span className="rounded-md bg-red-50 px-2 py-1 text-red-800">Bloqueante</span> : null}
                   </div>
                 </div>
+                {item.ownerName && <p className="text-sm text-muted-foreground">Responsável: {item.ownerName}</p>}
                 {Boolean(item.pieceLabels?.length) && <ul className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{item.pieceLabels!.map(label=><li key={label}>{label}</li>)}</ul>}
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 text-sm">
                   <div className="min-w-0 flex-1 basis-64 break-words"><p className="text-muted-foreground">{item.nextStep}</p>{item.dueDate ? <p className={cn("mt-1 flex items-center gap-1.5 text-xs", overdue ? "text-danger" : "text-muted-foreground")}><Clock3 className="size-3.5" /> Prazo: {item.dueDate.includes("T") ? `${formatDateTime(item.dueDate)} · Brasília` : formatDate(item.dueDate)}</p> : null}</div>

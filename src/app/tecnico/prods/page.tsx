@@ -1,3 +1,5 @@
+import {FolderWorkflowBoard} from "@/components/folder-workflow-board";
+import {buildFolderWorkflow} from "@/lib/folder-workflow";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -35,6 +37,7 @@ export default async function TechnicalProdsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="PRODs Técnicos" description="Montagem, conferência, aprovação, entregas e confirmações departamentais." />
+      <FolderWorkflowBoard rows={buildFolderWorkflow(snapshot)} />
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Panel>
           <PanelHeader title="Lotes PROD" />
