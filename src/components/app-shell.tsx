@@ -14,6 +14,7 @@ import {
   UserRoundCheck,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
@@ -102,8 +103,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-30 border-b border-border/70 bg-white/95 backdrop-blur">
           <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:px-8">
             <Link href="/tecnico" className="flex min-h-11 shrink-0 items-center gap-3" aria-label="Concept21 · Painel Técnico">
-              <span className="grid size-10 place-items-center rounded-xl bg-accent text-sm font-black text-charcoal">C21</span>
-              <span className="text-sm font-semibold leading-tight">Concept21<span className="block text-xs font-normal text-muted-foreground">Técnico</span></span>
+              <span className="flex flex-col gap-1">
+                <Image src="/brand/concept21-aluminium.png" alt="Concept21 Aluminium" width={660} height={104} priority className="h-auto w-[148px] sm:w-[176px]" />
+                <span className="text-[11px] font-medium tracking-wide text-muted-foreground">Sistema Técnico</span>
+              </span>
             </Link>
             <div className="ml-auto flex items-center gap-2 lg:order-3 lg:ml-0">
               <NotificationsBell /><CurrentUserMenu />

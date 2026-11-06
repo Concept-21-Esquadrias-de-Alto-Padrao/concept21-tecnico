@@ -1,0 +1,40 @@
+/* Palette scoped to the dashboard; operations and other routes stay unchanged. */
+.dashboard {
+  --accent: #304b65;
+  --accent-foreground: #ffffff;
+  --charcoal: #243746;
+  --foreground: #243746;
+  --muted-foreground: #5b626b;
+  --border: #d6dee5;
+  --warning: #825c18;
+  --danger: #943f52;
+  --success: #2f725c;
+  color: var(--foreground);
+}
+:global(body):has(.dashboard) > :global(div.min-h-screen) { background: #f1f4f7; }
+:global(body):has(.dashboard) :global(header) { border-bottom-color: #ced7de; }
+:global(body):has(.dashboard) :global(header nav a[aria-current="page"]) {
+  color: #243746; background: #e6eef5; box-shadow: inset 0 -2px #304b65;
+}
+.dashboard :global(h1), .dashboard :global(h2), .dashboard :global(h3) { letter-spacing: -.02em; }
+.dashboard > div:first-child > div:first-child > p:first-child { color: #5b544d; letter-spacing: .12em; }
+.dashboard :global(section) { border-radius: 12px; }
+.dashboard :global(section.shadow-sm) { box-shadow: 0 2px 6px #24374605; }
+.dashboard :global([data-dashboard-row]) { padding-inline: 8px; transition: background-color 120ms; }
+.dashboard :global([data-dashboard-row]:hover), .dashboard :global(tbody tr:hover) { background: #f6f8fa; }
+.dashboard :global(thead), .dashboard :global(.bg-slate-50) { background-color: #f1f4f7; }
+.dashboard :global(.text-orange-800), .dashboard :global(.text-orange-900) { color: #304b65; }
+.dashboard :global(.bg-orange-50), .dashboard :global(.bg-orange-100) { background-color: #e6eef5; }
+.dashboard :global(.border-orange-400), .dashboard :global(.border-orange-200) { border-color: #8da3b5; }
+.dashboard :global(.bg-emerald-600) { background-color: #3f806c; }
+.dashboard :global(.text-red-700) { color: #943f52; }
+.dashboard :global(.bg-warning) { background: #f6eedc; color: #765214; }
+.dashboard :global(.bg-danger) { background: #f8e9ed; color: #943f52; }
+.dashboard :global(.bg-success) { background: #e8f2ed; color: #2f725c; }
+.dashboard :global(section[aria-label="Indicadores por etapa"] .bg-charcoal),
+.dashboard :global(section[aria-label="Indicadores por etapa"] .bg-accent) { background: #e6eef5; color: #304b65; }
+.dashboard :global(a:focus-visible), .dashboard :global(button:focus-visible),
+.dashboard :global(input:focus-visible), .dashboard :global(summary:focus-visible),
+:global(body):has(.dashboard) :global(header a:focus-visible) { outline: 2px solid #304b65; outline-offset: 3px; }
+.dashboard ::selection { background: #d4e2ee; color: #243746; }
+@media (prefers-reduced-motion: reduce) { .dashboard :global(*) { transition: none; } }

@@ -1,3 +1,4 @@
+import styles from "./dashboard-tones.module.css";
 import {FolderWorkflowBoard} from "@/components/folder-workflow-board";
 import {buildFolderWorkflow} from "@/lib/folder-workflow";
 import { readDashboardPreview } from "@/lib/dashboard-preview";
@@ -196,7 +197,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
           {row.measurement && progress.balance > 0 && <p className="text-xs text-green-800">Medição: {formatDate(row.measurement.scheduled_date)}</p>}
         </div>
         <div className="text-sm"><p className="font-medium">Responsável: {next.owner}</p><p className={next.date && next.date < today ? "font-medium text-red-700" : "text-muted-foreground"}>{next.date ? "Prazo: " + formatDate(next.date) : "Prazo a definir"}</p>{due && <p className="text-xs text-red-700">Atividade vencida</p>}</div>
-        <div>{canOpen ? <Link href={base + next.target} className="inline-flex min-h-10 items-center rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-900 hover:bg-orange-100">{next.title} →</Link> : <span className="inline-flex min-h-10 items-center rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-900">{next.title}</span>}</div>
+        <div>{canOpen ? <Link href={base + next.target} className="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100">{next.title} →</Link> : <span className="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">{next.title}</span>}</div>
       </div>
       {partial && <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm"><summary className="cursor-pointer py-2 font-medium">Saldo: {progress.balance} peças · {missing ? missing + " sem previsão" : dates.length ? "Próxima liberação: " + formatDate(dates[0]) : "Previsão a definir"}{revise > 0 && " · " + revise + " a reprogramar"}</summary><div className="pb-3">
         <p className="mb-1 font-semibold">Saldo a liberar · {progress.balance} de {progress.total} peças</p>{missing>0 && <p>Sem previsão: {missing} peça(s)</p>}<p className="mb-2">Já liberadas: {progress.released} de {progress.total}. A previsão não libera peças para fabricação.</p>
@@ -206,7 +207,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
     </article>;
   }
   return (
-    <div className="space-y-4">
+    <div className={styles.dashboard + " space-y-4"}>
       {preview && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950"><strong>Homologação · Obras reais em consulta.</strong> Cópia de {new Date(preview.capturedAt).toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo"})}. Filtros e busca disponíveis. Os lançamentos e atalhos das obras estão desabilitados nesta cópia; ela não atualiza o oficial.</p>}
       <PageHeader
         title="O que precisa avançar?"
@@ -214,7 +215,7 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
         actions={
           <Link
             href="/tecnico/contratos"
-            className="inline-flex min-h-11 items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-orange-500"
+            className="inline-flex min-h-11 items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:brightness-90"
           >
             <ClipboardList className="size-4" />
             Abrir contratos
@@ -225,8 +226,8 @@ export default async function TechnicalDashboardPage({ searchParams }: { searchP
       <nav aria-label="Filtrar obras por situação" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {queues.map(q => <Link key={q.key} href={"/tecnico?fila=" + q.key + (query ? "&q=" + encodeURIComponent(query) : "")} scroll={false}
           aria-current={q.key === queue.key ? "page" : undefined}
-          className={"rounded-xl border p-3 transition hover:border-orange-500 focus-visible:outline-2 " +
-            (q.key === queue.key ? "border-charcoal bg-charcoal text-white" : "border-border bg-white text-charcoal")}>
+          className={"rounded-xl border p-3 transition hover:border-slate-500 focus-visible:outline-2 " +
+            (q.key === queue.key ? "border-slate-500 bg-[#E6EEF5] text-[#243746]" : "border-border bg-white text-charcoal")}>
           <span className="block text-sm font-semibold">{q.label}</span>
           <strong className="my-1 block text-2xl tabular-nums">{q.items.length}</strong>
           <span className="text-xs">{q.hint}</span>
