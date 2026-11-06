@@ -1,3 +1,5 @@
+import detailStyles from "../works-tones.module.css";
+import {ContractDataEditor} from "@/components/contract-data-editor";
 import {ReleaseFolderHandoff} from "@/components/release-folder-handoff";
 import {releaseFolderDeadlines} from "@/lib/release-folder";
 import { WorkVisits } from "@/components/work-visits";
@@ -1543,7 +1545,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
   const canSplitPieces = (canMeasure || canRelease) && canOperatePieces;
 
   return (
-    <div className="space-y-6">
+    <div className={`${detailStyles.works} space-y-6`}>
       <PageHeader
         title={`${contract.contract_number} · ${client?.name ?? "Cliente"}`}
         description={`${contract.work_name} · ${contract.full_address}`}
@@ -1587,23 +1589,14 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
 
       <FlowStep
         id="dados-obra"
-        title="Dados da obra"
-        description="Dados gerais da obra e cadastro-base das peças contratadas."
+        title="Cadastro do contrato"
+        description="Informações comerciais, localização, contatos e prazos em um só lugar."
         status={`${pieces.length} peça(s)${canCorrectWorkData || canEditResponsibles || canRequestPieceChanges || canAuthorizePieceChanges ? " · edição controlada" : ""}`}
         locked={!canCorrectWorkData && !canEditResponsibles && !canRequestPieceChanges && !canAuthorizePieceChanges}
       >
-        <div className="space-y-4">
-          <ContractPiecesSummary
-            pieces={pieces}
-            pieceChangeRequestsByPieceId={pieceChangeRequestsByPieceId}
-            profiles={snapshot.profiles}
-            canRequestChanges={canRequestPieceChanges}
-            canAuthorizeChanges={canAuthorizePieceChanges}
-          />
-          <div className="grid gap-4 border-t border-border pt-4 xl:grid-cols-[1fr_1.1fr]">
-          <div className="rounded-md border border-border bg-white p-3 text-sm">
-                  {readReceipt(technical?.commercial_data) && <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm"><strong>{readReceipt(technical?.commercial_data)?.status === "completed" ? "Recebimento comercial conferido" : "Conferência do recebimento pendente"}</strong><p className="mt-1">{readReceipt(technical?.commercial_data)?.draft.notes}</p><Link href={`/tecnico/contratos/${id}/recebimento`} className="mt-2 inline-block font-semibold underline">{readReceipt(technical?.commercial_data)?.status === "completed" ? "Consultar conferência e histórico" : "Continuar conferência"}</Link></div>}
-<h3 className="font-semibold text-charcoal">Dados atuais</h3>
+        <div className="space-y-5">
+          <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+            <section className="rounded-xl border border-border bg-white p-6"><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Identificação e localização</p><h3 className="mt-2 text-xl font-semibold">{client?.name ?? "Cliente não informado"}</h3>
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
                 <dt className="text-xs font-semibold uppercase text-muted-foreground">Contrato</dt>
@@ -1639,54 +1632,49 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
                 <dt className="text-xs font-semibold uppercase text-muted-foreground">Telefone</dt>
                 <dd className="mt-1 text-charcoal">{contract.site_contact_phone ?? "-"}</dd>
               </div>
-              {technical?.commercial_data?.delivery_date_meaning !== "instalacao_concluida" && <>
-              <div>
-                <dt className="text-xs font-semibold uppercase text-muted-foreground">Técnico</dt>
-                <dd className="mt-1 text-charcoal">{profileName(snapshot.profiles, technical?.technical_manager_profile_id)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase text-muted-foreground">Acompanhamento</dt>
-                <dd className="mt-1 text-charcoal">{profileName(snapshot.profiles, technical?.followup_profile_id)}</dd>
-              </div>
-              </>}
             </dl>
+            </section>
+            <section className="rounded-xl border border-border bg-slate-50 p-6"><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Prazos do contrato</p>
             <div className="mt-4 border-t border-border pt-3">
               <h4 className="text-sm font-semibold">{technical?.commercial_data?.delivery_date_meaning === "instalacao_concluida" ? "Previsão de entrega comercial" : "Previsão de entrega registrada"}</h4>
               <p className="mt-1 text-sm">{contract.general_delivery_forecast ? formatDate(contract.general_delivery_forecast) : technical?.commercial_data?.delivery_date_unknown === true ? "Ainda não informada pelo cliente · alinhar na primeira visita" : "Não registrada"}</p>
               {technical?.commercial_data?.delivery_date_meaning === "instalacao_concluida" && <p className="mt-1 text-xs text-muted-foreground">Necessidade do cliente para as peças instaladas.</p>}
             </div>
+
+<div className="mt-5 rounded-lg border border-border bg-white p-4"><p className="text-xs text-muted-foreground">Prazo contratual</p><p className="mt-2 text-xl font-semibold">{technical?.contractual_deadline_value ? technical.contractual_deadline_value+" dias "+(technical.contractual_deadline_unit === "dias_uteis" ? "úteis" : "corridos") : "Não informado"}</p></div>
+            </section>
+          </div>
+          <section className="rounded-xl border border-border bg-white p-6"><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Pessoas e contatos</p>
             {Boolean(technical?.authorized_contacts?.length) && <div className="mt-4 border-t border-border pt-3">
               <h4 className="text-sm font-semibold">Responsáveis autorizados pela obra</h4>
-              <ul className="mt-2 space-y-2">{technical?.authorized_contacts.map((contact, index) => <li key={index} className="rounded-md bg-muted/40 p-2 text-sm">
+              <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{technical?.authorized_contacts.map((contact, index) => <li key={index} className="rounded-lg border border-border bg-slate-50 p-4 text-sm">
                 <span className="font-semibold">{String(contact.name ?? "Não informado")}</span>
                 <span className="block text-muted-foreground">{String(contact.role ?? "Função não informada")} · {String(contact.phone ?? "Contato não informado")}</span>
               </li>)}</ul>
             </div>}
+
+{!technical?.authorized_contacts?.length && <p className="mt-3 text-sm text-muted-foreground">Nenhum responsável autorizado registrado.</p>}
             {contract.notes ? (
               <p className="mt-3 border-t border-border pt-3 text-muted-foreground">
                 <span className="font-semibold text-charcoal">Observações:</span> {contract.notes}
               </p>
             ) : null}
-          </div>
 
-          <div className="space-y-4">
-            {technical && technical.commercial_data?.delivery_date_meaning !== "instalacao_concluida" && canEditResponsibles ? (
-              <ContractResponsiblesForm contract={technical} profiles={snapshot.profiles} />
-            ) : null}
-            {canCorrectWorkData ? (
-              <WorkDataCorrectionForm client={client} contract={contract} />
-            ) : (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                A correção dos dados da obra é restrita aos perfis autorizados pelo Administrador.
-              </div>
-            )}
-            {technical?.commercial_data?.delivery_date_meaning !== "instalacao_concluida" && !canEditResponsibles ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                A alteração de Técnico e Acompanhamento é restrita aos perfis autorizados pelo Administrador.
-              </div>
-            ) : null}
+          </section>
+                  {readReceipt(technical?.commercial_data) && <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm"><strong>{readReceipt(technical?.commercial_data)?.status === "completed" ? "Recebimento comercial conferido" : "Conferência do recebimento pendente"}</strong><p className="mt-1">{readReceipt(technical?.commercial_data)?.draft.notes}</p><Link href={`/tecnico/contratos/${id}/recebimento`} className="mt-2 inline-block font-semibold underline">{readReceipt(technical?.commercial_data)?.status === "completed" ? "Consultar conferência e histórico" : "Continuar conferência"}</Link></div>}
+          {canCorrectWorkData && <ContractDataEditor><WorkDataCorrectionForm client={client} contract={contract}/></ContractDataEditor>}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-white p-4"><div><h3 className="text-sm font-semibold">Histórico do contrato</h3><p className="mt-1 text-sm text-muted-foreground">Consulte alterações, responsáveis e datas dos registros.</p></div><a href="#historico" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold"><History className="size-4"/>Ver histórico</a></div>
+          {technical && technical.commercial_data?.delivery_date_meaning !== "instalacao_concluida" && <details className="rounded-xl border border-border bg-white p-4"><summary className="cursor-pointer text-sm text-muted-foreground">Responsáveis do cadastro anterior</summary><p className="my-3 text-sm text-muted-foreground">Registros preservados. Os responsáveis pelas atividades continuam definidos em cada tarefa.</p><p className="mb-3 text-sm">Técnico: {profileName(snapshot.profiles,technical.technical_manager_profile_id)} · Acompanhamento: {profileName(snapshot.profiles,technical.followup_profile_id)}</p>{canEditResponsibles && <ContractResponsiblesForm contract={technical} profiles={snapshot.profiles}/>}</details>}
+          <div className="border-t border-border pt-5">
+          <ContractPiecesSummary
+            pieces={pieces}
+            pieceChangeRequestsByPieceId={pieceChangeRequestsByPieceId}
+            profiles={snapshot.profiles}
+            canRequestChanges={canRequestPieceChanges}
+            canAuthorizeChanges={canAuthorizePieceChanges}
+          />
+
           </div>
-        </div>
         </div>
       </FlowStep>
 
