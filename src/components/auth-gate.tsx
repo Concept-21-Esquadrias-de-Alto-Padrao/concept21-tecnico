@@ -196,6 +196,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        if (process.env.NEXT_PUBLIC_CORPORATE_GATE_ENABLED === "true") {
+          const corporate = await fetch("/api/auth/corporate-access", {
+            method: "POST", headers: { Authorization: `Bearer ${session.data.session.access_token}` },
+            cache: "no-store",
+          });
+          if (corporate.status === 401 || corporate.status === 403) {
+            await signOut();
+            if (active) setState({ status: "error", message: "Acesso corporativo encerrado. Solicite revisão internamente." });
+            return;
+          }
+          if (!corporate.ok) throw new Error("Não foi possível validar o vínculo corporativo.");
+        }
         const access = await getCurrentUserAccess();
         if (!active) return;
 

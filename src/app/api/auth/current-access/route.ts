@@ -1,3 +1,4 @@
+import { checkCorporateAccess } from "@/lib/corporate-access-server";
 import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, hasSupabaseEnv } from "@/lib/supabase/server";
@@ -64,6 +65,13 @@ export async function GET() {
   if (userError || !user) {
     return NextResponse.json({ error: "Sessão não encontrada." }, { status: 401 });
   }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const corporateAccess = await checkCorporateAccess(session?.access_token ?? "");
+  if (corporateAccess !== "allowed") return NextResponse.json(
+    { error: corporateAccess === "revoked" ? "Acesso corporativo encerrado." : "Não foi possível validar o vínculo corporativo." },
+    { status: corporateAccess === "revoked" ? 403 : 503, headers: { "Cache-Control": "no-store" } },
+  );
 
   const admin = getSupabaseAdminClient();
   const { data: profileData, error: profileError } = await admin
@@ -175,5 +183,5 @@ export async function GET() {
     roles,
     permissions,
     maintenance,
-  });
+  }, { headers: { "Cache-Control": "private, no-store" } });
 }
