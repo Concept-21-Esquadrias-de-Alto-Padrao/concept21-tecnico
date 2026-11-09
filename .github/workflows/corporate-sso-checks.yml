@@ -28,3 +28,8 @@ jobs:
       - run: npx eslint src/lib/corporate* src/lib/server-access* src/lib/auth-client.ts src/app/auth/complete/route.ts src/app/api/auth src/app/api/internal/corporate-gate src/app/login/page.tsx src/components/auth-gate.tsx
       - run: npm test
       - run: npm run build
+        env:
+          # Build-only placeholders. No project credentials or live database.
+          NEXT_PUBLIC_SUPABASE_URL: https://ci.example.invalid
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-public-placeholder
+          SUPABASE_SERVICE_ROLE_KEY: ci-server-placeholder
