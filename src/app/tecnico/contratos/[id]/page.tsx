@@ -1,3 +1,4 @@
+import {MeasurementRequirementForm} from "@/components/measurement-requirement-form";
 import detailStyles from "../works-tones.module.css";
 import {ContractDataEditor} from "@/components/contract-data-editor";
 import {ReleaseFolderHandoff} from "@/components/release-folder-handoff";
@@ -859,7 +860,7 @@ function PieceActionForms({
         </div>
       ) : null}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {canMeasure ? (
+      {canMeasure && !piece.measurement_not_required ? (
         <ActionForm action={updatePieceMeasurementAction} submitLabel="Salvar medição" className="rounded-md bg-muted/40 p-3 xl:col-span-2">
           <input type="hidden" name="id" value={piece.id} />
           <Field label="Ambiente conferido em obra">
@@ -1953,10 +1954,10 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             return [{id:v.id,day,label:formatDate(day)+" · "+v.visit_type}];
           }).sort((a,b)=>b.day.localeCompare(a.day))} canRelease={canRelease && canOperatePieces} needsSignatures={pecasValidation.required} items={piecePlan.map(({piece,released:isReleased})=>{
             const batch=currentBatchByPiece.get(piece.id);
-            const blocked=piece.project_only || !!structuralActionsByPieceId.get(piece.id)?.length || activeCorrections.some(c=>c.piece_id===piece.id && c.blocking);
+            const blocked=(!piece.measurement_not_required && piece.project_only) || !!structuralActionsByPieceId.get(piece.id)?.length || activeCorrections.some(c=>c.piece_id===piece.id && c.blocking);
             return {id:piece.id,code:piece.code,environment:piece.environment ?? "",model:piece.piece_type || piece.description || "A definir",
-              width:piece.measured_width_mm,height:piece.measured_height_mm,released:isReleased,blocked,lot:batch?batchLabel(batch):"",
-              editor:<div><p className="mb-2 text-sm">Venda: {piece.sale_width_mm ?? "—"} × {piece.sale_height_mm ?? "—"} mm · {piece.project_only ? "Aguardando definição das medidas de projeto" : "Medidas de campo"}</p>                  <PieceActionForms
+              noMeasurement:!!piece.measurement_not_required,width:piece.measured_width_mm,height:piece.measured_height_mm,released:isReleased,blocked,lot:batch?batchLabel(batch):"",
+              editor:<div>{canMeasure && canOperatePieces && <MeasurementRequirementForm piece={piece} options={piecePlan.map(({piece:p})=>({id:p.id,label:p.code+" · "+(p.environment??"Sem ambiente")}))}/>}<p className="mb-2 text-sm">Venda: {piece.sale_width_mm ?? "—"} × {piece.sale_height_mm ?? "—"} mm · {piece.measurement_not_required ? "Medição individual não se aplica" : piece.project_only ? "Aguardando definição das medidas de projeto" : "Medidas de campo"}</p>                  <PieceActionForms
                     piece={piece}
                     canMeasure={canMeasure && canOperatePieces}
                     pieceChangeRequests={pieceChangeRequestsByPieceId.get(piece.id) ?? []}
@@ -2020,7 +2021,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               const prod=prodBatches.find(p=>p.id===piece.active_prod_batch_id);
               const item=prod?.cem_report?.rows.find(r=>r.code.trim().toUpperCase()===piece.code.trim().toUpperCase());
               const blocked=activeCorrections.some(c=>c.piece_id===piece.id&&c.blocking)||structuralActionsByPieceId.has(piece.id);
-              const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm?"Medida pendente":"";
+              const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":!piece.measurement_not_required&&(piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm)?"Medida pendente":"";
               return {id:piece.id,code:piece.code,environment:piece.environment||"—",model:piece.piece_type||piece.description||"—",qty:piece.quantity??1,
                 lot:batch?batchLabel(batch):"",released:piece.released_at?.slice(0,10)||"",due:batch?releaseFolderDeadlines(batch,holidays??[]).issueDue||"":"",
                 issued:item ? prod?.cem_report?.issued ?? "" : "",prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:item?item.width+" × "+item.height:""};
