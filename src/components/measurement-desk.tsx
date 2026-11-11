@@ -4,7 +4,7 @@ import {useRouter} from "next/navigation";
 import {ActionForm,Field,inputClass} from "./action-form";
 import {createReleaseBatchAction} from "@/app/actions";
 
-type Item={id:string;code:string;environment:string;model:string;width:number|null;height:number|null;released:boolean;blocked:boolean;lot:string;editor:ReactNode};
+type Item={noMeasurement?:boolean;id:string;code:string;environment:string;model:string;width:number|null;height:number|null;released:boolean;blocked:boolean;lot:string;editor:ReactNode};
 const clean=(s:string)=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
 export function MeasurementDesk({contractId,items,canRelease,needsSignatures,visits,today}:{contractId:string;items:Item[];canRelease:boolean;needsSignatures:boolean;visits:{id:string;day:string;label:string}[];today:string}){
   const [visitId,setVisitId]=useState(visits.length===1?visits[0].id:"");
@@ -28,7 +28,7 @@ export function MeasurementDesk({contractId,items,canRelease,needsSignatures,vis
       {selected.map(i=><fieldset key={i.id} className="rounded-lg border p-3"><legend className="px-1 text-sm font-semibold">{i.code} · {i.environment} · {i.model}</legend>
         <input type="hidden" name="piece_ids" value={i.id}/>
         <div className="grid gap-3 md:grid-cols-3"><Field label="Ambiente"><input className={inputClass} name={"environment_"+i.id} defaultValue={i.environment}/></Field>
-        <Field label="Largura de campo (mm)"><input type="number" min="0.01" step="any" required className={inputClass} name={"measured_width_mm_"+i.id} defaultValue={i.width??""}/></Field>
+        <Field label="Largura de campo (mm)"><input type="number" min="0.01" step="any" required={!i.noMeasurement} disabled={i.noMeasurement} className={inputClass} name={"measured_width_mm_"+i.id} defaultValue={i.width??""}/></Field>
         <Field label="Altura de campo (mm)"><input type="number" min="0.01" step="any" required className={inputClass} name={"measured_height_mm_"+i.id} defaultValue={i.height??""}/></Field></div>
       </fieldset>)}
       <div className="grid gap-3 md:grid-cols-2"><Field label="Identificação do lote (opcional)"><input className={inputClass} name="batch_number" placeholder="Numeração automática"/></Field>
@@ -45,7 +45,7 @@ export function MeasurementDesk({contractId,items,canRelease,needsSignatures,vis
       <thead className="bg-muted"><tr>{["Peça","Ambiente / modelo","Campo (L × A)","Liberação",""].map(label=><th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead>
       <tbody>{visible.map(i=><Fragment key={i.id}><tr className="border-b">
         <td className="whitespace-nowrap p-2 font-semibold">{canRelease&&!i.released&&!i.blocked&&<input className="mr-2" type="checkbox" aria-label={"Incluir "+i.code+" no lote"} checked={selection.includes(i.id)} onChange={e=>setSelection(e.target.checked?[...selection,i.id]:selection.filter(id=>id!==i.id))}/>} {i.code}</td>
-        <td className="p-2">{i.environment}<small className="block">{i.model}</small></td><td className="p-2">{i.width&&i.height?i.width+" × "+i.height+" mm":"A medir"}</td>
+        <td className="p-2">{i.environment}<small className="block">{i.model}</small></td><td className="p-2">{i.noMeasurement?"Não se aplica · conforme projeto/CEM":i.width&&i.height?i.width+" × "+i.height+" mm":"A medir"}</td>
         <td className="p-2"><span className={i.released?"text-green-800":"text-amber-900"}>{i.released?"Liberada":i.blocked?"Bloqueada":"A liberar"}</span><small className="block">{i.lot}</small></td>
 
         <td className="p-2"><button type="button" aria-expanded={edit===i.id} className="font-semibold underline" onClick={()=>setEdit(edit===i.id?"":i.id)}>{edit===i.id?"Fechar":"Ver peça"}</button></td>

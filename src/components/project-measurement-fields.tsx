@@ -39,7 +39,7 @@ export function ProjectMeasurementFields({
             }
           }}
         />
-        Projeto
+        Aguardando definição do projeto
       </label>
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="space-y-1.5">

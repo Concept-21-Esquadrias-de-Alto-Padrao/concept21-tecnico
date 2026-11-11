@@ -1,5 +1,6 @@
 "use server";
 import {z} from "zod";
+import {documentManifest} from "@/lib/prod-handoffs";
 
 import { randomUUID } from "node:crypto";
 import { receiptDueAt, readReceipt, type CommercialReceipt } from "@/lib/commercial-receipt";
@@ -3864,16 +3865,24 @@ export async function deliverDepartmentDocumentAction(_: ActionState, formData: 
 
     const { data: prod, error: prodError } = await context.admin
       .from("technical_prod_batches")
-      .select("contract_id")
+      .select("contract_id,status,deleted_at")
       .eq("company_id", context.companyId)
       .eq("id", parsed.data.prod_batch_id)
       .maybeSingle();
     if (prodError) throw prodError;
-    if (!prod) throw new Error("PROD não encontrado.");
+    if (!prod || prod.deleted_at) throw new Error("PROD não encontrado.");
+    if(prod.status!=="aprovado") throw new Error("A PROD precisa estar aprovada antes do repasse.");
+    const documents=formData.getAll("documents").map(String);
+    if(formData.get("manifest_required")==="true"&&!documents.length) throw new Error("Selecione os documentos deste envio.");
+    const manifest=documentManifest(parsed.data.department,documents,parsed.data.notes??null);
+    const {data:open,error:openError}=await context.admin.from("technical_department_deliveries").select("id").eq("company_id",context.companyId).eq("prod_batch_id",parsed.data.prod_batch_id).eq("department",parsed.data.department).eq("status","entregue").limit(1);
+    if(openError) throw openError;
+    if(open?.length) throw new Error("Já existe um envio aguardando recebimento neste setor.");
 
     const now = new Date();
-    const due = new Date(now);
-    due.setHours(due.getHours() + 24);
+    const {data:holidays,error:holidayError}=await context.admin.from("technical_holidays").select("holiday_date").eq("company_id",context.companyId).eq("active",true);
+    if(holidayError) throw holidayError;
+    const due=receiptDueAt(now,(holidays??[]).map(h=>h.holiday_date));
 
     const { error } = await context.admin.from("technical_department_deliveries").insert({
       company_id: context.companyId,
@@ -3882,8 +3891,8 @@ export async function deliverDepartmentDocumentAction(_: ActionState, formData: 
       delivery_type: parsed.data.delivery_type,
       delivered_at: now.toISOString(),
       status: "entregue",
-      confirmation_due_at: due.toISOString(),
-      notes: parsed.data.notes,
+      confirmation_due_at: due,
+      notes: manifest,
     });
     if (error) throw error;
 
@@ -3915,6 +3924,8 @@ export async function confirmDepartmentDeliveryAction(first: ActionState | FormD
       .maybeSingle();
     if (deliveryError) throw deliveryError;
     if (!delivery) throw new Error("Entrega não encontrada.");
+    if(delivery.department!==department) throw new Error("O setor informado não corresponde ao envio.");
+    if(delivery.status!=="entregue") throw new Error("Este envio não está aguardando recebimento.");
 
     const gate = canConfirmDepartmentDelivery({
       department: (delivery as { department: "suprimentos" | "producao" }).department,
@@ -3939,7 +3950,7 @@ export async function confirmDepartmentDeliveryAction(first: ActionState | FormD
 
     const prod = (delivery as { prod?: { contract_id?: string } | null }).prod;
     revalidateTechnical(prod?.contract_id);
-    return ok("Recebimento, conferência e aptidão confirmados.");
+    return ok("Recebimento dos documentos confirmado. Não representa recebimento físico das peças.");
   } catch (error) {
     return fail(error);
   }
