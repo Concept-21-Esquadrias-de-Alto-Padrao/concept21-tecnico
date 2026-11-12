@@ -1,3 +1,4 @@
+import { checkPlatformMaintenance } from "@/lib/platform-maintenance-gate";
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { secureOrigin } from "@/lib/portal-session-policy";
@@ -6,6 +7,8 @@ import { secureOrigin } from "@/lib/portal-session-policy";
 const sessionTransitions = new Set(["/auth/portal-entry", "/auth/complete", "/auth/portal-logout"]);
 
 export async function proxy(request: NextRequest) {
+  const blocked=await checkPlatformMaintenance(request);if(blocked)return blocked;
+  if(request.nextUrl.pathname.startsWith("/api/"))return NextResponse.next();
   const portal = secureOrigin(process.env.NEXT_PUBLIC_PORTAL_ORIGIN);
   if (!portal) return new NextResponse("A entrada pelo Portal não está configurada.", { status: 503 });
   const toPortal = () => {
@@ -41,5 +44,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api(?:/|$)|_next(?:/|$)|brand(?:/|$)|icons(?:/|$)|favicon.ico$|manifest.webmanifest$|robots.txt$|sitemap.xml$|sw.js$).*)"],
+  matcher: ["/((?!_next(?:/|$)|brand(?:/|$)|icons(?:/|$)|favicon.ico$|manifest.webmanifest$|robots.txt$|sitemap.xml$|sw.js$).*)"],
 };

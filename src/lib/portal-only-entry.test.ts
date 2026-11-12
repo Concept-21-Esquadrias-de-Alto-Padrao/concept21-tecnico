@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({ getUser: vi.fn() }));
 vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getUser: mocks.getUser } }) }));
+vi.mock("@/lib/platform-maintenance-gate",()=>({checkPlatformMaintenance:async()=>null}));
 import { unstable_doesMiddlewareMatch as unstable_doesProxyMatch } from "next/experimental/testing/server";
 import { config, proxy } from "@/proxy";
 
@@ -47,10 +48,10 @@ describe("Portal-only browser entry", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("location")).toBeNull();
   });
-  it.each(["/", "/rh/colaboradores", "/tecnico/contratos/abc.png", "/login", "/cadastro"])("intercepts the protected page %s", url => {
+  it.each(["/", "/rh/colaboradores", "/tecnico/contratos/abc.png", "/login", "/cadastro","/api/auth/current-access","/api/internal/platform-install"])("intercepts the protected page or API %s", url => {
     expect(unstable_doesProxyMatch({ config, nextConfig: {}, url })).toBe(true);
   });
-  it.each(["/api/auth/current-access", "/api/internal/platform-install", "/_next/static/chunk.js", "/brand/concept21-aluminium.png"])("keeps %s on its existing API or asset rules", url => {
+  it.each(["/_next/static/chunk.js", "/brand/concept21-aluminium.png"])("keeps the static asset %s outside session checks", url => {
     expect(unstable_doesProxyMatch({ config, nextConfig: {}, url })).toBe(false);
   });
 });
