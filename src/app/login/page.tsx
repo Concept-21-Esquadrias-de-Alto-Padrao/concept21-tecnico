@@ -8,6 +8,7 @@ import { signInWithEmail } from "@/lib/auth-client";
 import { toUserFriendlyErrorMessage } from "@/lib/errors";
 import { createSupabaseBrowserClient, hasSupabaseBrowserEnv } from "@/lib/supabase/client";
 import { getPublicAppOrigin } from "@/lib/supabase/config";
+import { secureOrigin } from "@/lib/portal-session-policy";
 
 function LoginContent() {
   const router = useRouter();
@@ -44,6 +45,11 @@ function LoginContent() {
   }
 
   async function signInWithCorporateIdentity() {
+    const portal = secureOrigin(process.env.NEXT_PUBLIC_PORTAL_ORIGIN);
+    if (portal) {
+      window.location.replace(portal);
+      return;
+    }
     setLoading(true);
     setMessage("");
     try {

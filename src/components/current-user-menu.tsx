@@ -4,6 +4,8 @@ import { LogOut, UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getCurrentUserAccess, signOut } from "@/lib/auth-client";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { secureOrigin } from "@/lib/portal-session-policy";
 
 export function CurrentUserMenu() {
   const router = useRouter();
@@ -15,12 +17,24 @@ export function CurrentUserMenu() {
       if (active && access?.profile?.name) setName(access.profile.name);
     });
 
+    const { data: { subscription } } = createSupabaseBrowserClient().auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        const portal = secureOrigin(process.env.NEXT_PUBLIC_PORTAL_ORIGIN);
+        window.location.replace(portal ? portal + "/login?logged_out=1" : "/login");
+      }
+    });
     return () => {
       active = false;
+      subscription.unsubscribe();
     };
   }, []);
 
   async function handleSignOut() {
+    const portal = secureOrigin(process.env.NEXT_PUBLIC_PORTAL_ORIGIN);
+    if (portal) {
+      window.location.replace(portal + "/auth/logout");
+      return;
+    }
     await signOut();
     router.replace("/login");
     router.refresh();
