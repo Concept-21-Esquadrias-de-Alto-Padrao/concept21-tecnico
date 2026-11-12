@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const {data:{user},error} = await central.auth.getUser(token);
   if (error || user?.id !== master || !user.email_confirmed_at) return denied(403);
   const admin = getSupabaseAdminClient();
-  const {data:profile} = await admin.from("profiles").select("id,status,is_master").eq("auth_user_id",localMaster).maybeSingle();
+  const {data:profile} = await admin.from("profiles").select("id,status,is_master").eq("user_id",localMaster).maybeSingle();
   if (!profile || profile.status !== "active") return denied(403);
   
   const { data: assignments } = await admin.from("user_roles").select("role_id").eq("profile_id", profile.id).eq("active", true);
