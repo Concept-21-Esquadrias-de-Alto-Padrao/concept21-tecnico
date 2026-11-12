@@ -1,3 +1,4 @@
+import { PlatformMaintenanceWatchdog } from "@/components/platform-maintenance-watchdog";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppShell } from "@/components/app-shell";
@@ -27,7 +28,7 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <AppShell>{children}</AppShell>
-      </body>
+      <PlatformMaintenanceWatchdog /></body>
     </html>
   );
 }

@@ -1,3 +1,4 @@
+import {fieldMeasurementProblem} from "@/lib/measurement-requirement";
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
@@ -18,7 +19,7 @@ export async function POST(request:Request) {
     if(error) throw error;
     if(!contract || contract.contract_number!==report.contractNumber) throw new HttpError(400,"O número da obra no PDF é "+report.contractNumber+". Selecione o contrato correspondente.");
     const {data:pieces,error:pieceError}=await admin.from("technical_contract_pieces")
-      .select("id,code,quantity,status,active_prod_batch_id,cem_registered,cem_checked,released_at").eq("company_id",profile.company_id)
+      .select("id,code,quantity,status,active_prod_batch_id,cem_registered,cem_checked,released_at,project_only,measurement_not_required,measured_width_mm,measured_height_mm").eq("company_id",profile.company_id)
       .eq("contract_id",contract.id).is("deleted_at",null).neq("status","cancelada");
     if(pieceError) throw pieceError;
     const number=String(form.get("batch_number")||report.batchNumber).trim();
@@ -34,7 +35,7 @@ export async function POST(request:Request) {
         existing && (existing.deleted_at || existing.status==="cancelado")?"Código de PROD cancelado":
         p.active_prod_batch_id && existing?.id!==p.active_prod_batch_id?"Já vinculada a outra PROD":
         existing && p.active_prod_batch_id!==existing.id?"PROD existente contém peças diferentes":
-        !existing && (!p.released_at || p.status!=="liberada")?"Liberação de medidas pendente":"";
+        !existing && (!p.released_at || p.status!=="liberada")?"Liberação de medidas pendente":!existing?fieldMeasurementProblem(p)??"":"";
       return {...row,pieceId:p?.id,problem};
     });
     const digest=createHash("sha256").update(buffer).digest("hex");

@@ -1,4 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { checkCorporateAccess } from "@/lib/corporate-access-server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, hasSupabaseEnv } from "@/lib/supabase/server";
 import type { PermissionLookup } from "@/lib/module-access";
@@ -40,6 +41,7 @@ export async function hasActiveMasterRole(
   const { data: userRoleData, error: userRoleError } = await admin
     .from("user_roles")
     .select("role_id")
+    .eq("active", true)
     .eq("company_id", profile.company_id)
     .eq("profile_id", profile.id);
 
@@ -85,6 +87,12 @@ export async function requireAuthenticatedProfile(): Promise<AuthenticatedProfil
   }
 
   if (!user) throw new HttpError(401, "Sessão não encontrada.");
+  const { data: { session } } = await authClient.auth.getSession();
+  const corporateAccess = await checkCorporateAccess(session?.access_token ?? "");
+  if (corporateAccess !== "allowed") throw new HttpError(
+    corporateAccess === "revoked" ? 403 : 503,
+    corporateAccess === "revoked" ? "Acesso corporativo encerrado." : "Não foi possível validar o vínculo corporativo.",
+  );
 
   const admin = getSupabaseAdminClient();
   const { data: profileData, error: profileError } = await admin
@@ -125,6 +133,8 @@ export async function requireMasterAccess() {
   const { data: userRoleData, error: userRoleError } = await context.admin
     .from("user_roles")
     .select("*")
+    .eq("company_id", context.profile.company_id)
+    .eq("active", true)
     .eq("profile_id", context.profile.id);
 
   if (userRoleError) throw new HttpError(500, userRoleError.message);
@@ -173,6 +183,7 @@ export async function requirePermissionAccess(
   const { data: userRoleData, error: userRoleError } = await context.admin
     .from("user_roles")
     .select("role_id")
+    .eq("active", true)
     .eq("company_id", context.profile.company_id)
     .eq("profile_id", context.profile.id);
 
@@ -247,6 +258,7 @@ export async function getCurrentPermissionFlags(
     const { data: userRoleData, error: userRoleError } = await context.admin
       .from("user_roles")
       .select("role_id")
+      .eq("active", true)
       .eq("company_id", context.profile.company_id)
       .eq("profile_id", context.profile.id);
 

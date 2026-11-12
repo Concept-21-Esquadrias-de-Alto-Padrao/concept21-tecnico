@@ -110,7 +110,11 @@ export async function getCurrentUserAccess() {
     cache: "no-store",
   });
 
-  if (!response.ok) return null;
+  if (!response.ok) {
+    if (response.status === 401) return null;
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(payload?.error ?? "Não foi possível validar o acesso.");
+  }
   return (await response.json()) as CurrentUserAccess;
 }
 

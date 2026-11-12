@@ -2,7 +2,7 @@
 
 import { AlertTriangle, LogIn, Wrench } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   getCurrentUserAccess,
@@ -127,9 +127,12 @@ function MaintenanceMessage({
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const isPortalLogout = usePathname() === "/auth/portal-logout";
   const [state, setState] = useState<AuthGateState>({ status: "loading" });
 
   useEffect(() => {
+    // Logout must remain reachable when this module has no session or is blocked.
+    if (isPortalLogout) return;
     let active = true;
     let stoppedForMaintenance = false;
     let loading = false;
@@ -196,6 +199,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        if (process.env.NEXT_PUBLIC_CORPORATE_GATE_ENABLED === "true") {
+          const corporate = await fetch("/api/auth/corporate-access", {
+            method: "POST", headers: { Authorization: `Bearer ${session.data.session.access_token}` },
+            cache: "no-store",
+          });
+          if (corporate.status === 401 || corporate.status === 403) {
+            await signOut();
+            if (active) setState({ status: "error", message: "Acesso corporativo encerrado. Solicite revisão internamente." });
+            return;
+          }
+          if (!corporate.ok) throw new Error("Não foi possível validar o vínculo corporativo.");
+        }
         const access = await getCurrentUserAccess();
         if (!active) return;
 
@@ -287,7 +302,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       stopPolling();
       stopMaintenancePolling();
     };
-  }, [router]);
+  }, [router, isPortalLogout]);
 
   async function exitToLogin() {
     await signOut();
@@ -295,7 +310,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     router.refresh();
   }
 
-  if (state.status === "ready" || state.status === "empty-env") return <>{children}</>;
+  if (isPortalLogout || state.status === "ready" || state.status === "empty-env") return <>{children}</>;
 
   if (state.status === "loading") {
     return (

@@ -250,6 +250,9 @@ export type TechnicalPiece = {
   measured_width_mm: number | null;
   measured_height_mm: number | null;
   project_only: boolean;
+  measurement_not_required?: boolean;
+  measurement_basis?: string | null;
+  related_piece_id?: string | null;
   environment: string | null;
   floor: string | null;
   description: string | null;
