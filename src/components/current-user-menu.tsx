@@ -1,7 +1,7 @@
 "use client";
 
 import { LogOut, UserCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getCurrentUserAccess, signOut } from "@/lib/auth-client";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -9,9 +9,11 @@ import { secureOrigin } from "@/lib/portal-session-policy";
 
 export function CurrentUserMenu() {
   const router = useRouter();
+  const pathname = usePathname();
   const [name, setName] = useState("Usuário");
 
   useEffect(() => {
+    if (pathname === "/auth/portal-logout") return;
     let active = true;
     getCurrentUserAccess().then((access) => {
       if (active && access?.profile?.name) setName(access.profile.name);
@@ -27,7 +29,7 @@ export function CurrentUserMenu() {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [pathname]);
 
   async function handleSignOut() {
     const portal = secureOrigin(process.env.NEXT_PUBLIC_PORTAL_ORIGIN);

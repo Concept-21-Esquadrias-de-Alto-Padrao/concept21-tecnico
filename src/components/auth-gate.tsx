@@ -2,7 +2,7 @@
 
 import { AlertTriangle, LogIn, Wrench } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   getCurrentUserAccess,
@@ -127,9 +127,12 @@ function MaintenanceMessage({
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const isPortalLogout = usePathname() === "/auth/portal-logout";
   const [state, setState] = useState<AuthGateState>({ status: "loading" });
 
   useEffect(() => {
+    // Logout must remain reachable when this module has no session or is blocked.
+    if (isPortalLogout) return;
     let active = true;
     let stoppedForMaintenance = false;
     let loading = false;
@@ -299,7 +302,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       stopPolling();
       stopMaintenancePolling();
     };
-  }, [router]);
+  }, [router, isPortalLogout]);
 
   async function exitToLogin() {
     await signOut();
@@ -307,7 +310,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     router.refresh();
   }
 
-  if (state.status === "ready" || state.status === "empty-env") return <>{children}</>;
+  if (isPortalLogout || state.status === "ready" || state.status === "empty-env") return <>{children}</>;
 
   if (state.status === "loading") {
     return (
