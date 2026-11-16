@@ -18,7 +18,7 @@ select (select auth.uid()) is not null and coalesce(
     not exists (select 1 from auth.identities i where i.user_id = (select auth.uid()) and i.provider = 'custom:concept21')
   )
 )
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.has_permission(permission_key text)
  RETURNS boolean
@@ -42,7 +42,7 @@ select public.is_master()
         and perm.key = permission_key
     )
 )
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.is_master()
  RETURNS boolean
@@ -63,7 +63,7 @@ select coalesce(
     false
   )
 )
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.has_any_permission(permission_keys text[])
  RETURNS boolean
@@ -79,7 +79,7 @@ select public.is_master()
       where public.has_permission(permission_key)
     )
 )
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.technical_renew_pending_confirmations()
  RETURNS integer
@@ -135,7 +135,7 @@ begin
 
   return inserted_count;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.current_auth_email_confirmed()
  RETURNS boolean
@@ -152,7 +152,7 @@ select exists (
       and coalesce(u.email_confirmed_at, u.confirmed_at) is not null
   )
 )
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.request_access_review()
  RETURNS uuid
@@ -303,7 +303,7 @@ begin
 
   return request_id;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.technical_stage_validation_satisfied(target_contract_id uuid, target_stage text)
  RETURNS boolean
@@ -341,7 +341,7 @@ begin
       and participant.signed_at is null
   );
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.technical_save_alignment(p_company uuid, p_contract uuid, p_profile uuid, p_user uuid, p_version integer, p_finish boolean, p_draft jsonb)
  RETURNS jsonb
@@ -396,7 +396,7 @@ begin
  insert into public.audit_logs(company_id,entity,entity_id,action,user_id,before_data,after_data,notes) values(p_company,'technical_contracts',p_contract,case when p_finish then 'alignment_completed' else 'alignment_draft_saved' end,p_user,old_state,next_state,case when p_finish then 'Reunião de alinhamento concluída; atividades criadas em conjunto.' else 'Rascunho da reunião guardado.' end);
  return next_state;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.technical_validate_visit_ready(target_contract_id uuid)
  RETURNS boolean
@@ -455,7 +455,7 @@ begin
 
   return true;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.technical_alignment_has_block(p_company uuid, p_contract uuid, p_stage text, p_piece uuid DEFAULT NULL::uuid)
  RETURNS boolean
@@ -466,7 +466,7 @@ AS $function$
 select platform_identity_private.request_allowed() and (
 select exists(select 1 from technical_actions a where a.company_id=p_company and a.contract_id=p_contract and a.deleted_at is null and a.blocking and a.status not in ('concluida','cancelada') and a.blocking_stage=p_stage and (p_piece is null or (not exists(select 1 from technical_action_pieces l where l.action_id=a.id) and (a.piece_id is null or a.piece_id=p_piece)) or exists(select 1 from technical_action_pieces l where l.action_id=a.id and l.piece_id=p_piece)))
 )
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.current_company_id()
  RETURNS uuid
@@ -482,7 +482,7 @@ select p.company_id
     and p.status = 'active'
   limit 1
 ) guarded_result where (select platform_identity_private.request_allowed())
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.current_permission_keys()
  RETURNS text[]
@@ -501,7 +501,7 @@ select coalesce(array_agg(distinct perm.key), array[]::text[])
     and corporate_gate_private.is_allowed()
     and p.status = 'active'
 ) guarded_result where (select platform_identity_private.request_allowed())
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.current_profile_id()
  RETURNS uuid
@@ -517,7 +517,7 @@ select p.id
     and p.status = 'active'
   limit 1
 ) guarded_result where (select platform_identity_private.request_allowed())
-$function$
+$function$;
 
 do $tables$ declare t record;begin
  for t in select schemaname,tablename,rowsecurity from pg_tables where schemaname=any(array['public']) and tablename not in ('platform_identity_config','platform_account_bindings') loop
