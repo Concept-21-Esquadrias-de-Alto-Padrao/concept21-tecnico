@@ -60,7 +60,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (publicRoutes.has(pathname)) return;
+    if ((publicRoutes.has(pathname)||pathname.startsWith("/auth/"))) return;
 
     let active = true;
 
@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [pathname]);
 
-  if (publicRoutes.has(pathname)) return <>{children}</>;
+  if ((publicRoutes.has(pathname)||pathname.startsWith("/auth/"))) return <>{children}</>;
 
   const visibleNavItems = navItems.filter((item) => canShowNavItem(access, item.permissions));
   const currentProfile = access && typeof access === "object" ? access.profile : null;
