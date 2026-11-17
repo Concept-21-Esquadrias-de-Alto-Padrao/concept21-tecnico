@@ -1,3 +1,4 @@
+import { checkCorporateAccess } from '@/lib/corporate-access-server';
 import { unstable_noStore as noStore } from "next/cache";
 import { hasSupabaseEnv, createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
@@ -179,6 +180,14 @@ async function loadTechnicalSnapshot(
     } = await supabase.auth.getUser();
 
     if (!user) return snapshot;
+    const {data:{session}} = await supabase.auth.getSession();
+    let authorizedAt = 0;
+    const renewReadAccess = async () => {
+      if (Date.now() - authorizedAt < 15000) return;
+      if (!session || await checkCorporateAccess(session.access_token) !== 'allowed') throw new Error('Não foi possível renovar a autorização de leitura.');
+      authorizedAt = Date.now();
+    };
+    await renewReadAccess();
 
     const queries: SnapshotQuery[] = [];
 
@@ -435,10 +444,11 @@ async function loadTechnicalSnapshot(
     // Bound parallel requests so RLS-heavy reads do not exhaust the database pool.
     const results: Awaited<ReturnType<SnapshotQuery['load']>>[] = [];
     for (let offset = 0; offset < queries.length; offset += 3) {
+      await renewReadAccess();
       results.push(...await Promise.all(queries.slice(offset, offset + 3).map(query => query.load())));
     }
     for (let index = 0; index < results.length; index++) {
-      if (results[index].error?.code === '57014') results[index] = await queries[index].load();
+      if (results[index].error?.code === '57014') { await renewReadAccess(); results[index] = await queries[index].load(); }
     }
     const failedResult = results.find((result, index) => {
       const query = queries[index];
