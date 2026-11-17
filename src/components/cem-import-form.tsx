@@ -39,7 +39,7 @@ export function CemImportForm({contracts,fixedContractId}:{contracts:{id:string;
       <p className="font-semibold">Emissão do Itens da Obra · {preview.issued} · {preview.rows.reduce((sum,r)=>sum+r.quantity,0)} peças</p>
       {preview.rows.map(r=><p key={r.code} className="border-t pt-2"><strong>{r.code} · {r.environment}</strong><br/>{r.quantity} un. · Fabricação {r.width} × {r.height} mm · {r.area} m² · {r.weight} kg<br/>{r.problem || "Correspondência encontrada"}</p>)}
       {!number && <p>Informe o código da PROD e clique novamente em Conferir PDF.</p>}
-      <button type="button" className="rounded bg-accent px-4 py-2 font-semibold disabled:opacity-50" disabled={!number.trim()||busy||preview.rows.some(r=>r.problem)} onClick={()=>submit(true)}>Confirmar registro da PROD</button>
+      <button type="button" className="rounded bg-accent px-4 py-2 font-semibold text-accent-foreground hover:brightness-90 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600" disabled={!number.trim()||busy||preview.rows.some(r=>r.problem)} onClick={()=>submit(true)}>Confirmar registro da PROD</button>
     </section>}
     {busy && <p role="status">Processando o relatório…</p>}
     {message && <p role="status" className="rounded bg-muted p-3 text-sm">{message}</p>}

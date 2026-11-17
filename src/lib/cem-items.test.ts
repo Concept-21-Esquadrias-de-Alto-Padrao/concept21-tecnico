@@ -17,3 +17,13 @@ describe("Itens da Obra",()=>{
     expect(()=>readCemPages([[...header,...columns,...row("P1")],[...columns,...row("P1"),...total("2")]])).toThrow(/repetidos/);
   });
 });
+
+it('separa área/local e pesos iguais concatenados em PDF CEM com quantidade um',()=>{
+ const combined=[cell('P11',30,410),cell('1  4500  2500',119,410),cell('11,25GARAGEM',432,410),cell('83,51783,517',538,410)];
+ const result=readCemPages([[...header,...columns,...combined,...total('1')]]);
+ expect(result.rows[0]).toMatchObject({environment:'GARAGEM',area:11.25,weight:83.517,width:4500,height:2500});
+});
+it('não adivinha pesos concatenados divergentes',()=>{
+ const bad=[cell('P11',30,410),cell('1  4500  2500',119,410),cell('11,25GARAGEM',432,410),cell('83,51782,517',538,410)];
+ expect(()=>readCemPages([[...header,...columns,...bad,...total('1')]])).toThrow();
+});

@@ -41,7 +41,7 @@ export function MeasurementDesk({contractId,items,canRelease,needsSignatures,vis
   return <div className="space-y-3">
     <div className="flex flex-wrap items-end gap-3"><label className="grid flex-1 gap-1 text-sm">Buscar peça<input className={inputClass} type="search" placeholder="Código, ambiente, modelo ou lote" value={query} onChange={e=>setQuery(e.target.value)}/></label>
       <label className="grid gap-1 text-sm">Mostrar<select value={filter} className={inputClass} onChange={e=>setFilter(e.target.value)}><option value="all">Todas as peças</option><option value="pending">A liberar</option><option value="released">Já liberadas</option></select></label>
-      {canRelease&&<button className="rounded-md bg-accent px-4 py-2 font-semibold disabled:opacity-50" type="button" disabled={!selected.length} onClick={()=>setPrepare(true)}>Preparar lote ({selected.length})</button>}
+      {canRelease&&<button className="rounded-md bg-accent px-4 py-2 font-semibold text-accent-foreground hover:brightness-90 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600" type="button" disabled={!selected.length} onClick={()=>setPrepare(true)}>Preparar lote ({selected.length})</button>}
     </div>
     <div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Medidas de campo e liberação por peça</caption>
       <thead className="bg-muted"><tr>{["Peça","Ambiente / modelo","Campo (L × A)","Liberação",""].map(label=><th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead>

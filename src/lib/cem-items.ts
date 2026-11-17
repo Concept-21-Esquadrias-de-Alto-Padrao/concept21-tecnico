@@ -29,15 +29,21 @@ export function readCemPages(pages: Cell[][]) {
       const column=(a:number,b:number)=>line.filter(c=>c.transform[4]>=a && c.transform[4]<b).map(c=>c.str.trim()).join(" ").trim();
       const code=column(type!-3,qty!-10);
       const dims=column(qty!-10,location!-3);
-      const kg=decimal(column(weight!-4,Infinity));
+      const rawWeight=column(weight!-4,Infinity);
+      // Some legacy CEM PDFs merge total and unit weight into one text item.
+      // Only split the unambiguous quantity-one case with two equal fixed-precision values.
+      const joinedWeight=rawWeight.match(/^(\d+,\d{3})(\d+,\d{3})$/);
+      const kg=joinedWeight&&/^1\s/.test(dims)&&joinedWeight[1]===joinedWeight[2]?decimal(joinedWeight[1]):decimal(rawWeight);
       if (!Number.isFinite(kg)) continue;
       if (!code && /^\d+$/.test(dims)) {total=Number(dims);continue;}
       const numbers=dims.match(/^(\d+)\s+(\d+)\s+(\d+)(?:\s+\d+)*$/);
-      const sqm=decimal(column(area!-4,(x("Peso Unit.") ?? weight!)-4));
+      const rawArea=column(area!-4,(x("Peso Unit.") ?? weight!)-4);
+      const joinedArea=rawArea.match(/^(\d+,\d{2})([^\d,].*)$/);
+      const sqm=decimal(joinedArea?joinedArea[1]:rawArea);
       if (!code || !numbers || !Number.isFinite(sqm)) throw new Error("Linha de peça incompleta. Confira o modelo do relatório.");
       const [,q,w,h]=numbers.map(Number);
       if (!(q>0 && w>0 && h>0)) throw new Error("Quantidade ou dimensão inválida.");
-      rows.push({code,quantity:q,width:w,height:h,environment:column(location!-3,area!-4),area:sqm,weight:kg});
+      rows.push({code,quantity:q,width:w,height:h,environment:column(location!-3,area!-4)||(joinedArea?.[2].trim()??""),area:sqm,weight:kg});
     }
   }
   if (!rows.length || total!==rows.reduce((sum,r)=>sum+r.quantity,0)) throw new Error("A soma das peças lidas não confere com o total impresso. Importação interrompida.");
