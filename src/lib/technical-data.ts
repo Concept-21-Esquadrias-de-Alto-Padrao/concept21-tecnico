@@ -237,9 +237,20 @@ async function loadTechnicalSnapshot(
     addSnapshotQuery(queries, include, {
       key: "pieces",
       optionalMissing: true,
-      load: () => {
-        const query = supabase.from("technical_contract_pieces").select("*");
-        return filters.contractId ? query.eq("contract_id", filters.contractId) : query.order("code");
+      load: async () => {
+        const data: unknown[] = [];
+        const pageSize = 500;
+        for (let offset = 0; ; offset += pageSize) {
+          await renewReadAccess();
+          let query = supabase.from("technical_contract_pieces").select("*").order("id").range(offset, offset + pageSize - 1);
+          if (filters.contractId) query = query.eq("contract_id", filters.contractId);
+          const page = await query;
+          if (page.error) return { data: null, error: page.error };
+          data.push(...(page.data ?? []));
+          if ((page.data?.length ?? 0) < pageSize) break;
+        }
+        data.sort((a, b) => (a as TechnicalPiece).code.localeCompare((b as TechnicalPiece).code));
+        return { data, error: null };
       },
       apply: (target, data) => {
         target.pieces = data as TechnicalPiece[];
