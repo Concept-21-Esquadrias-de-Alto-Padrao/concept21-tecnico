@@ -1,8 +1,8 @@
 "use client";
 import {useState,type ReactNode} from 'react';
 type Row={id:string;title:string;contract:string;search:string;status:string;units:number;supplies:string;production:string;content:ReactNode};
-export function ProdWorkspace({rows,folders,registration}:{rows:Row[];folders:ReactNode;registration:ReactNode}){
- const [tab,setTab]=useState('prods'),[query,setQuery]=useState(''),[status,setStatus]=useState('all'),[selected,setSelected]=useState<string|null>(null),[adding,setAdding]=useState(false);
+export function ProdWorkspace({rows,folders,registration,initialProdId}:{rows:Row[];folders:ReactNode;registration:ReactNode;initialProdId?:string}){
+ const [tab,setTab]=useState('prods'),[query,setQuery]=useState(''),[status,setStatus]=useState('all'),[selected,setSelected]=useState<string|null>(initialProdId??null),[adding,setAdding]=useState(false);
  const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
  const visible=rows.filter(r=>normalize(r.search).includes(normalize(query))&&(status==='all'||r.status===status)&&(tab!=='repasses'||r.status==='aprovado'));
  const current=visible.find(r=>r.id===selected);

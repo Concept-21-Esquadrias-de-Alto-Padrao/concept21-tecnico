@@ -2019,12 +2019,13 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             rows={piecePlan.map(({piece,released:isReleased})=>{
               const batch=currentBatchByPiece.get(piece.id);
               const prod=prodBatches.find(p=>p.id===piece.active_prod_batch_id);
-              const item=prod?.cem_report?.rows.find(r=>r.code.trim().toUpperCase()===piece.code.trim().toUpperCase());
+              const grouped=Boolean(prod?.cem_report?.fabricationSetId)&&piece.code.startsWith('RIP');
+              const item=grouped?undefined:prod?.cem_report?.rows.find(r=>r.code.trim().toUpperCase()===piece.code.trim().toUpperCase());
               const blocked=activeCorrections.some(c=>c.piece_id===piece.id&&c.blocking)||structuralActionsByPieceId.has(piece.id);
               const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":!piece.measurement_not_required&&(piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm)?"Medida pendente":"";
               return {id:piece.id,code:piece.code,environment:piece.environment||"—",model:piece.piece_type||piece.description||"—",qty:piece.quantity??1,
                 lot:batch?batchLabel(batch):"",released:piece.released_at?.slice(0,10)||"",due:batch?releaseFolderDeadlines(batch,holidays??[]).issueDue||"":"",
-                issued:item ? prod?.cem_report?.issued ?? "" : "",prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:item?item.width+" × "+item.height:""};
+                issued:item ? prod?.cem_report?.issued ?? "" : "",prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:grouped?"Conjunto · consultar recortes da PROD":item?item.width+" × "+item.height:""};
             })}/>
 
           <div className="space-y-3">
