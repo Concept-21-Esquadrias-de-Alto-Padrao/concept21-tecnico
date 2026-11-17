@@ -179,7 +179,7 @@ async function loadTechnicalSnapshot(
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return snapshot;
+    if (!user) { console.error('Technical snapshot: no authenticated user'); return snapshot; }
     const {data:{session}} = await supabase.auth.getSession();
     let authorizedAt = 0;
     const renewReadAccess = async () => {
@@ -465,6 +465,7 @@ async function loadTechnicalSnapshot(
       queries[index].apply(snapshot, result.data ?? []);
     });
 
+    if (include.contracts && !snapshot.contracts.length) console.error('Technical snapshot has no contracts', Object.fromEntries(queries.map((q,i)=>[q.key,{count:results[i].data?.length??0,error:results[i].error?.code??null}])));
     filterSnapshotToVisibleContracts(snapshot);
 
     return snapshot;
