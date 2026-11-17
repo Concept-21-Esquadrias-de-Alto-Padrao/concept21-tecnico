@@ -1,4 +1,6 @@
 "use server";
+
+import {precontractMeasurement} from '@/lib/precontract-measurement';
 import {z} from "zod";
 import {documentManifest} from "@/lib/prod-handoffs";
 
@@ -2474,7 +2476,11 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
     const parsed = releaseBatchSchema.safeParse(formDataToObject(formData));
     if (!parsed.success) return invalidForm(parsed.error);
     const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo"}).format(new Date());
-    const releaseDate = parsed.data.release_date ?? today;
+    let releaseDate = parsed.data.release_date ?? today;
+    const priorToContract=formData.get('measurement_origin')==='before_contract';
+    let priorBasis:string|null=null;
+
+    if(priorToContract&&parsed.data.visit_id)throw new Error('Esta modalidade não deve criar vínculo com uma nova visita.');
     if (releaseDate > today) throw new Error("A data efetiva da liberação não pode ser futura.");
     if (parsed.data.visit_id) {
       const {data:visit,error} = await context.admin.from("technical_visits").select("performed_at,status")
@@ -2502,6 +2508,12 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
     }
 
     const typedPieces = (pieces ?? []) as TechnicalPiece[];
+    if(priorToContract){
+      const {data:contract,error}=await context.admin.from('technical_contracts').select('contract_date').eq('company_id',context.companyId).eq('contract_id',parsed.data.contract_id).single();
+      if(error)throw error;
+      const prior=precontractMeasurement({contractDate:contract.contract_date,today,surveyor:String(formData.get('prior_surveyor')??''),pieces:typedPieces});
+      releaseDate=prior.date;priorBasis=prior.basis;
+    }
     const alreadyReleased = typedPieces.find((piece) =>
       ["liberada", "em_prod", "entregue"].includes(piece.status),
     );
@@ -2522,9 +2534,9 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
     const measuredByPieceId = new Map<string, { width: number | null; height: number | null; projectOnly: boolean }>();
     const environmentByPieceId = new Map<string, string | null>();
     for (const piece of typedPieces) {
-      const projectOnly = formData.get(`project_only_${piece.id}`) === "on";
-      const width = projectOnly ? null : optionalNumberFromForm(formData, `measured_width_mm_${piece.id}`) ?? piece.measured_width_mm;
-      const height = projectOnly ? null : optionalNumberFromForm(formData, `measured_height_mm_${piece.id}`) ?? piece.measured_height_mm;
+      const projectOnly = !priorToContract && formData.get(`project_only_${piece.id}`) === "on";
+      const width = priorToContract ? piece.sale_width_mm : projectOnly ? null : optionalNumberFromForm(formData, `measured_width_mm_${piece.id}`) ?? piece.measured_width_mm;
+      const height = priorToContract ? piece.sale_height_mm : projectOnly ? null : optionalNumberFromForm(formData, `measured_height_mm_${piece.id}`) ?? piece.measured_height_mm;
       const environment = nullableTextFromForm(formData, `environment_${piece.id}`, piece.environment);
       measuredByPieceId.set(piece.id, { width, height, projectOnly });
       environmentByPieceId.set(piece.id, environment);
@@ -2616,7 +2628,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
         validation_required: validationRequired,
         status: validationRequired ? "aguardando_assinatura" : "validado",
         validated_at: validationRequired ? null : now,
-        notes: parsed.data.notes,
+        notes: [priorBasis,parsed.data.notes].filter(Boolean).join('\n') || null,
         released_by_profile_id: context.profileId,
       })
       .select("id")
@@ -2674,6 +2686,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
       const { error: pieceUpdateError } = await context.admin
         .from("technical_contract_pieces")
         .update({
+          ...(priorBasis?{measurement_basis:priorBasis}:{}),
           environment: environmentByPieceId.get(piece.id) ?? null,
           measured_width_mm: measured?.width ?? null,
           measured_height_mm: measured?.height ?? null,
@@ -2702,6 +2715,7 @@ export async function createReleaseBatchAction(_: ActionState, formData: FormDat
         piece_ids: pieceIds,
         project_piece_ids: typedPieces.filter((piece) => measuredByPieceId.get(piece.id)?.projectOnly).map((piece) => piece.id),
         environment_updates: environmentChanges,
+        measurement_origin:priorToContract?'before_contract':'field',measurement_basis:priorBasis,release_date:releaseDate,
         validation_required: validationRequired,
       },
       notes: `${batchNumber}: lote de liberação criado com ${pieceIds.length} peça(s).`,

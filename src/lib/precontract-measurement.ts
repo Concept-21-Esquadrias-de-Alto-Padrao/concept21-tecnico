@@ -1,0 +1,6 @@
+export function precontractMeasurement(input:{contractDate:string|null;today:string;surveyor:string;pieces:{code:string;sale_width_mm:number|null;sale_height_mm:number|null;measured_width_mm:number|null;measured_height_mm:number|null}[]}){
+ if(!input.contractDate||!/^\d{4}-\d{2}-\d{2}$/.test(input.contractDate)||Number.isNaN(Date.parse(input.contractDate))||input.contractDate>input.today)throw Error('Informe uma data de contrato válida, não futura, antes de liberar.');
+ const surveyor=input.surveyor.trim();if(!surveyor||surveyor.length>150)throw Error('Informe quem levantou as medidas antes da contratação.');
+ for(const p of input.pieces){if(!p.sale_width_mm||!p.sale_height_mm||p.sale_width_mm<=0||p.sale_height_mm<=0)throw Error(p.code+': faltam medidas no contrato.');if((p.measured_width_mm!=null&&p.measured_width_mm!==p.sale_width_mm)||(p.measured_height_mm!=null&&p.measured_height_mm!==p.sale_height_mm))throw Error(p.code+': as medidas de campo diferem do contrato. Confira antes de usar esta opção.');}
+ return {date:input.contractDate,basis:'Medida definida antes da contratação · medidas do vão · levantamento: '+surveyor+' · liberação na data do contrato: '+input.contractDate+' · data do levantamento não informada.'};
+}

@@ -4,9 +4,10 @@ import {useRouter} from "next/navigation";
 import {ActionForm,Field,inputClass} from "./action-form";
 import {createReleaseBatchAction} from "@/app/actions";
 
-type Item={noMeasurement?:boolean;id:string;code:string;environment:string;model:string;width:number|null;height:number|null;released:boolean;blocked:boolean;lot:string;editor:ReactNode};
+type Item={saleWidth?:number|null;saleHeight?:number|null;noMeasurement?:boolean;id:string;code:string;environment:string;model:string;width:number|null;height:number|null;released:boolean;blocked:boolean;lot:string;editor:ReactNode};
 const clean=(s:string)=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-export function MeasurementDesk({contractId,items,canRelease,needsSignatures,visits,today}:{contractId:string;items:Item[];canRelease:boolean;needsSignatures:boolean;visits:{id:string;day:string;label:string}[];today:string}){
+export function MeasurementDesk({contractId,items,canRelease,needsSignatures,visits,today,contractDate,allowPrecontract=false}:{contractDate?:string|null;allowPrecontract?:boolean;contractId:string;items:Item[];canRelease:boolean;needsSignatures:boolean;visits:{id:string;day:string;label:string}[];today:string}){
+  const [prior,setPrior]=useState(false);
   const [visitId,setVisitId]=useState(visits.length===1?visits[0].id:"");
   const [effective,setEffective]=useState(visits.length===1?visits[0].day:"");
   const [query,setQuery]=useState(""),[filter,setFilter]=useState("all"),[edit,setEdit]=useState("");
@@ -22,14 +23,15 @@ export function MeasurementDesk({contractId,items,canRelease,needsSignatures,vis
     <p className="mb-4 text-sm">{selected.length} item(ns) selecionado(s) · Medidas de campo em milímetros. {needsSignatures?"Este lote exigirá assinatura.":"Este lote dispensa assinatura."}</p>
     <ActionForm action={createReleaseBatchAction} onSuccess={saved} submitLabel="Confirmar liberação do lote" confirmMessage="Confirma as medidas de campo e a liberação das peças selecionadas?">
       <input type="hidden" name="contract_id" value={contractId}/>
-      <div className="grid gap-3 md:grid-cols-2"><Field label="Visita de origem"><select className={inputClass} name="visit_id" value={visitId} onChange={e=>{setVisitId(e.target.value);setEffective(visits.find(v=>v.id===e.target.value)?.day??"");}}>
+      {allowPrecontract&&<div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3"><label className="flex gap-2 font-semibold"><input type="checkbox" checked={prior} onChange={e=>{setPrior(e.target.checked);setVisitId('');setEffective(e.target.checked?(contractDate??''):'');}}/>Medida definida antes da contratação</label><p className="text-sm text-slate-600">Para medidas do vão já levantadas e registradas no contrato. As medidas finais de fabricação continuam na PROD.</p>{prior&&<><input type="hidden" name="measurement_origin" value="before_contract"/><Field label="Quem levantou as medidas?"><input required maxLength={150} name="prior_surveyor" className={inputClass} placeholder="Nome do responsável pelo levantamento"/></Field><p className="text-sm">Liberação na data do contrato: <strong>{contractDate?contractDate.split('-').reverse().join('/'):'Data não cadastrada — informe no cadastro do contrato'}</strong>. A data da visita anterior não será inventada.</p></>}</div>}
+      <div className="grid gap-3 md:grid-cols-2"><Field label="Visita de origem"><select className={inputClass} name="visit_id" disabled={prior} value={visitId} onChange={e=>{setVisitId(e.target.value);setEffective(visits.find(v=>v.id===e.target.value)?.day??"");}}>
         <option value="">Sem visita vinculada · informar a data</option>{visits.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}</select></Field>
-        <Field label="Data efetiva da liberação"><input type="date" required max={today} name="release_date" className={inputClass} value={effective} onChange={e=>setEffective(e.target.value)}/></Field></div>
+        <Field label="Data efetiva da liberação"><input type="date" required max={today} name="release_date" readOnly={prior} className={inputClass} value={effective} onChange={e=>setEffective(e.target.value)}/></Field></div>
       {selected.map(i=><fieldset key={i.id} className="rounded-lg border p-3"><legend className="px-1 text-sm font-semibold">{i.code} · {i.environment} · {i.model}</legend>
         <input type="hidden" name="piece_ids" value={i.id}/>
         <div className="grid gap-3 md:grid-cols-3"><Field label="Ambiente"><input className={inputClass} name={"environment_"+i.id} defaultValue={i.environment}/></Field>
-        <Field label="Largura de campo (mm)"><input type="number" min="0.01" step="any" required={!i.noMeasurement} disabled={i.noMeasurement} className={inputClass} name={"measured_width_mm_"+i.id} defaultValue={i.width??""}/></Field>
-        <Field label="Altura de campo (mm)"><input type="number" min="0.01" step="any" required className={inputClass} name={"measured_height_mm_"+i.id} defaultValue={i.height??""}/></Field></div>
+        <Field label="Largura de campo (mm)"><input type="number" min="0.01" step="any" required={!i.noMeasurement} disabled={i.noMeasurement} className={inputClass} name={"measured_width_mm_"+i.id} key={String(prior)} readOnly={prior} defaultValue={(prior?i.saleWidth:i.width)??""}/></Field>
+        <Field label="Altura de campo (mm)"><input type="number" min="0.01" step="any" required className={inputClass} name={"measured_height_mm_"+i.id} key={String(prior)} readOnly={prior} defaultValue={(prior?i.saleHeight:i.height)??""}/></Field></div>
       </fieldset>)}
       <div className="grid gap-3 md:grid-cols-2"><Field label="Identificação do lote (opcional)"><input className={inputClass} name="batch_number" placeholder="Numeração automática"/></Field>
         <Field label="Prazo do lote (opcional)"><input className={inputClass} name="default_due_date" type="date"/></Field></div>

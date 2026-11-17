@@ -1948,7 +1948,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2 text-sm"><a href="#pecas" className="rounded-md bg-charcoal px-3 py-2 font-semibold text-white">Peças e medidas</a><a href="#lotes" className="rounded-md border px-3 py-2 font-semibold">Consultar lotes ({releases.length})</a></div>
           {!canOperatePieces && <p className="rounded-md bg-amber-50 p-3 text-sm">{!reuniaoReadyForNext ? "Conclua a reunião e as assinaturas exigidas para iniciar a operação de peças." : !entradaReadyForNext ? "Aguardando entrega e conferência da pasta." : !acoesValidation.complete ? "Aguardando resolução da etapa de ações." : "A etapa de visitas aguarda as assinaturas exigidas."}</p>}
-          <MeasurementDesk contractId={id} today={today} visits={performedVisits.flatMap(v=>{
+          <MeasurementDesk allowPrecontract contractDate={technical?.contract_date} contractId={id} today={today} visits={performedVisits.flatMap(v=>{
             if(!v.performed_at) return [];
             const day=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo"}).format(new Date(v.performed_at));
             return [{id:v.id,day,label:formatDate(day)+" · "+v.visit_type}];
@@ -1956,7 +1956,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             const batch=currentBatchByPiece.get(piece.id);
             const blocked=(!piece.measurement_not_required && piece.project_only) || !!structuralActionsByPieceId.get(piece.id)?.length || activeCorrections.some(c=>c.piece_id===piece.id && c.blocking);
             return {id:piece.id,code:piece.code,environment:piece.environment ?? "",model:piece.piece_type || piece.description || "A definir",
-              noMeasurement:!!piece.measurement_not_required,width:piece.measured_width_mm,height:piece.measured_height_mm,released:isReleased,blocked,lot:batch?batchLabel(batch):"",
+              saleWidth:piece.sale_width_mm,saleHeight:piece.sale_height_mm,noMeasurement:!!piece.measurement_not_required,width:piece.measured_width_mm,height:piece.measured_height_mm,released:isReleased,blocked,lot:batch?batchLabel(batch):"",
               editor:<div>{canMeasure && canOperatePieces && <MeasurementRequirementForm piece={piece} options={piecePlan.map(({piece:p})=>({id:p.id,label:p.code+" · "+(p.environment??"Sem ambiente")}))}/>}<p className="mb-2 text-sm">Venda: {piece.sale_width_mm ?? "—"} × {piece.sale_height_mm ?? "—"} mm · {piece.measurement_not_required ? "Medição individual não se aplica" : piece.project_only ? "Aguardando definição das medidas de projeto" : "Medidas de campo"}</p>                  <PieceActionForms
                     piece={piece}
                     canMeasure={canMeasure && canOperatePieces}
