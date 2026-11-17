@@ -432,14 +432,21 @@ async function loadTechnicalSnapshot(
       },
     });
 
-    const results = await Promise.all(queries.map((query) => query.load()));
+    // Bound parallel requests so RLS-heavy reads do not exhaust the database pool.
+    const results: Awaited<ReturnType<SnapshotQuery['load']>>[] = [];
+    for (let offset = 0; offset < queries.length; offset += 3) {
+      results.push(...await Promise.all(queries.slice(offset, offset + 3).map(query => query.load())));
+    }
+    for (let index = 0; index < results.length; index++) {
+      if (results[index].error?.code === '57014') results[index] = await queries[index].load();
+    }
     const failedResult = results.find((result, index) => {
       const query = queries[index];
       return Boolean(result.error && !(query.optionalMissing && isMissingRelation(result.error)));
     });
 
     if (failedResult?.error) {
-      console.error("Falha ao consultar Supabase", failedResult.error);
+      console.error("Falha ao consultar Supabase", queries[results.indexOf(failedResult)].key, failedResult.error);
       return snapshot;
     }
 

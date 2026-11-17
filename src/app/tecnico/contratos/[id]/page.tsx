@@ -2025,7 +2025,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":!piece.measurement_not_required&&(piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm)?"Medida pendente":"";
               return {id:piece.id,code:piece.code,environment:piece.environment||"—",model:piece.piece_type||piece.description||"—",qty:piece.quantity??1,
                 lot:batch?batchLabel(batch):"",released:piece.released_at?.slice(0,10)||"",due:batch?releaseFolderDeadlines(batch,holidays??[]).issueDue||"":"",
-                issued:item ? prod?.cem_report?.issued ?? "" : "",prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:grouped?"Conjunto · consultar recortes da PROD":item?item.width+" × "+item.height:""};
+                issued:(item||grouped) ? prod?.cem_report?.issued ?? "" : "",prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:grouped?"Conjunto · consultar recortes da PROD":item?item.width+" × "+item.height:""};
             })}/>
 
           <div className="space-y-3">
