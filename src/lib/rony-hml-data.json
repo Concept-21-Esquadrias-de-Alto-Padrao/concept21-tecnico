@@ -1,0 +1,884 @@
+{
+  "contract": "26-0555",
+  "client": "Rony Peterson Dalbon",
+  "reports": [
+    {
+      "batchNumber": "26-0555_PROD1-CORRER-GOLD",
+      "contractNumber": "26-0555",
+      "issued": "18/06/2026",
+      "digest": "460df6efefd53da0840f761c6b3fefa4137748e98e9dc11aa0ff79bd5d968cbe",
+      "finish": "PINTURA PRETO FOSCO ACETINADO",
+      "rows": [
+        {
+          "code": "J2_T",
+          "sourceCode": "J2_T",
+          "contractCode": "J2_T",
+          "quantity": 1,
+          "width": 1992,
+          "height": 1502,
+          "environment": "SUÍTE HÓSPEDES",
+          "area": 2.99,
+          "weight": 24.804
+        },
+        {
+          "code": "J11_A",
+          "sourceCode": "J11_A",
+          "contractCode": "J11",
+          "quantity": 1,
+          "width": 3878,
+          "height": 1660,
+          "environment": "ACADEMIA LAYERAL INTERNO",
+          "area": 6.44,
+          "weight": 31.157
+        },
+        {
+          "code": "J11",
+          "sourceCode": "J11",
+          "contractCode": "J11",
+          "quantity": 1,
+          "width": 3900,
+          "height": 1659,
+          "environment": "ACADEMIA LAYERAL EXTERNO",
+          "area": 6.47,
+          "weight": 31.295
+        },
+        {
+          "code": "J3",
+          "sourceCode": "J3",
+          "contractCode": "J3",
+          "quantity": 1,
+          "width": 3935,
+          "height": 1449,
+          "environment": "BRINQUEDOTECA",
+          "area": 5.7,
+          "weight": 38.065
+        },
+        {
+          "code": "P11_A",
+          "sourceCode": "P11_A",
+          "contractCode": "P11_T",
+          "quantity": 1,
+          "width": 3054,
+          "height": 2522,
+          "environment": "SUÍTES 1",
+          "area": 7.7,
+          "weight": 42.285
+        },
+        {
+          "code": "P11_T",
+          "sourceCode": "P11_T",
+          "contractCode": "P11_T",
+          "quantity": 1,
+          "width": 3035,
+          "height": 2521,
+          "environment": "SUÍTES 2",
+          "area": 7.65,
+          "weight": 42.143
+        },
+        {
+          "code": "P10_T",
+          "sourceCode": "P10_T",
+          "contractCode": "P10_T",
+          "quantity": 1,
+          "width": 3960,
+          "height": 2454,
+          "environment": "SUÍTE MASTER",
+          "area": 9.72,
+          "weight": 55.572
+        },
+        {
+          "code": "P2",
+          "sourceCode": "P2",
+          "contractCode": "P2",
+          "quantity": 1,
+          "width": 4128,
+          "height": 2543,
+          "environment": "SALA DE ESTAR",
+          "area": 10.5,
+          "weight": 42.263
+        },
+        {
+          "code": "P1",
+          "sourceCode": "P1",
+          "contractCode": "P1",
+          "quantity": 1,
+          "width": 7083,
+          "height": 2554,
+          "environment": "SALA DE JANTAR",
+          "area": 18.09,
+          "weight": 79.736
+        },
+        {
+          "code": "P3",
+          "sourceCode": "P3",
+          "contractCode": "P3",
+          "quantity": 1,
+          "width": 7572,
+          "height": 2546,
+          "environment": "ESPAÇO GOURMET",
+          "area": 19.28,
+          "weight": 82.719
+        }
+      ],
+      "originLinks": [
+        {
+          "contractCode": "J2_T",
+          "fabricationCode": "J2_T"
+        },
+        {
+          "contractCode": "J11",
+          "fabricationCode": "J11_A"
+        },
+        {
+          "contractCode": "J11",
+          "fabricationCode": "J11"
+        },
+        {
+          "contractCode": "J3",
+          "fabricationCode": "J3"
+        },
+        {
+          "contractCode": "P11_T",
+          "fabricationCode": "P11_A"
+        },
+        {
+          "contractCode": "P11_T",
+          "fabricationCode": "P11_T"
+        },
+        {
+          "contractCode": "P10_T",
+          "fabricationCode": "P10_T"
+        },
+        {
+          "contractCode": "P2",
+          "fabricationCode": "P2"
+        },
+        {
+          "contractCode": "P1",
+          "fabricationCode": "P1"
+        },
+        {
+          "contractCode": "P3",
+          "fabricationCode": "P3"
+        }
+      ],
+      "historical_regularization": true,
+      "historical_confirmation": "Eduardo confirmou conferência, aprovação e recebimento por Suprimentos e Produção; datas e executores históricos não informados.",
+      "release_dates": {
+        "J2_T": "2026-09-17",
+        "J11_A": null,
+        "J11": null,
+        "J3": null,
+        "P11_A": null,
+        "P11_T": null,
+        "P10_T": null,
+        "P2": null,
+        "P1": null,
+        "P3": null
+      }
+    },
+    {
+      "batchNumber": "26-0555_PROD4-FIX-GOLD",
+      "contractNumber": "26-0555",
+      "issued": "06/08/2026",
+      "digest": "7c24c8fb1e3b5854fca650433fee28f74eba834d0c2c1e086ca47086a7272d48",
+      "finish": "PINTURA PRETO FOSCO ACETINADO",
+      "rows": [
+        {
+          "code": "J7",
+          "sourceCode": "J7",
+          "contractCode": "J7",
+          "quantity": 1,
+          "width": 1780,
+          "height": 1268,
+          "environment": "ESCADA",
+          "area": 2.26,
+          "weight": 43.58
+        },
+        {
+          "code": "J7_A",
+          "sourceCode": "J7_A",
+          "contractCode": "J7",
+          "quantity": 3,
+          "width": 1780,
+          "height": 1222,
+          "environment": "ESCADA",
+          "area": 6.53,
+          "weight": 4.566
+        },
+        {
+          "code": "J16",
+          "sourceCode": "J16",
+          "contractCode": "J16",
+          "quantity": 1,
+          "width": 864,
+          "height": 698,
+          "environment": "BANHO CASAL FEMININO",
+          "area": 0.6,
+          "weight": 4.941
+        },
+        {
+          "code": "J13",
+          "sourceCode": "J13",
+          "contractCode": "J13",
+          "quantity": 1,
+          "width": 1304,
+          "height": 2483,
+          "environment": "ESCADA CARACOL INFERIOR",
+          "area": 3.24,
+          "weight": 8.151
+        },
+        {
+          "code": "J18",
+          "sourceCode": "J18",
+          "contractCode": "J18",
+          "quantity": 1,
+          "width": 4458,
+          "height": 694,
+          "environment": "BANHEIRA BNH CASAL MASC.",
+          "area": 3.09,
+          "weight": 13.7
+        },
+        {
+          "code": "J9",
+          "sourceCode": "J9",
+          "contractCode": "J9",
+          "quantity": 1,
+          "width": 5796,
+          "height": 2493,
+          "environment": "CORREDOR QUARTOS",
+          "area": 14.45,
+          "weight": 16.344
+        }
+      ],
+      "originLinks": [
+        {
+          "contractCode": "J7",
+          "fabricationCode": "J7"
+        },
+        {
+          "contractCode": "J7",
+          "fabricationCode": "J7_A"
+        },
+        {
+          "contractCode": "J16",
+          "fabricationCode": "J16"
+        },
+        {
+          "contractCode": "J13",
+          "fabricationCode": "J13"
+        },
+        {
+          "contractCode": "J18",
+          "fabricationCode": "J18"
+        },
+        {
+          "contractCode": "J9",
+          "fabricationCode": "J9"
+        }
+      ],
+      "historical_regularization": true,
+      "historical_confirmation": "Eduardo confirmou conferência, aprovação e recebimento por Suprimentos e Produção; datas e executores históricos não informados.",
+      "release_dates": {
+        "J7": null,
+        "J7_A": null,
+        "J16": null,
+        "J13": null,
+        "J18": null,
+        "J9": null
+      }
+    },
+    {
+      "batchNumber": "26-0555_PROD5-CORRER-SUP",
+      "contractNumber": "26-0555",
+      "issued": "18/06/2026",
+      "digest": "8ba1ac36b18e0bab4608dd236a3af634a7ba5690e3f421d97fc1780ab3edf7fb",
+      "finish": "PINTURA PRETO FOSCO ACETINADO",
+      "rows": [
+        {
+          "code": "J20",
+          "sourceCode": "J20",
+          "contractCode": "J20",
+          "quantity": 1,
+          "width": 1741,
+          "height": 703,
+          "environment": "BANHO SUÍTE 1",
+          "area": 1.22,
+          "weight": 9.522
+        },
+        {
+          "code": "J19",
+          "sourceCode": "J19",
+          "contractCode": "J19",
+          "quantity": 1,
+          "width": 1312,
+          "height": 696,
+          "environment": "BANHO SUÍTE 2 FILHA",
+          "area": 0.91,
+          "weight": 7.8
+        },
+        {
+          "code": "J15",
+          "sourceCode": "J15",
+          "contractCode": "J15",
+          "quantity": 1,
+          "width": 1210,
+          "height": 698,
+          "environment": "BANHO CASAL FEMININO",
+          "area": 0.84,
+          "weight": 7.417
+        },
+        {
+          "code": "J17",
+          "sourceCode": "J17",
+          "contractCode": "J17",
+          "quantity": 1,
+          "width": 908,
+          "height": 694,
+          "environment": "BANHO CASAL MASCULINO",
+          "area": 0.63,
+          "weight": 6.218
+        },
+        {
+          "code": "J17_A",
+          "sourceCode": "J17_A",
+          "contractCode": "J17",
+          "quantity": 1,
+          "width": 1274,
+          "height": 694,
+          "environment": "BANHO CASAL MASCULINO",
+          "area": 0.88,
+          "weight": 7.646
+        }
+      ],
+      "originLinks": [
+        {
+          "contractCode": "J20",
+          "fabricationCode": "J20"
+        },
+        {
+          "contractCode": "J19",
+          "fabricationCode": "J19"
+        },
+        {
+          "contractCode": "J15",
+          "fabricationCode": "J15"
+        },
+        {
+          "contractCode": "J17",
+          "fabricationCode": "J17"
+        },
+        {
+          "contractCode": "J17",
+          "fabricationCode": "J17_A"
+        }
+      ],
+      "historical_regularization": true,
+      "historical_confirmation": "Eduardo confirmou conferência, aprovação e recebimento por Suprimentos e Produção; datas e executores históricos não informados.",
+      "release_dates": {
+        "J20": null,
+        "J19": null,
+        "J15": null,
+        "J17": null,
+        "J17_A": null
+      }
+    },
+    {
+      "batchNumber": "26-0555_PROD6-GIRO-SUP",
+      "contractNumber": "26-0555",
+      "issued": "18/06/2026",
+      "digest": "414ec8269caf92cdeb63e69e0e97f5cfa88116fc66f2fb4566600a75c4e26951",
+      "finish": "PINTURA PRETO FOSCO ACETINADO",
+      "rows": [
+        {
+          "code": "P13_A",
+          "sourceCode": "P13_A",
+          "contractCode": "P13",
+          "quantity": 1,
+          "width": 893,
+          "height": 2507,
+          "environment": "ACADEMIA/ESCADA",
+          "area": 2.24,
+          "weight": 13.27
+        },
+        {
+          "code": "P13",
+          "sourceCode": "P13",
+          "contractCode": "P13",
+          "quantity": 1,
+          "width": 877,
+          "height": 2510,
+          "environment": "ACADEMIA/VARANDA",
+          "area": 2.2,
+          "weight": 13.226
+        },
+        {
+          "code": "P15",
+          "sourceCode": "P15",
+          "contractCode": "P15",
+          "quantity": 1,
+          "width": 885,
+          "height": 2554,
+          "environment": "ROUPEIRO",
+          "area": 2.26,
+          "weight": 17.192
+        }
+      ],
+      "originLinks": [
+        {
+          "contractCode": "P13",
+          "fabricationCode": "P13_A"
+        },
+        {
+          "contractCode": "P13",
+          "fabricationCode": "P13"
+        },
+        {
+          "contractCode": "P15",
+          "fabricationCode": "P15"
+        }
+      ],
+      "historical_regularization": true,
+      "historical_confirmation": "Eduardo confirmou conferência, aprovação e recebimento por Suprimentos e Produção; datas e executores históricos não informados.",
+      "release_dates": {
+        "P13_A": null,
+        "P13": null,
+        "P15": null
+      }
+    }
+  ],
+  "origins": [
+    {
+      "code": "J21",
+      "quantity": 1,
+      "environment": "LAVABO INTERNO",
+      "width": 300,
+      "height": 600,
+      "releaseDate": null,
+      "alreadyIssued": true
+    },
+    {
+      "code": "J4",
+      "quantity": 2,
+      "environment": "BANHO HÓSPEDES",
+      "width": 501,
+      "height": 585,
+      "releaseDate": null,
+      "alreadyIssued": true
+    },
+    {
+      "code": "J12",
+      "quantity": 1,
+      "environment": "ESCRITÓRIO",
+      "width": 1346,
+      "height": 1656,
+      "releaseDate": null,
+      "alreadyIssued": true
+    },
+    {
+      "code": "J6",
+      "quantity": 1,
+      "environment": "LAVABO EXTERNO",
+      "width": 849,
+      "height": 2494,
+      "releaseDate": null,
+      "alreadyIssued": true
+    },
+    {
+      "code": "GC02",
+      "quantity": 1,
+      "environment": "CIRCULAÇÃO QUARTOS",
+      "width": 5803,
+      "height": 1100,
+      "releaseDate": null,
+      "alreadyIssued": true
+    },
+    {
+      "code": "GC03_A",
+      "quantity": 1,
+      "environment": "VARANDA QUARTOS",
+      "width": 12010,
+      "height": 1444,
+      "releaseDate": null,
+      "alreadyIssued": true
+    },
+    {
+      "code": "GC03_B",
+      "quantity": 1,
+      "environment": null,
+      "width": null,
+      "height": null,
+      "releaseDate": null,
+      "alreadyIssued": true
+    },
+    {
+      "code": "P5",
+      "quantity": 1,
+      "environment": "DEPÓSITO",
+      "width": 1700,
+      "height": 2400,
+      "releaseDate": null,
+      "alreadyIssued": true
+    },
+    {
+      "code": "J5",
+      "quantity": 1,
+      "environment": "ESPAÇO GOURMET",
+      "width": 2494,
+      "height": 565,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": true
+    },
+    {
+      "code": "J8",
+      "quantity": 1,
+      "environment": "LAVANDERIA",
+      "width": 3161,
+      "height": 1376,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": true
+    },
+    {
+      "code": "P6",
+      "quantity": 1,
+      "environment": "ESCANINHO",
+      "width": 5455,
+      "height": 2542,
+      "releaseDate": "2026-11-03",
+      "alreadyIssued": true
+    },
+    {
+      "code": "J1",
+      "quantity": 1,
+      "environment": "COZINHA",
+      "width": 5070,
+      "height": 572,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": true
+    },
+    {
+      "code": "J2_T",
+      "quantity": 1,
+      "environment": "SUÍTE HÓSPEDES",
+      "width": 1998,
+      "height": 1506,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P12",
+      "quantity": 1,
+      "environment": null,
+      "width": 1370,
+      "height": 2509,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P9",
+      "quantity": 1,
+      "environment": null,
+      "width": 751,
+      "height": 2492,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "BOX1",
+      "quantity": 1,
+      "environment": null,
+      "width": 1360,
+      "height": 2395,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P14",
+      "quantity": 1,
+      "environment": null,
+      "width": 791,
+      "height": 2442,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P9_A",
+      "quantity": 1,
+      "environment": null,
+      "width": 749,
+      "height": 2493,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P8",
+      "quantity": 1,
+      "environment": null,
+      "width": 828,
+      "height": 2487,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "BOX2",
+      "quantity": 1,
+      "environment": null,
+      "width": 1412,
+      "height": 2511,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "BOX3",
+      "quantity": 1,
+      "environment": null,
+      "width": 1391,
+      "height": 2563,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "BOX5",
+      "quantity": 1,
+      "environment": null,
+      "width": 1438,
+      "height": 2488,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P7",
+      "quantity": 1,
+      "environment": null,
+      "width": 865,
+      "height": 2494,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P7_P7A",
+      "quantity": 1,
+      "environment": null,
+      "width": 1044,
+      "height": 2429,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P8_AB",
+      "quantity": 1,
+      "environment": null,
+      "width": 832,
+      "height": 2426,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P9_B",
+      "quantity": 1,
+      "environment": null,
+      "width": 771,
+      "height": 2381,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P14_A",
+      "quantity": 1,
+      "environment": null,
+      "width": 791,
+      "height": 2500,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "P8_AB_B",
+      "quantity": 1,
+      "environment": null,
+      "width": 922,
+      "height": 2467,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "BOX4",
+      "quantity": 1,
+      "environment": null,
+      "width": 1887,
+      "height": 2517,
+      "releaseDate": "2026-09-17",
+      "alreadyIssued": false
+    },
+    {
+      "code": "J11",
+      "quantity": 2,
+      "environment": "ACADEMIA",
+      "width": 3906,
+      "height": 1663,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J3",
+      "quantity": 1,
+      "environment": "BRINQUEDOTECA",
+      "width": 3941,
+      "height": 1453,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J7",
+      "quantity": 1,
+      "environment": "ESCADA",
+      "width": 1990,
+      "height": 5447,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J9",
+      "quantity": 1,
+      "environment": "CORREDOR QUARTOS",
+      "width": 5802,
+      "height": 2497,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J13",
+      "quantity": 1,
+      "environment": "ESCADA CARACOL INFERIOR",
+      "width": 1310,
+      "height": 2487,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J14",
+      "quantity": 1,
+      "environment": "ESCADA CARACOL",
+      "width": 1338,
+      "height": 301,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J15",
+      "quantity": 1,
+      "environment": "BANHO CASAL FEMININO",
+      "width": 1213,
+      "height": 702,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J16",
+      "quantity": 1,
+      "environment": "BANHO CASAL FEMININO",
+      "width": 867,
+      "height": 702,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J17",
+      "quantity": 2,
+      "environment": "BANHO CASAL MASCULINO",
+      "width": 1277,
+      "height": 698,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J18",
+      "quantity": 1,
+      "environment": "BANHEIRA BNH CASAL MASC",
+      "width": 4458,
+      "height": 698,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J19",
+      "quantity": 1,
+      "environment": "BANHO SUÍTE 2 FILHA",
+      "width": 1318,
+      "height": 700,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "J20",
+      "quantity": 1,
+      "environment": "BANHO SUÍTE 1",
+      "width": 1500,
+      "height": 700,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "P1",
+      "quantity": 1,
+      "environment": "SALA DE JANTAR",
+      "width": 7300,
+      "height": 2400,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "P2",
+      "quantity": 1,
+      "environment": "SALA DE ESTAR",
+      "width": 4250,
+      "height": 2400,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "P3",
+      "quantity": 1,
+      "environment": "ESPAÇO GOURMET",
+      "width": 7500,
+      "height": 2400,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "P10_T",
+      "quantity": 1,
+      "environment": "SUÍTE MASTER",
+      "width": 4200,
+      "height": 2499,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "P11_T",
+      "quantity": 2,
+      "environment": "SUÍTE FILHAS",
+      "width": 3150,
+      "height": 2500,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "P13",
+      "quantity": 2,
+      "environment": "ACADEMIA",
+      "width": 900,
+      "height": 2500,
+      "releaseDate": null,
+      "alreadyIssued": false
+    },
+    {
+      "code": "P15",
+      "quantity": 1,
+      "environment": "ROUPEIRO",
+      "width": 800,
+      "height": 2100,
+      "releaseDate": null,
+      "alreadyIssued": false
+    }
+  ]
+}

@@ -2019,7 +2019,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
             rows={piecePlan.map(({piece,released:isReleased})=>{
               const batch=currentBatchByPiece.get(piece.id);
               const prod=prodBatches.find(p=>p.id===piece.active_prod_batch_id);
-              const grouped=Boolean(prod?.cem_report?.fabricationSetId)&&piece.code.startsWith('RIP');
+              const grouped=Boolean(prod?.cem_report?.fabricationSetId);
               const item=grouped?undefined:prod?.cem_report?.rows.find(r=>r.code.trim().toUpperCase()===piece.code.trim().toUpperCase());
               const blocked=activeCorrections.some(c=>c.piece_id===piece.id&&c.blocking)||structuralActionsByPieceId.has(piece.id);
               const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":!piece.measurement_not_required&&(piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm)?"Medida pendente":"";

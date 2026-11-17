@@ -20,7 +20,7 @@ export function ProdPieceDesk({rows,editable,contractId}:{rows:Row[];editable:bo
     <div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Conferência das peças e emissão de ordens</caption><thead className="bg-muted"><tr>{(Object.keys(cols) as (keyof typeof cols)[]).map(k=><th key={k} aria-sort={sort.key===k?(sort.desc?"descending":"ascending"):undefined}><button type="button" className="p-2 text-left" onClick={()=>setSort({key:k,desc:sort.key===k&&!sort.desc})}>{cols[k]} {sort.key===k?(sort.desc?"↓":"↑"):"↕"}</button></th>)}</tr></thead>
       <tbody>{visible.map(r=><tr key={r.id} className="border-b">
         <td className="p-2 font-semibold">{r.code}{r.qty>1&&" × "+r.qty}</td><td className="p-2">{r.environment}</td><td className="p-2">{r.model}</td><td className="p-2">{r.lot||"—"}</td>
-        <td className="p-2">{r.released?formatDate(r.released):"A liberar"}</td><td className="p-2">{r.due?formatDate(r.due):r.released?"Recebimento não registrado":"—"}</td>
+        <td className="p-2">{r.released?formatDate(r.released):r.prod?"Histórico · data não informada":"A liberar"}</td><td className="p-2">{r.due?formatDate(r.due):r.released?"Recebimento não registrado":"—"}</td>
         <td className="p-2"><span className={r.issued?"rounded bg-green-100 px-2 py-1 font-semibold text-green-900":"text-muted-foreground"}>{r.cem}</span></td><td className="p-2">{r.issued||"—"}</td>
         <td className="p-2">{r.manufacturing||"—"}</td><td className="p-2">{r.prod||"—"}{!r.prod&&<small className="block">{r.reason||"A emitir"}</small>}</td></tr>
 )}</tbody></table></div>
