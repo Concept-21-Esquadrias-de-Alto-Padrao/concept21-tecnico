@@ -9,7 +9,7 @@ export function buildFolderWorkflow(s:TechnicalSnapshot){
   const c=s.contracts.find(c=>c.id===r.contract_id&&c.company_id===r.company_id&&c.active!==false);
   const t=s.technicalContracts.find(t=>t.contract_id===r.contract_id);
   if(!c||t?.deleted_at||['concluido','cancelado'].includes(t?.technical_status??'')) return [];
-  const pieces=s.pieces.filter(p=>p.contract_id===c.id&&!p.deleted_at&&p.status!=='cancelada'&&latest.get(p.id)===r.id);
+  const pieces=s.pieces.filter(p=>p.contract_id===c.id&&!p.deleted_at&&p.status!=='cancelada'&&!p.complements_piece_id&&latest.get(p.id)===r.id);
   if(!pieces.length)return [];
   const pending=pieces.filter(p=>p.status==='liberada'&&!p.active_prod_batch_id);
   const d=releaseFolderDeadlines(r,(s.dashboardHolidays??[]).filter(h=>h.company_id===r.company_id).map(h=>({date:h.holiday_date})));

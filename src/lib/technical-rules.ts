@@ -223,8 +223,8 @@ export function visitRequiresReport(visit: Pick<TechnicalVisit, "status" | "repo
   return visit.status === "realizada" && !visit.report_generated_at;
 }
 
-export function calculateReleaseProgress(pieces: Array<Pick<TechnicalPiece, "status" | "deleted_at">>) {
-  const activePieces = pieces.filter((piece) => !piece.deleted_at && piece.status !== "cancelada");
+export function calculateReleaseProgress(pieces: Array<Pick<TechnicalPiece, "status" | "deleted_at" | "complements_piece_id">>) {
+  const activePieces = pieces.filter((piece) => !piece.deleted_at && piece.status !== "cancelada" && !piece.complements_piece_id);
   const total = activePieces.length;
   const released = activePieces.filter((piece) =>
     ["liberada", "em_prod", "entregue"].includes(piece.status),

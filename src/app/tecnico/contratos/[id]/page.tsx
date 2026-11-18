@@ -1561,6 +1561,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
         }
       />
 
+      <section className="rounded-xl border border-border bg-white p-4"><Link href={`/tecnico/contratos/${contract.id}/aditivos`} className="font-semibold text-charcoal underline">Vincular / consultar aditivo</Link><p className="mt-1 text-sm text-muted-foreground">Acréscimos às mesmas peças, com uma única produção e instalação.</p>{pieces.filter(p=>p.complements_piece_id||p.fulfilled_by_addendum_piece_id).map(p=><p className="mt-2 text-sm" key={p.id}><strong>{p.code}</strong> · {p.complements_piece_id?'Complemento de peça do contrato principal — não soma outra unidade':'Atendida pela PROD do aditivo'}</p>)}</section>
       <WorkWorkspace admin={canDeleteContract}>
       <WorkArea id="visao-geral"><div className="space-y-4">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border bg-white px-4 py-3 text-sm">
@@ -1581,7 +1582,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           rows={piecePlan.map(({piece,units, released:isReleased,replan})=>{
             const date = isReleased ? piece.released_at : piece.forecast_date;
             const batch = isReleased ? currentBatchByPiece.get(piece.id) : undefined;
-            return {id:piece.id,code:piece.code,environment:piece.environment || "A definir",model:piece.piece_type || piece.description || "A definir",
+            return {coveredByAddendum:Boolean(piece.fulfilled_by_addendum_piece_id),id:piece.id,code:piece.code,environment:piece.environment || "A definir",model:piece.piece_type || piece.description || "A definir",
               units,status:isReleased?"released":date?"planned":"missing",date:date ?? null,delivery:deliveryForecast(date),
               revise:replan,group:piece.forecast_group ?? null,lotId:batch?.id ?? "",lot:batch?batchLabel(batch):"",
               prod:prodBatches.find(p=>p.id===piece.active_prod_batch_id)?.batch_number ?? ""};
@@ -1955,7 +1956,7 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
           }).sort((a,b)=>b.day.localeCompare(a.day))} canRelease={canRelease && canOperatePieces} needsSignatures={pecasValidation.required} items={piecePlan.map(({piece,released:isReleased})=>{
             const batch=currentBatchByPiece.get(piece.id);
             const blocked=(!piece.measurement_not_required && piece.project_only) || !!structuralActionsByPieceId.get(piece.id)?.length || activeCorrections.some(c=>c.piece_id===piece.id && c.blocking);
-            return {id:piece.id,code:piece.code,environment:piece.environment ?? "",model:piece.piece_type || piece.description || "A definir",
+            return {coveredByAddendum:Boolean(piece.fulfilled_by_addendum_piece_id),id:piece.id,code:piece.code,environment:piece.environment ?? "",model:piece.piece_type || piece.description || "A definir",
               saleWidth:piece.sale_width_mm,saleHeight:piece.sale_height_mm,noMeasurement:!!piece.measurement_not_required,width:piece.measured_width_mm,height:piece.measured_height_mm,released:isReleased,blocked,lot:batch?batchLabel(batch):"",
               editor:<div>{canMeasure && canOperatePieces && <MeasurementRequirementForm piece={piece} options={piecePlan.map(({piece:p})=>({id:p.id,label:p.code+" · "+(p.environment??"Sem ambiente")}))}/>}<p className="mb-2 text-sm">Venda: {piece.sale_width_mm ?? "—"} × {piece.sale_height_mm ?? "—"} mm · {piece.measurement_not_required ? "Medição individual não se aplica" : piece.project_only ? "Aguardando definição das medidas de projeto" : "Medidas de campo"}</p>                  <PieceActionForms
                     piece={piece}
@@ -2023,9 +2024,9 @@ export default async function TechnicalContractDetailPage({ params }: ContractDe
               const item=grouped?undefined:prod?.cem_report?.rows.find(r=>r.code.trim().toUpperCase()===piece.code.trim().toUpperCase());
               const blocked=activeCorrections.some(c=>c.piece_id===piece.id&&c.blocking)||structuralActionsByPieceId.has(piece.id);
               const reason=!isReleased?"A liberar":blocked?"Correção pendente":!signedReleasePieceIds.has(piece.id)?"Verificar lote":!piece.measurement_not_required&&(piece.project_only||!piece.measured_width_mm||!piece.measured_height_mm)?"Medida pendente":"";
-              return {id:piece.id,code:piece.code,environment:piece.environment||"—",model:piece.piece_type||piece.description||"—",qty:piece.quantity??1,
+              return {coveredByAddendum:Boolean(piece.fulfilled_by_addendum_piece_id),id:piece.id,code:piece.code,environment:piece.environment||"—",model:piece.piece_type||piece.description||"—",qty:piece.quantity??1,
                 lot:batch?batchLabel(batch):"",released:piece.released_at?.slice(0,10)||"",due:batch?releaseFolderDeadlines(batch,holidays??[]).issueDue||"":"",
-                issued:(item||grouped) ? prod?.cem_report?.issued ?? "" : "",prod:prod?.batch_number||(piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:grouped?"Conjunto · consultar recortes da PROD":item?item.width+" × "+item.height:""};
+                issued:(item||grouped) ? prod?.cem_report?.issued ?? "" : "",prod:prod?.batch_number||(piece.fulfilled_by_addendum_piece_id?"Atendida pela PROD do aditivo":piece.active_prod_batch_id?"Vinculada":""),reason,manufacturing:grouped?"Conjunto · consultar recortes da PROD":item?item.width+" × "+item.height:""};
             })}/>
 
           <div className="space-y-3">

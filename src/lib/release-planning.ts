@@ -1,8 +1,9 @@
+import {physicalPieces} from "./addendum-pieces";
 import { addDeadlineDays, type CalendarHoliday } from "./technical-rules";
 import type { TechnicalPiece } from "./types";
 
 export function releasePlan(pieces: TechnicalPiece[], today: string, holidays?: CalendarHoliday[]) {
-  const active = pieces.filter(p => !p.deleted_at && p.status !== "cancelada");
+  const active = physicalPieces(pieces).filter(p => !p.deleted_at && p.status !== "cancelada");
   const isReleased = (p: TechnicalPiece) => Boolean(p.active_prod_batch_id) || ["liberada","em_prod","entregue"].includes(p.status);
   const releasedGroups = new Set(active.filter(isReleased).map(p => p.forecast_group).filter(Boolean));
   return active.map(piece => {

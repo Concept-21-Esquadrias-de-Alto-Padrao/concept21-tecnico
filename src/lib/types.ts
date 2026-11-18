@@ -267,6 +267,8 @@ export type TechnicalPiece = {
   cem_registered: boolean;
   cem_checked: boolean;
   active_prod_batch_id: string | null;
+  complements_piece_id?: string | null;
+  fulfilled_by_addendum_piece_id?: string | null;
   notes: string | null;
   deleted_at: string | null;
   created_at: string;
