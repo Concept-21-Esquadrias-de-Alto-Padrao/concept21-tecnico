@@ -33,7 +33,11 @@ export function readCemPages(pages: Cell[][]) {
       // Some legacy CEM PDFs merge total and unit weight into one text item.
       // Only split the unambiguous quantity-one case with two equal fixed-precision values.
       const joinedWeight=rawWeight.match(/^(\d+,\d{3})(\d+,\d{3})$/);
-      const kg=joinedWeight&&/^1\s/.test(dims)&&joinedWeight[1]===joinedWeight[2]?decimal(joinedWeight[1]):decimal(rawWeight);
+      const splitWeight=rawWeight.match(/^(\d+,\d{3})(.+)$/);
+      const unitX=x("Peso Unit.");
+      const unitTail=unitX===undefined?"":column(unitX-4,weight!-4);
+      const recovered=splitWeight&&unitTail&&splitWeight[1]===splitWeight[2]+unitTail?splitWeight[1]:null;
+      const kg=/^1\s/.test(dims)&&recovered?decimal(recovered):joinedWeight&&/^1\s/.test(dims)&&joinedWeight[1]===joinedWeight[2]?decimal(joinedWeight[1]):decimal(rawWeight);
       if (!Number.isFinite(kg)) continue;
       if (!code && /^\d+$/.test(dims)) {total=Number(dims);continue;}
       const numbers=dims.match(/^(\d+)\s+(\d+)\s+(\d+)(?:\s+\d+)*$/);
