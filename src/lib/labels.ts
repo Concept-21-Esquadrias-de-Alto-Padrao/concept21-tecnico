@@ -20,7 +20,7 @@ export const technicalContractStatusLabels: LabelMap<TechnicalContractStatus> = 
   em_liberacao: "Em liberação",
   em_prod: "Em PROD",
   repassado: "Repassado",
-  concluido: "Concluído",
+  concluido: "Concluído no Técnico",
   cancelado: "Cancelado",
 };
 
@@ -68,7 +68,7 @@ export const technicalProdStatusLabels: LabelMap<TechnicalProdStatus> = {
   devolvido: "Devolvido",
   entregue_suprimentos: "Entregue a Suprimentos",
   entregue_producao: "Entregue à Produção",
-  concluido: "Concluído",
+  concluido: "Concluído no Técnico",
   cancelado: "Cancelado",
 };
 
