@@ -1,5 +1,7 @@
 "use server";
 
+import {correctionChanges,type CorrectionValues} from "@/lib/work-data-correction";
+
 import {precontractMeasurement} from '@/lib/precontract-measurement';
 import {z} from "zod";
 import {documentManifest} from "@/lib/prod-handoffs";
@@ -1310,39 +1312,21 @@ export async function updateContractWorkDataAction(_: ActionState, formData: For
 
     if (currentClientError) throw currentClientError;
 
-    const clientId = await findOrCreateClient(context, clientName, { updateExistingName: true });
-    const contractUpdatePayload = {
-      ...updatePayload,
-      client_id: clientId,
-    };
-    const beforeData = {
-      client_name: ((currentClient as { name?: string } | null)?.name ?? null),
-      ...productionContractWorkData(source),
-    };
-
-    const { error } = await context.admin
-      .from("production_contracts")
-      .update(contractUpdatePayload)
-      .eq("company_id", context.companyId)
-      .eq("id", id);
-
-    if (error) throw error;
-
-    const { error: auditError } = await context.admin.from("audit_logs").insert({
-      company_id: context.companyId,
-      entity: "production_contracts",
-      entity_id: id,
-      action: "work_data_update",
-      user_id: context.authUserId,
-      before_data: beforeData,
-      after_data: {
-        client_name: clientName,
-        ...contractUpdatePayload,
-      },
-      notes: `Correção autorizada dos dados da obra. Motivo: ${adjustmentReason}`,
-    });
-
-    if (auditError) throw auditError;
+    const currentValues:CorrectionValues={client_name:currentClient?.name??null,...productionContractWorkData(source)};
+    let expected:CorrectionValues=currentValues;
+    const expectedRaw=formData.get("correction_expected");
+    if(typeof expectedRaw === "string"){
+      const value=JSON.parse(expectedRaw);
+      if(!value||Array.isArray(value)||Object.keys(currentValues).some(key=>!(key in value)||(value[key]!==null&&typeof value[key]!=="string"))) throw new Error("Reabra o cadastro para confirmar a correção.");
+      expected=value;
+    }
+    const diff=correctionChanges(expected,formData);
+    if(!diff.length)return ok("Nenhuma alteração a salvar.");
+    const validated={...updatePayload,client_name:clientName};
+    const changes=Object.fromEntries(diff.map(change=>[change.key,validated[change.key]??null]));
+    const seen=Object.fromEntries(diff.map(change=>[change.key,expected[change.key]]));
+    const {error}=await context.admin.rpc("technical_correct_work_data",{co:context.companyId,cid:id,actor:context.authUserId,changes,seen,reason:adjustmentReason});
+    if(error)throw error;
     revalidateTechnical(id);
     return ok("Dados da obra atualizados.");
   } catch (error) {

@@ -1,3 +1,4 @@
+import { isolatedTechnicalTest } from "@/lib/isolated-technical-test";
 import { PortalSessionWatchdog } from "@/components/portal-session-watchdog";
 import { PlatformMaintenanceWatchdog } from "@/components/platform-maintenance-watchdog";
 import type { Metadata } from "next";
@@ -29,7 +30,7 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <AppShell>{children}</AppShell>
-      <PlatformMaintenanceWatchdog /><PortalSessionWatchdog /></body>
+      <PlatformMaintenanceWatchdog /><PortalSessionWatchdog loginTarget={isolatedTechnicalTest() ? "/login" : undefined} /></body>
     </html>
   );
 }
